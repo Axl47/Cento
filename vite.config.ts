@@ -10,6 +10,7 @@ import { join, resolve } from "node:path";
  *   GET/PUT /api/library  -> data/library.json
  *   GET/PUT /api/rules    -> data/rules.json (artist rules; 404 until the first one is saved)
  *   GET/PUT /api/hidden   -> data/hidden.json (playlists hidden from suggestions; same)
+ *   GET/PUT /api/ledger   -> data/ledger.json (sorts not yet confirmed by a resync; same)
  *   GET     /api/audio    -> data/audio.json (404 until `pnpm audio` has run)
  */
 /** Vite serves any file under the root (also via /@fs/); keep .cache/ and data/ private. */
@@ -28,9 +29,11 @@ function localData(): Plugin {
     "/api/library": "data/library.json",
     "/api/rules": "data/rules.json",
     "/api/hidden": "data/hidden.json",
+    "/api/ledger": "data/ledger.json",
     "/api/audio": "data/audio.json",
   };
-  const writable = new Set(["data/library.json", "data/rules.json", "data/hidden.json"]);
+  const writable = new Set(["data/library.json", "data/rules.json", "data/hidden.json", "data/ledger.json"]);
+
 
   return {
     name: "local-data",

@@ -1,9 +1,11 @@
 // App state: the library, the sorting queue, the current song's picks, and the Spotify
-// writes that sorting a song triggers (serialized, with undo).
+// writes that sorting a song triggers (serialized, with undo). Every sort is also recorded in
+// the ledger (data/ledger.json), which is applied over whatever library is loaded or resynced.
 import { create } from "zustand";
 import { config } from "../core/config.ts";
 import { inbox, type Library } from "../core/library.ts";
 import { neighborsFrom, type AudioIndex } from "../core/audio.ts";
+import { applyLedger, unconfirmed, type LedgerEntry } from "../core/ledger.ts";
 import { buildModel, prechecked, suggest, type ArtistRules, type Model, type Neighbors } from "../core/suggest.ts";
 import { addToPlaylist, removeFromPlaylist, setLiked } from "../core/spotify.ts";
 import { client } from "./auth.ts";
@@ -31,6 +33,8 @@ type State = {
   rules: ArtistRules;
   /** Playlists hidden from suggestions (and ignored when deciding what's sorted). */
   hidden: string[];
+  /** Sorts made here that a resync hasn't confirmed yet. */
+  ledger: LedgerEntry[];
   queue: string[];
   picked: string[];
   order: Order;
@@ -39,11 +43,12 @@ type State = {
   status: Status;
   pendingWrites: number;
 
-  load: (lib: Library, audio: AudioIndex | null, rules: ArtistRules, hidden: string[]) => void;
+  load: (lib: Library, audio: AudioIndex | null, rules: ArtistRules, hidden: string[], ledger: LedgerEntry[]) => void;
   /** Sets (or with [] clears) a playlist's artist rule, saves it, and updates the current picks. */
   setRule: (playlistId: string, artists: ArtistRules[string]) => void;
   /** Hides a playlist from suggestions (or shows it again), saves, and rebuilds the queue. */
   setHidden: (playlistId: string, hide: boolean) => void;
+  /** Takes freshly synced data, keeping sorts Spotify doesn't show yet. */
   replaceLibrary: (lib: Library) => void;
   setOrder: (order: Order) => void;
   togglePick: (playlistId: string) => void;
@@ -83,6 +88,12 @@ function buildQueue(lib: Library, model: Model, neighbors: Neighbors | undefined
   return chain;
 }
 
+/** Saves the ledger to data/ledger.json; throws if the dev server didn't take it. */
+async function saveLedger(ledger: LedgerEntry[]) {
+  const res = await fetch("/api/ledger", { method: "PUT", body: JSON.stringify(ledger) });
+  if (!res.ok) throw new Error(`dev server replied ${res.status}`);
+}
+
 let writes: Promise<void> = Promise.resolve();
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -117,6 +128,14 @@ export const useApp = create<State>()((set, get) => {
       .finally(() => set((s) => ({ pendingWrites: s.pendingWrites - 1 })));
   };
 
+  /** Records the ledger in state and on disk; a failed save shows in the header. */
+  const setLedger = (ledger: LedgerEntry[]) => {
+    set({ ledger });
+    saveLedger(ledger).catch((e: unknown) =>
+      set({ status: { kind: "error", message: `Saving the sort locally failed (is \`pnpm dev\` running?): ${e instanceof Error ? e.message : String(e)}` } }),
+    );
+  };
+
   const setLib = (lib: Library, keepQueue: boolean) => {
     const s = get();
     const model = buildModel(lib, { rules: s.rules, hidden: s.hidden });
@@ -133,6 +152,7 @@ export const useApp = create<State>()((set, get) => {
     neighbors: undefined,
     rules: {},
     hidden: [],
+    ledger: [],
     queue: [],
     picked: [],
     order: "confident",
@@ -141,12 +161,13 @@ export const useApp = create<State>()((set, get) => {
     status: { kind: "idle" },
     pendingWrites: 0,
 
-    load: (lib, audio, rules, hidden) => {
+    load: (synced, audio, rules, hidden, ledger) => {
+      const lib = applyLedger(synced, ledger);
       const neighbors = audio ? neighborsFrom(audio) : undefined;
       const model = buildModel(lib, { rules, hidden });
       const order: Order = audio ? "similar" : "confident";
       const queue = buildQueue(lib, model, neighbors, order, hidden);
-      set({ lib, model, audio, neighbors, rules, hidden, order, queue, picked: initialPicks({ lib, model, neighbors }, queue[0]) });
+      set({ lib, model, audio, neighbors, rules, hidden, ledger, order, queue, picked: initialPicks({ lib, model, neighbors }, queue[0]) });
     },
 
     setHidden: (playlistId, hide) => {
@@ -181,8 +202,10 @@ export const useApp = create<State>()((set, get) => {
       set({ rules, model, picked: [...new Set([...picked.filter((p) => allowed.has(p)), ...matches])] });
     },
 
-    replaceLibrary: (lib) => {
-      setLib(lib, false);
+    replaceLibrary: (fresh) => {
+      const ledger = unconfirmed(fresh, get().ledger);
+      setLedger(ledger);
+      setLib(applyLedger(fresh, ledger), false);
       set((s) => ({ history: [], picked: initialPicks(s, s.queue[0]) }));
     },
 
@@ -206,11 +229,14 @@ export const useApp = create<State>()((set, get) => {
       const likedEntry = lib.liked.find((l) => l.id === trackId);
       const unliked = removeFromLikes && likedEntry ? { addedAt: likedEntry.addedAt } : null;
 
-      const next = edit(lib, (d) => {
-        for (const id of [...added, ...(addedToAll ? [config.allPlaylistId] : [])]) d.playlists.get(id)?.push(trackId);
-        if (unliked) d.liked = d.liked.filter((l) => l.id !== trackId);
-      });
-      setLib(next, true);
+      const entry: LedgerEntry = {
+        trackId,
+        added: [...added, ...(addedToAll ? [config.allPlaylistId] : [])],
+        unliked: unliked !== null,
+        at: new Date().toISOString(),
+      };
+      setLedger([...get().ledger, entry]);
+      setLib(applyLedger(lib, [entry]), true);
       // Drop it from the queue even if it's still technically unsorted (e.g. only put in hidden playlists).
       const rest = get().queue.filter((id) => id !== trackId);
       set((s) => ({
@@ -254,7 +280,9 @@ export const useApp = create<State>()((set, get) => {
         }
         if (unliked) d.liked = [{ id: trackId, addedAt: unliked.addedAt }, ...d.liked];
       });
+      setLedger(get().ledger.filter((e) => e.trackId !== trackId));
       setLib(next, true);
+
       set((s) => ({
         history: s.history.slice(0, -1),
         queue: [trackId, ...s.queue.filter((id) => id !== trackId)],

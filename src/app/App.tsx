@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { AudioIndex } from "../core/audio.ts";
 import type { ArtistRules } from "../core/suggest.ts";
+import type { LedgerEntry } from "../core/ledger.ts";
 import { sortTargets, syncLibrary, type Library } from "../core/library.ts";
 import { client, completeLogin, startLogin } from "./auth.ts";
 import { usePlaylistColors } from "./colors.ts";
@@ -29,14 +30,15 @@ export function App() {
       try {
         if (!(await completeLogin())) return setPhase({ kind: "login" });
         initPlayer();
-        const [library, audio, rules, hidden] = await Promise.all([
+        const [library, audio, rules, hidden, ledger] = await Promise.all([
           getJson<Library>("/api/library"),
           getJson<AudioIndex>("/api/audio"),
           getJson<ArtistRules>("/api/rules"),
           getJson<string[]>("/api/hidden"),
+          getJson<LedgerEntry[]>("/api/ledger"),
         ]);
         if (!library) return setPhase({ kind: "needs-sync" });
-        load(library, audio, rules ?? {}, hidden ?? []);
+        load(library, audio, rules ?? {}, hidden ?? [], ledger ?? []);
         setPhase({ kind: "ready" });
       } catch (e) {
         setPhase({ kind: "error", message: e instanceof Error ? e.message : String(e) });
@@ -74,7 +76,9 @@ export function App() {
           await getJson<AudioIndex>("/api/audio"),
           (await getJson<ArtistRules>("/api/rules")) ?? {},
           (await getJson<string[]>("/api/hidden")) ?? [],
+          (await getJson<LedgerEntry[]>("/api/ledger")) ?? [],
         );
+
 
         setPhase({ kind: "ready" });
       }

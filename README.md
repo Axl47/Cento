@@ -51,7 +51,11 @@ track-URI play request is accepted but loads nothing on this account.
   Click a playlist to highlight it, click a song to select/play it.
 
 Spotify writes run in order in the background; the header shows pending/failed writes. The app saves its
-view of the library to `data/library.json` (shared with the scripts) through the dev server.
+view of the library to `data/library.json` (shared with the scripts) through the dev server. Each sort is
+also recorded right away in `data/ledger.json` and applied over whatever library loads or resyncs, so a
+sort is never forgotten if that save is lost or Spotify still returns old data. A resync drops entries once
+Spotify shows them; entries older than a day are dropped too.
+
 
 ## Layout
 
