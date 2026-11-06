@@ -517,6 +517,9 @@ function Neighbors({ trackId, colors, playlistId }: { trackId: string; colors: M
   const { lib, model, neighbors, audio, vectors } = useApp();
   const play = usePlayer((s) => s.play);
   if (!lib || !model || !neighbors || !audio) return null;
+  // Songs the embedding engine couldn't fetch or decode have no sound to compare.
+  if (!audio.ids.includes(trackId))
+    return <p className="px-2 py-1.5 text-xs text-zinc-500">No audio for this song (no preview found), so there's nothing to compare it to.</p>;
   const names = new Map(lib.playlists.map((p) => [p.id, p.name]));
   // Playlist trackIds rather than model.membership, so hidden playlists work too.
   const members = playlistId ? (lib.playlists.find((p) => p.id === playlistId)?.trackIds ?? []) : null;
