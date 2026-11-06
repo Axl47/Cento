@@ -1,6 +1,7 @@
 import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import basicSsl from "@vitejs/plugin-basic-ssl";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
@@ -63,12 +64,15 @@ function localData(): Plugin {
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "SPOTIFY_");
   const redirect = new URL(env.SPOTIFY_REDIRECT_URI ?? "http://127.0.0.1:3000/web_player");
+  // `pnpm dev:lan` serves on every interface over HTTPS (self-signed): Spotify only allows plain-http
+  // redirects to loopback, and PKCE's crypto.subtle needs a secure context off localhost.
+  const lan = mode === "lan";
   return {
-    plugins: [react(), tailwindcss(), localData()],
+    plugins: [react(), tailwindcss(), localData(), ...(lan ? [basicSsl()] : [])],
     envPrefix: "SPOTIFY_",
-    // Must match the redirect URI registered on the Spotify app.
+    // The port must match the redirect URI registered on the Spotify app.
     server: {
-      host: redirect.hostname,
+      host: lan ? true : redirect.hostname,
       port: Number(redirect.port),
       strictPort: true,
     },

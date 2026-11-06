@@ -27,7 +27,13 @@ ENGINE_MODEL=discogs-effnet   # label only
 
 ## App
 
-`pnpm dev`, then open http://127.0.0.1:3000 (must match the Spotify app's redirect URI). Playback is remote
+`pnpm dev`, then open http://127.0.0.1:3000 (must match the Spotify app's redirect URI).
+
+`pnpm dev:lan` serves it to your network instead, over HTTPS with a self-signed certificate (accept the
+browser warning once per device). Spotify only takes plain-http redirects for 127.0.0.1, so register
+`https://<this machine's LAN IP>:3000/web_player` (and `https://127.0.0.1:3000/web_player` to use it from
+this machine) on the Spotify app. Each address logs in separately. The dev server's `/api/*` data has no
+auth, so anyone on the network can read and change it. Playback is remote
 control (Spotify Connect): the app tells one of your Spotify apps (picker under the player; the Mac app by
 default) what to play and shows the position Spotify reports. Audio never plays in the page, so any browser
 works. Needs Premium and Spotify open somewhere. Tracks are started as a position in their album: a plain

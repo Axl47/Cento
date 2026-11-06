@@ -4,7 +4,9 @@ import { config } from "../core/config.ts";
 import { createClient } from "../core/spotify.ts";
 
 const CLIENT_ID = import.meta.env.SPOTIFY_CLIENT_ID as string;
-const REDIRECT_URI = import.meta.env.SPOTIFY_REDIRECT_URI as string;
+// The registered redirect's path on whatever origin the app is opened from (127.0.0.1, or the LAN
+// address under `pnpm dev:lan`); each origin's redirect URI must be registered on the Spotify app.
+const REDIRECT_URI = new URL(new URL(import.meta.env.SPOTIFY_REDIRECT_URI as string).pathname, location.origin).href;
 const TOKEN_KEY = "spotify-token";
 const VERIFIER_KEY = "spotify-verifier";
 
