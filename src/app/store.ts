@@ -7,7 +7,7 @@ import { inbox, type Library } from "../core/library.ts";
 import { neighborsFrom, type AudioIndex } from "../core/audio.ts";
 import { applyLedger, unconfirmed, type LedgerEntry } from "../core/ledger.ts";
 import { buildModel, prechecked, suggest, type ArtistRules, type Model, type Neighbors } from "../core/suggest.ts";
-import { addToPlaylist, removeFromPlaylist, setLiked } from "../core/spotify.ts";
+import { addToPlaylist, createPlaylist, removeFromPlaylist, setLiked } from "../core/spotify.ts";
 import { client } from "./auth.ts";
 
 
@@ -48,6 +48,8 @@ type State = {
   setRule: (playlistId: string, artists: ArtistRules[string]) => void;
   /** Hides a playlist from suggestions (or shows it again), saves, and rebuilds the queue. */
   setHidden: (playlistId: string, hide: boolean) => void;
+  /** Creates a private Spotify playlist, adds it to the library, and checks it for the current song. */
+  createPlaylist: (name: string) => Promise<void>;
   /** Takes freshly synced data, keeping sorts Spotify doesn't show yet. */
   replaceLibrary: (lib: Library) => void;
   setOrder: (order: Order) => void;
@@ -200,6 +202,23 @@ export const useApp = create<State>()((set, get) => {
       const allowed = new Set(ranked.map((s) => s.playlistId));
       const matches = ranked.filter((s) => s.parts.rule > 0).map((s) => s.playlistId);
       set({ rules, model, picked: [...new Set([...picked.filter((p) => allowed.has(p)), ...matches])] });
+    },
+
+    createPlaylist: async (name) => {
+      set({ status: { kind: "saving" } });
+      try {
+        const created = await createPlaylist(client, name);
+        const lib = get().lib;
+        if (!lib) return;
+        // A resync would pick it up from Spotify anyway; adding it here means no resync is needed.
+        setLib({ ...lib, playlists: [...lib.playlists, { id: created.id, name: created.name, imageUrl: null, trackIds: [] }] }, true);
+        set((s) => ({
+          picked: [...s.picked, created.id],
+          status: s.pendingWrites || s.status.kind === "error" ? s.status : { kind: "idle" },
+        }));
+      } catch (e) {
+        set({ status: { kind: "error", message: `Creating "${name}": ${e instanceof Error ? e.message : String(e)}` } });
+      }
     },
 
     replaceLibrary: (fresh) => {

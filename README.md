@@ -35,7 +35,8 @@ track-URI play request is accepted but loads nothing on this account.
 
 - **Sort**: the current liked song plays from ~35% in. Confident suggestions start checked, but only for
   artists you've sorted before (audio-only prechecks were right ~35% of the time; see `pnpm eval`).
-  `1`–`9` toggle, `/` searches all playlists, `Enter` sorts (adds to checked playlists + the all-songs
+  `1`–`9` toggle, `/` searches all playlists (or creates a private one named after the search, checked for
+  the current song, with no resync needed), `Enter` sorts (adds to checked playlists + the all-songs
   playlist, removes from Liked Songs), `S` skips, `⌘Z` undoes (re-liking loses the original liked date),
   `Space` play/pause, `←`/`→` seek 10s, `M` switches tabs.
 - **Artist rules**: hover a playlist row (or a search result) and click **Artists…** to say "this playlist

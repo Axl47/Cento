@@ -24,6 +24,7 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
   const rules = useApp((s) => s.rules);
   const hidden = useApp((s) => s.hidden);
   const setHidden = useApp((s) => s.setHidden);
+  const createPlaylist = useApp((s) => s.createPlaylist);
   const [cursor, setCursor] = useState(0);
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -64,6 +65,10 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
     const q = query.trim().toLowerCase();
     return q ? targets.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 8) : [];
   }, [query, targets]);
+  // The search can also create a playlist named after the query; it's the last option.
+  const newName = query.trim() && !targets.some((p) => p.name.toLowerCase() === query.trim().toLowerCase()) ? query.trim() : "";
+  const optionCount = results.length + (newName ? 1 : 0);
+  const create = () => (void createPlaylist(newName), setQuery(""));
 
   // Each new song starts on its own once you've started playback the first time.
   useEffect(() => {
@@ -192,14 +197,15 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
             onChange={(e) => (setQuery(e.target.value), setCursor(0))}
             onKeyDown={(e) => {
               if (e.key === "Escape") (setQuery(""), e.currentTarget.blur());
-              if (e.key === "ArrowDown") (e.preventDefault(), setCursor((c) => Math.min(c + 1, results.length - 1)));
+              if (e.key === "ArrowDown") (e.preventDefault(), setCursor((c) => Math.min(c + 1, optionCount - 1)));
               if (e.key === "ArrowUp") (e.preventDefault(), setCursor((c) => Math.max(c - 1, 0)));
               if (e.key === "Enter" && results[cursor]) (togglePick(results[cursor].id), setQuery(""));
+              else if (e.key === "Enter" && newName && cursor === results.length) create();
             }}
-            placeholder="Find another playlist…  /"
+            placeholder="Find or create a playlist…  /"
             className="w-full rounded-lg border border-white/10 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-white/30 focus:outline-none"
           />
-          {results.length > 0 && (
+          {optionCount > 0 && (
             <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-white/10 bg-zinc-900 shadow-xl">
               {results.map((p, i) => (
                 <div key={p.id} className={`flex items-center ${i === cursor ? "bg-white/10" : ""}`}>
@@ -230,6 +236,19 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
                   </button>
                 </div>
               ))}
+              {newName && (
+                <button
+                  onMouseDown={(e) => (e.preventDefault(), create())}
+                  className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm ${cursor === results.length ? "bg-white/10" : ""}`}
+                >
+                  <span className="grid size-2.5 shrink-0 place-items-center text-zinc-400">+</span>
+                  <span className="truncate text-zinc-200">
+                    Create “{newName}”
+                  </span>
+                  <span className="flex-1" />
+                  <span className="text-xs text-zinc-500">private · checks it</span>
+                </button>
+              )}
             </div>
           )}
         </div>

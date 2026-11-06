@@ -71,6 +71,10 @@ export async function removeFromPlaylist(client: SpotifyClient, playlistId: stri
   }
 }
 
+/** Creates a private playlist for the current user. */
+export const createPlaylist = (client: SpotifyClient, name: string) =>
+  client.request<{ id: string; name: string }>("POST", "/me/playlists", { name, public: false });
+
 export async function setLiked(client: SpotifyClient, trackIds: string[], liked: boolean) {
   for (const batch of chunks(trackIds, 50)) {
     await client.request(liked ? "PUT" : "DELETE", `/me/tracks?ids=${batch.join(",")}`);
