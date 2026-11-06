@@ -47,6 +47,17 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Browsers allow audio only after a gesture: the first click or key press unlocks playback.
+  useEffect(() => {
+    const unlock = () => usePlayer.getState().unlock();
+    window.addEventListener("pointerdown", unlock, { capture: true });
+    window.addEventListener("keydown", unlock, { capture: true });
+    return () => {
+      window.removeEventListener("pointerdown", unlock, { capture: true });
+      window.removeEventListener("keydown", unlock, { capture: true });
+    };
+  }, []);
+
   // Don't lose queued Spotify writes by closing the tab.
   useEffect(() => {
     const onUnload = (e: BeforeUnloadEvent) => {

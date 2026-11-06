@@ -57,11 +57,11 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
     return q ? targets.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 8) : [];
   }, [query, targets]);
 
-  // Autoplay each new song once the player is ready.
+  // Queue each new song; the player starts it once it's ready and audio is unlocked.
   useEffect(() => {
-    if (track && player.deviceId) void player.play(track.id, track.durationMs);
+    if (track) void player.play(track.id, track.durationMs);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [track?.id, player.deviceId]);
+  }, [track?.id]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -148,15 +148,7 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
             +10
           </button>
         </div>
-        {player.error && (
-          <p className="text-xs text-rose-400">
-            {player.error}{" "}
-            <button className="underline hover:text-rose-300" onClick={() => void startLogin()}>
-              Log in again
-            </button>
-          </p>
-        )}
-        {!player.deviceId && !player.error && <p className="text-xs text-zinc-500">Connecting player…</p>}
+        <PlayerStatus onRetry={() => void player.play(track.id, track.durationMs)} />
       </section>
 
       {/* Suggestions */}
@@ -274,6 +266,29 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
       </section>
     </div>
   );
+}
+
+/** Player hints and errors. Only login problems offer a new login; others offer a retry. */
+function PlayerStatus({ onRetry }: { onRetry: () => void }) {
+  const { deviceId, error, unlocked } = usePlayer();
+  if (error)
+    return (
+      <p className="text-xs text-rose-400">
+        {error.kind === "init" ? `This browser can't play Spotify (${error.message}). Try Chrome or Firefox.` : error.message}{" "}
+        {error.kind === "auth" ? (
+          <button className="underline hover:text-rose-300" onClick={() => void startLogin()}>
+            Log in again
+          </button>
+        ) : error.kind === "playback" ? (
+          <button className="underline hover:text-rose-300" onClick={onRetry}>
+            Retry
+          </button>
+        ) : null}
+      </p>
+    );
+  if (!deviceId) return <p className="text-xs text-zinc-500">Connecting player…</p>;
+  if (!unlocked) return <p className="text-xs text-amber-300">Press Space or click Play to start playback.</p>;
+  return null;
 }
 
 function Row(props: {
