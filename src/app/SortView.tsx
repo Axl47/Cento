@@ -5,12 +5,13 @@ import { config } from "../core/config.ts";
 import { sortTargets } from "../core/library.ts";
 import { knownArtistSongs, suggest, type Suggestion } from "../core/suggest.ts";
 import { startLogin } from "./auth.ts";
+import { RuleEditor } from "./RuleEditor.tsx";
 import { SoundMap } from "./SoundMap.tsx";
 import { usePlayer } from "./player.ts";
 import { useApp, type Order } from "./store.ts";
 
 const KEYED = 9;
-const PART_COLORS = { artist: "#60a5fa", audio: "#fbbf24", pairing: "#f472b6", prior: "#52525b" } as const;
+const PART_COLORS = { rule: "#34d399", artist: "#60a5fa", audio: "#fbbf24", pairing: "#f472b6", prior: "#52525b" } as const;
 
 const isTyping = (e: KeyboardEvent) => e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement;
 const fmt = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, "0")}`;
@@ -20,6 +21,8 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
     useApp();
   const player = usePlayer();
   const [query, setQuery] = useState("");
+  const [ruleFor, setRuleFor] = useState<string | null>(null); // playlist whose artist rule is being edited
+  const rules = useApp((s) => s.rules);
   const [cursor, setCursor] = useState(0);
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -65,7 +68,7 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (isTyping(e)) return;
+      if (isTyping(e) || ruleFor) return;
       const mod = e.metaKey || e.ctrlKey;
       if (mod && e.key.toLowerCase() === "z") return void (e.preventDefault(), undo());
       if (mod) return;
@@ -84,7 +87,7 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [rows, track, player, togglePick, sortCurrent, skip, undo]);
+  }, [rows, track, player, togglePick, sortCurrent, skip, undo, ruleFor]);
 
   if (!lib || !model) return null;
   if (!track)
@@ -168,6 +171,8 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
               artistTotal={evidence.artistTotal}
               nearIn={evidence.near.get(s.playlistId) ?? 0}
               nearTotal={evidence.nearTotal}
+              rule={rules[s.playlistId]?.map((a) => a.name)}
+              onEditRule={() => setRuleFor(s.playlistId)}
             />
           ))}
         </div>
@@ -189,15 +194,25 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
           {results.length > 0 && (
             <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-white/10 bg-zinc-900 shadow-xl">
               {results.map((p, i) => (
-                <button
-                  key={p.id}
-                  onMouseDown={(e) => (e.preventDefault(), togglePick(p.id), setQuery(""))}
-                  className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm ${i === cursor ? "bg-white/10" : ""}`}
-                >
-                  <span className="size-2.5 rounded-full" style={{ background: colors.get(p.id) }} />
-                  <span className="flex-1 text-zinc-200">{p.name}</span>
-                  {picked.includes(p.id) && <span className="text-xs text-emerald-400">checked</span>}
-                </button>
+                <div key={p.id} className={`flex items-center ${i === cursor ? "bg-white/10" : ""}`}>
+                  <button
+                    onMouseDown={(e) => (e.preventDefault(), togglePick(p.id), setQuery(""))}
+                    className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left text-sm"
+                  >
+                    <span className="size-2.5 shrink-0 rounded-full" style={{ background: colors.get(p.id) }} />
+                    <span className="truncate text-zinc-200">{p.name}</span>
+                    {rules[p.id] && <span className="truncate text-xs text-zinc-500">only {rules[p.id]!.map((a) => a.name).join(", ")}</span>}
+                    <span className="flex-1" />
+                    {picked.includes(p.id) && <span className="text-xs text-emerald-400">checked</span>}
+                  </button>
+                  <button
+                    onMouseDown={(e) => (e.preventDefault(), setRuleFor(p.id), setQuery(""))}
+                    className="mr-1 rounded px-2 py-1 text-xs text-zinc-400 hover:bg-white/10 hover:text-zinc-100"
+                    title="Set artists for this playlist"
+                  >
+                    Artists…
+                  </button>
+                </div>
               ))}
             </div>
           )}
@@ -235,6 +250,10 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
           <Legend />
         </p>
       </section>
+
+      {ruleFor && byId.get(ruleFor) && (
+        <RuleEditor playlist={byId.get(ruleFor)!} track={track} onClose={() => setRuleFor(null)} />
+      )}
 
       {/* Sound neighbors */}
       <section className="space-y-3">
@@ -302,17 +321,22 @@ function Row(props: {
   artistTotal: number;
   nearIn: number;
   nearTotal: number;
+  /** Artist names of this playlist's rule, if it has one. */
+  rule: string[] | undefined;
+  onEditRule: () => void;
 }) {
   const { s, index, name, color, checked, onToggle } = props;
   const why = [
+    props.rule ? `artist rule: ${props.rule.join(", ")}` : null,
     props.artistIn ? `${props.artistIn}/${props.artistTotal} of the artist's songs` : null,
     props.nearIn ? `${props.nearIn}/${props.nearTotal} closest-sounding songs` : null,
     s.parts.pairing > 0.02 ? "goes with your picks" : null,
   ].filter(Boolean);
   return (
+    <div className="group relative">
     <button
       onClick={onToggle}
-      className={`group flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition ${
+      className={`flex w-full items-center gap-3 rounded-lg border py-2 pl-3 pr-20 text-left transition ${
         checked ? "border-emerald-500/60 bg-emerald-500/10" : "border-white/5 bg-zinc-900/60 hover:border-white/15"
       }`}
     >
@@ -336,6 +360,16 @@ function Row(props: {
       </span>
       <span className="w-8 shrink-0 text-right font-mono text-xs text-zinc-400">{Math.round(s.score * 100)}</span>
     </button>
+    <button
+      onClick={props.onEditRule}
+      className={`absolute right-2 top-1/2 -translate-y-1/2 rounded px-2 py-1 text-xs transition hover:bg-white/10 hover:text-zinc-100 ${
+        props.rule ? "text-emerald-300" : "text-zinc-500 opacity-0 group-hover:opacity-100 focus:opacity-100"
+      }`}
+      title="Only suggest this playlist for certain artists"
+    >
+      Artists…
+    </button>
+    </div>
   );
 }
 
@@ -345,7 +379,7 @@ function Legend() {
       {(Object.entries(PART_COLORS) as [keyof typeof PART_COLORS, string][]).map(([k, c]) => (
         <span key={k} className="mr-2 inline-flex items-center gap-1">
           <span className="inline-block size-2 rounded-sm" style={{ background: c }} />
-          {k === "audio" ? "sounds like" : k}
+          {k === "audio" ? "sounds like" : k === "rule" ? "artist rule" : k}
         </span>
       ))}
     </>

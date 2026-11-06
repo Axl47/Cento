@@ -64,3 +64,25 @@ test("prechecks confident playlists for known artists only, never on audio alone
   assert.ok(audioOnly[0]!.score >= 0.4);
   assert.deepEqual(prechecked(model, lib.tracks.stranger!, audioOnly), []);
 });
+
+test("artist rules: matching songs get the playlist on top and prechecked; others never see it", () => {
+  const ruled = buildModel(lib, { rules: { gym: [{ id: "a2", name: "A2" }, { id: "a9", name: "A9" }] } });
+
+  // "stranger" is by a9, one of the rule's artists (OR), even though gym has none of a9's songs.
+  const forStranger = suggest(ruled, lib.tracks.stranger!);
+  assert.equal(forStranger[0]?.playlistId, "gym");
+  assert.equal(forStranger[0]?.parts.rule, 1);
+  assert.deepEqual(prechecked(ruled, lib.tracks.stranger!, forStranger), ["gym"]);
+
+  // "new" is by a1: gym is not suggested at all, even with audio pointing at it.
+  const neighbors = () => [{ id: "s4", sim: 0.99 }, { id: "s5", sim: 0.99 }];
+  assert.ok(!suggest(ruled, lib.tracks.new!, [], neighbors).some((s) => s.playlistId === "gym"));
+});
+
+test("an empty rule is the same as no rule", () => {
+  const empty = buildModel(lib, { rules: { gym: [] } });
+  assert.deepEqual(
+    suggest(empty, lib.tracks.new!).map((s) => s.playlistId),
+    suggest(model, lib.tracks.new!).map((s) => s.playlistId),
+  );
+});

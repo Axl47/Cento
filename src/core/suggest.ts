@@ -2,6 +2,8 @@
 //   artist   share of the artist's other sorted songs in each playlist
 //   audio    playlists of the song's nearest sorted neighbors by sound (optional)
 //   pairing  playlists that usually go with the ones already picked for this song
+// plus artist rules you set: a playlist with a rule is suggested (at the top, prechecked)
+// only for songs by one of its artists, and never for anything else.
 import { PRECHECK } from "./config.ts";
 import { sortTargets, type Library, type Track } from "./library.ts";
 
@@ -11,8 +13,13 @@ const AUDIO_NEIGHBORS = 15; // sorted neighbors that vote
 /** Nearest tracks by sound, most similar first. `sim` is cosine similarity. */
 export type Neighbors = (trackId: string) => { id: string; sim: number }[];
 
+/** playlistId -> artists whose songs belong there (any of them matches). */
+export type ArtistRules = Record<string, { id: string; name: string }[]>;
+
 export type Model = {
   playlistIds: string[];
+  /** playlistId -> artist ids, for playlists with a non-empty rule */
+  rules: Map<string, Set<string>>;
   /** trackId -> sort-target playlist ids it is in (training songs only) */
   membership: Map<string, string[]>;
   prior: Map<string, number>;
@@ -25,11 +32,11 @@ export type Suggestion = {
   playlistId: string;
   score: number;
   /** Weighted contributions; they sum to `score`. */
-  parts: { artist: number; audio: number; pairing: number; prior: number };
+  parts: { rule: number; artist: number; audio: number; pairing: number; prior: number };
 };
 
 /** Learns from sort-target memberships. Pass `trainIds` to hold songs out (evaluation). */
-export function buildModel(lib: Library, trainIds?: Set<string>): Model {
+export function buildModel(lib: Library, { rules = {}, trainIds }: { rules?: ArtistRules; trainIds?: Set<string> } = {}): Model {
   const targets = sortTargets(lib);
   const membership = new Map<string, string[]>();
   for (const p of targets)
@@ -60,6 +67,11 @@ export function buildModel(lib: Library, trainIds?: Set<string>): Model {
   const playlistIds = targets.map((p) => p.id);
   return {
     playlistIds,
+    rules: new Map(
+      Object.entries(rules)
+        .filter(([p, artists]) => artists.length > 0 && playlistIds.includes(p))
+        .map(([p, artists]) => [p, new Set(artists.map((a) => a.id))]),
+    ),
     membership,
     prior: new Map(playlistIds.map((p) => [p, (size.get(p) ?? 0) / total])),
     artistSongs,
@@ -106,10 +118,16 @@ export function suggest(model: Model, track: Track, picked: string[] = [], neigh
   const wPairing = picked.length > 0 ? 1 : 0;
   const others = wAudio + wPairing;
 
+  const ruleMatches = (p: string) => track.artists.some((a) => model.rules.get(p)?.has(a.id));
+  const none = { rule: 0, artist: 0, audio: 0, pairing: 0, prior: 0 };
+
   return model.playlistIds
+    .filter((p) => !model.rules.has(p) || ruleMatches(p))
     .map((p) => {
+      if (model.rules.has(p)) return { playlistId: p, score: 1, parts: { ...none, rule: 1 } };
       const rest = 1 - wArtist;
       const parts = {
+        rule: 0,
         artist: wArtist * artistScore(p),
         audio: others ? (rest * wAudio * ((audio.counts.get(p) ?? 0) / (audio.n || 1))) / others : 0,
         pairing: others ? (rest * wPairing * pairingScore(p)) / others : 0,
@@ -121,10 +139,11 @@ export function suggest(model: Model, track: Track, picked: string[] = [], neigh
 }
 
 /**
- * Playlists to check automatically. Only for artists you've sorted before: with audio as the
- * only evidence, prechecks were right ~35% of the time at any useful cutoff (see `pnpm eval`).
+ * Playlists to check automatically: artist-rule matches always; learned suggestions only for
+ * artists you've sorted before (with audio as the only evidence, prechecks were right ~35% of
+ * the time at any useful cutoff; see `pnpm eval`).
  */
-export const prechecked = (model: Model, track: Track, suggestions: Suggestion[]): string[] =>
-  knownArtistSongs(model, track).size === 0
-    ? []
-    : suggestions.filter((s) => s.score >= PRECHECK).map((s) => s.playlistId);
+export function prechecked(model: Model, track: Track, suggestions: Suggestion[]): string[] {
+  const known = knownArtistSongs(model, track).size > 0;
+  return suggestions.filter((s) => s.parts.rule > 0 || (known && s.score >= PRECHECK)).map((s) => s.playlistId);
+}

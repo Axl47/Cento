@@ -8,6 +8,7 @@ import { join, resolve } from "node:path";
  * Serves the local data files to the app so the scripts and the app share them
  * (and blocks direct requests for .cache/ and data/):
  *   GET/PUT /api/library  -> data/library.json
+ *   GET/PUT /api/rules    -> data/rules.json (artist rules; 404 until the first one is saved)
  *   GET     /api/audio    -> data/audio.json (404 until `pnpm audio` has run)
  */
 /** Vite serves any file under the root (also via /@fs/); keep .cache/ and data/ private. */
@@ -22,7 +23,12 @@ function isPrivate(url: string): boolean {
 }
 
 function localData(): Plugin {
-  const files: Record<string, string> = { "/api/library": "data/library.json", "/api/audio": "data/audio.json" };
+  const files: Record<string, string> = {
+    "/api/library": "data/library.json",
+    "/api/rules": "data/rules.json",
+    "/api/audio": "data/audio.json",
+  };
+  const writable = new Set(["data/library.json", "data/rules.json"]);
   return {
     name: "local-data",
     configureServer(server) {
@@ -30,7 +36,7 @@ function localData(): Plugin {
         if (isPrivate(req.url ?? "")) return void res.writeHead(403).end();
         const path = files[req.url ?? ""];
         if (!path) return next();
-        if (req.method === "PUT" && path.endsWith("library.json")) {
+        if (req.method === "PUT" && writable.has(path)) {
           const chunks: Buffer[] = [];
           for await (const chunk of req) chunks.push(chunk as Buffer);
           await mkdir("data", { recursive: true });

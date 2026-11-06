@@ -1,6 +1,7 @@
 // App shell: login, loading the shared library/audio files, syncing from Spotify, tabs.
 import { useEffect, useMemo, useState } from "react";
 import type { AudioIndex } from "../core/audio.ts";
+import type { ArtistRules } from "../core/suggest.ts";
 import { sortTargets, syncLibrary, type Library } from "../core/library.ts";
 import { client, completeLogin, startLogin } from "./auth.ts";
 import { usePlaylistColors } from "./colors.ts";
@@ -28,9 +29,13 @@ export function App() {
       try {
         if (!(await completeLogin())) return setPhase({ kind: "login" });
         initPlayer();
-        const [library, audio] = await Promise.all([getJson<Library>("/api/library"), getJson<AudioIndex>("/api/audio")]);
+        const [library, audio, rules] = await Promise.all([
+          getJson<Library>("/api/library"),
+          getJson<AudioIndex>("/api/audio"),
+          getJson<ArtistRules>("/api/rules"),
+        ]);
         if (!library) return setPhase({ kind: "needs-sync" });
-        load(library, audio);
+        load(library, audio, rules ?? {});
         setPhase({ kind: "ready" });
       } catch (e) {
         setPhase({ kind: "error", message: e instanceof Error ? e.message : String(e) });
@@ -74,7 +79,7 @@ export function App() {
       await fetch("/api/library", { method: "PUT", body: JSON.stringify(fresh) });
       if (phase.kind === "ready") replaceLibrary(fresh);
       else {
-        load(fresh, await getJson<AudioIndex>("/api/audio"));
+        load(fresh, await getJson<AudioIndex>("/api/audio"), (await getJson<ArtistRules>("/api/rules")) ?? {});
         setPhase({ kind: "ready" });
       }
     } catch (e) {

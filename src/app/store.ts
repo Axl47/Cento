@@ -4,7 +4,7 @@ import { create } from "zustand";
 import { config } from "../core/config.ts";
 import { inbox, type Library } from "../core/library.ts";
 import { neighborsFrom, type AudioIndex } from "../core/audio.ts";
-import { buildModel, prechecked, suggest, type Model, type Neighbors } from "../core/suggest.ts";
+import { buildModel, prechecked, suggest, type ArtistRules, type Model, type Neighbors } from "../core/suggest.ts";
 import { addToPlaylist, removeFromPlaylist, setLiked } from "../core/spotify.ts";
 import { client } from "./auth.ts";
 
@@ -28,6 +28,7 @@ type State = {
   model: Model | null;
   audio: AudioIndex | null;
   neighbors: Neighbors | undefined;
+  rules: ArtistRules;
   queue: string[];
   picked: string[];
   order: Order;
@@ -36,7 +37,9 @@ type State = {
   status: Status;
   pendingWrites: number;
 
-  load: (lib: Library, audio: AudioIndex | null) => void;
+  load: (lib: Library, audio: AudioIndex | null, rules: ArtistRules) => void;
+  /** Sets (or with [] clears) a playlist's artist rule, saves it, and updates the current picks. */
+  setRule: (playlistId: string, artists: ArtistRules[string]) => void;
   replaceLibrary: (lib: Library) => void;
   setOrder: (order: Order) => void;
   togglePick: (playlistId: string) => void;
@@ -111,7 +114,7 @@ export const useApp = create<State>()((set, get) => {
   };
 
   const setLib = (lib: Library, keepQueue: boolean) => {
-    const model = buildModel(lib);
+    const model = buildModel(lib, { rules: get().rules });
     const s = get();
     const stillInbox = new Set(inbox(lib).map((l) => l.id));
     const queue = keepQueue ? s.queue.filter((id) => stillInbox.has(id)) : buildQueue(lib, model, s.neighbors, s.order);
@@ -124,6 +127,7 @@ export const useApp = create<State>()((set, get) => {
     model: null,
     audio: null,
     neighbors: undefined,
+    rules: {},
     queue: [],
     picked: [],
     order: "confident",
@@ -132,12 +136,30 @@ export const useApp = create<State>()((set, get) => {
     status: { kind: "idle" },
     pendingWrites: 0,
 
-    load: (lib, audio) => {
+    load: (lib, audio, rules) => {
       const neighbors = audio ? neighborsFrom(audio) : undefined;
-      const model = buildModel(lib);
+      const model = buildModel(lib, { rules });
       const order: Order = audio ? "similar" : "confident";
       const queue = buildQueue(lib, model, neighbors, order);
-      set({ lib, model, audio, neighbors, order, queue, picked: initialPicks({ lib, model, neighbors }, queue[0]) });
+      set({ lib, model, audio, neighbors, rules, order, queue, picked: initialPicks({ lib, model, neighbors }, queue[0]) });
+    },
+
+    setRule: (playlistId, artists) => {
+      const { lib, queue, picked, neighbors } = get();
+      const rules = { ...get().rules };
+      if (artists.length) rules[playlistId] = artists;
+      else delete rules[playlistId];
+      void fetch("/api/rules", { method: "PUT", body: JSON.stringify(rules) });
+      if (!lib) return set({ rules });
+
+      const model = buildModel(lib, { rules });
+      const track = queue[0] ? lib.tracks[queue[0]] : undefined;
+      if (!track) return set({ rules, model });
+      // Keep your picks except ones the rules now rule out, and check new rule matches.
+      const ranked = suggest(model, track, [], neighbors);
+      const allowed = new Set(ranked.map((s) => s.playlistId));
+      const matches = ranked.filter((s) => s.parts.rule > 0).map((s) => s.playlistId);
+      set({ rules, model, picked: [...new Set([...picked.filter((p) => allowed.has(p)), ...matches])] });
     },
 
     replaceLibrary: (lib) => {

@@ -9,7 +9,7 @@ import { readFile } from "node:fs/promises";
 import { loadLibrary } from "./auth.ts";
 import { neighborsFrom, type AudioIndex } from "../core/audio.ts";
 import { inbox, sortTargets } from "../core/library.ts";
-import { buildModel, knownArtistSongs, prechecked, suggest, type Neighbors } from "../core/suggest.ts";
+import { buildModel, knownArtistSongs, prechecked, suggest, type ArtistRules, type Neighbors } from "../core/suggest.ts";
 import { PRECHECK } from "../core/config.ts";
 
 const FOLDS = 5;
@@ -18,7 +18,10 @@ const audio = await readFile("data/audio.json", "utf8")
   .then((s) => neighborsFrom(JSON.parse(s) as AudioIndex))
   .catch(() => undefined);
 
-const full = buildModel(lib);
+const rules = await readFile("data/rules.json", "utf8")
+  .then((s) => JSON.parse(s) as ArtistRules)
+  .catch(() => ({}));
+const full = buildModel(lib, { rules });
 const sorted = [...full.membership.keys()].filter((id) => lib.tracks[id]);
 
 let seed = 42;
@@ -40,7 +43,7 @@ if (audio) variants.push(["with audio", audio]);
 
 for (let f = 0; f < FOLDS; f++) {
   const test = shuffled.filter((_, i) => i % FOLDS === f);
-  const model = buildModel(lib, new Set(shuffled.filter((_, i) => i % FOLDS !== f)));
+  const model = buildModel(lib, { rules, trainIds: new Set(shuffled.filter((_, i) => i % FOLDS !== f)) });
 
   for (const id of test) {
     const track = lib.tracks[id]!;
@@ -81,6 +84,7 @@ const cell = (key: string) => {
 
 console.log(`Sort playlists: ${sortTargets(lib).length}   sorted songs: ${sorted.length}   liked & unsorted: ${inbox(lib).length}`);
 console.log(`Playlists per sorted song: 1→${dist[0]}  2→${dist[1]}  3→${dist[2]}  4+→${dist[3]}`);
+console.log(`Artist rules: ${Object.values(rules).filter((a) => a.length).length} playlists (data/rules.json)`);
 console.log(audio ? "Audio index: loaded (with-audio rows use only songs that have audio)" : "Audio index: none (data/audio.json missing)");
 console.log(`\nRecall@k = share of a song's true playlists in the top k suggestions.`);
 console.log(`"known" = other songs by the artist were in training; "new" = none were.\n`);

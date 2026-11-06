@@ -35,6 +35,10 @@ Web Playback SDK, which needs Spotify Premium.
   `1`–`9` toggle, `/` searches all playlists, `Enter` sorts (adds to checked playlists + the all-songs
   playlist, removes from Liked Songs), `S` skips, `⌘Z` undoes (re-liking loses the original liked date),
   `Space` play/pause, `←`/`→` seek 10s, `M` switches tabs.
+- **Artist rules**: hover a playlist row (or a search result) and click **Artists…** to say "this playlist
+  is for these artists" (any of them matches; autocomplete from your library). Matching songs get the
+  playlist on top and checked; it's never suggested for other songs. Saved in `data/rules.json`, which
+  `pnpm eval` also reads.
 - **Sound map**: every song placed by sound; zoomed out shows playlist bubbles, zoom in for songs.
   Click a playlist to highlight it, click a song to select/play it.
 
