@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { neighborsFrom, type AudioIndex } from "../core/audio.ts";
 import { sortTargets, type Library } from "../core/library.ts";
+import { useApp } from "./store.ts";
 
 type Props = {
   audio: AudioIndex;
@@ -35,9 +36,11 @@ export function SoundMap({ audio, lib, colors, height, focusId, focusZoom, highl
   const [hover, setHover] = useState<{ i: number; x: number; y: number } | null>(null);
   const redraw = useRef<() => void>(() => {});
 
-  // Per-point data, parallel to audio.ids.
+  const hidden = useApp((s) => s.hidden);
+  // Per-point data, parallel to audio.ids. Hidden playlists get no bubble and don't color songs.
   const data = useMemo(() => {
-    const targets = sortTargets(lib);
+    const targets = sortTargets(lib, hidden);
+
     const memberOf = new Map<string, string[]>();
     for (const p of targets) for (const id of p.trackIds) memberOf.set(id, [...(memberOf.get(id) ?? []), p.id]);
     const size = new Map(targets.map((p) => [p.id, p.trackIds.length]));
@@ -64,7 +67,8 @@ export function SoundMap({ audio, lib, colors, height, focusId, focusZoom, highl
       .sort((a, b) => b.n - a.n);
 
     return { playlistsOf, primary, groups, names, pos: new Map(audio.ids.map((id, i) => [id, i])) };
-  }, [audio, lib]);
+  }, [audio, lib, hidden]);
+
 
   const neighbors = useMemo(() => neighborsFrom(audio), [audio]);
 

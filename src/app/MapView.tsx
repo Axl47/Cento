@@ -7,7 +7,7 @@ import { usePlayer } from "./player.ts";
 import { useApp } from "./store.ts";
 
 export function MapView({ colors, onSortSong }: { colors: Map<string, string>; onSortSong: (id: string) => void }) {
-  const { lib, audio } = useApp();
+  const { lib, audio, hidden } = useApp();
   const play = usePlayer((s) => s.play);
   const [highlight, setHighlight] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -23,11 +23,11 @@ export function MapView({ colors, onSortSong }: { colors: Map<string, string>; o
   const legend = useMemo(() => {
     if (!lib || !audio) return [];
     const has = new Set(audio.ids);
-    return sortTargets(lib)
+    return sortTargets(lib, hidden)
       .map((p) => ({ p, n: p.trackIds.filter((id) => has.has(id)).length }))
       .filter((x) => x.n > 0)
       .sort((a, b) => b.n - a.n);
-  }, [lib, audio]);
+  }, [lib, audio, hidden]);
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -48,7 +48,8 @@ export function MapView({ colors, onSortSong }: { colors: Map<string, string>; o
     );
 
   const track = selected ? lib.tracks[selected] : undefined;
-  const inInbox = selected ? inbox(lib).some((l) => l.id === selected) : false;
+  const inInbox = selected ? inbox(lib, hidden).some((l) => l.id === selected) : false;
+
   const playlistsOf = (id: string) => sortTargets(lib).filter((p) => p.trackIds.includes(id));
 
   return (

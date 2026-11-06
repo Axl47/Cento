@@ -21,7 +21,11 @@ const audio = await readFile("data/audio.json", "utf8")
 const rules = await readFile("data/rules.json", "utf8")
   .then((s) => JSON.parse(s) as ArtistRules)
   .catch(() => ({}));
-const full = buildModel(lib, { rules });
+const hidden = await readFile("data/hidden.json", "utf8")
+  .then((s) => JSON.parse(s) as string[])
+  .catch(() => []);
+const full = buildModel(lib, { rules, hidden });
+
 const sorted = [...full.membership.keys()].filter((id) => lib.tracks[id]);
 
 let seed = 42;
@@ -43,7 +47,7 @@ if (audio) variants.push(["with audio", audio]);
 
 for (let f = 0; f < FOLDS; f++) {
   const test = shuffled.filter((_, i) => i % FOLDS === f);
-  const model = buildModel(lib, { rules, trainIds: new Set(shuffled.filter((_, i) => i % FOLDS !== f)) });
+  const model = buildModel(lib, { rules, hidden, trainIds: new Set(shuffled.filter((_, i) => i % FOLDS !== f)) });
 
   for (const id of test) {
     const track = lib.tracks[id]!;
@@ -82,9 +86,10 @@ const cell = (key: string) => {
   return r ? `${pct(r.sum / r.count)} (n=${r.count})`.padEnd(15) : "-".padEnd(15);
 };
 
-console.log(`Sort playlists: ${sortTargets(lib).length}   sorted songs: ${sorted.length}   liked & unsorted: ${inbox(lib).length}`);
+console.log(`Sort playlists: ${sortTargets(lib, hidden).length}   sorted songs: ${sorted.length}   liked & unsorted: ${inbox(lib, hidden).length}`);
 console.log(`Playlists per sorted song: 1→${dist[0]}  2→${dist[1]}  3→${dist[2]}  4+→${dist[3]}`);
-console.log(`Artist rules: ${Object.values(rules).filter((a) => a.length).length} playlists (data/rules.json)`);
+console.log(`Artist rules: ${Object.values(rules).filter((a) => a.length).length} playlists (data/rules.json)   hidden: ${hidden.length} (data/hidden.json)`);
+
 console.log(audio ? "Audio index: loaded (with-audio rows use only songs that have audio)" : "Audio index: none (data/audio.json missing)");
 console.log(`\nRecall@k = share of a song's true playlists in the top k suggestions.`);
 console.log(`"known" = other songs by the artist were in training; "new" = none were.\n`);

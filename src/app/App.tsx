@@ -29,13 +29,14 @@ export function App() {
       try {
         if (!(await completeLogin())) return setPhase({ kind: "login" });
         initPlayer();
-        const [library, audio, rules] = await Promise.all([
+        const [library, audio, rules, hidden] = await Promise.all([
           getJson<Library>("/api/library"),
           getJson<AudioIndex>("/api/audio"),
           getJson<ArtistRules>("/api/rules"),
+          getJson<string[]>("/api/hidden"),
         ]);
         if (!library) return setPhase({ kind: "needs-sync" });
-        load(library, audio, rules ?? {});
+        load(library, audio, rules ?? {}, hidden ?? []);
         setPhase({ kind: "ready" });
       } catch (e) {
         setPhase({ kind: "error", message: e instanceof Error ? e.message : String(e) });
@@ -68,7 +69,13 @@ export function App() {
       await fetch("/api/library", { method: "PUT", body: JSON.stringify(fresh) });
       if (phase.kind === "ready") replaceLibrary(fresh);
       else {
-        load(fresh, await getJson<AudioIndex>("/api/audio"), (await getJson<ArtistRules>("/api/rules")) ?? {});
+        load(
+          fresh,
+          await getJson<AudioIndex>("/api/audio"),
+          (await getJson<ArtistRules>("/api/rules")) ?? {},
+          (await getJson<string[]>("/api/hidden")) ?? [],
+        );
+
         setPhase({ kind: "ready" });
       }
     } catch (e) {

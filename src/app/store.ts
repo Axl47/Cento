@@ -29,6 +29,8 @@ type State = {
   audio: AudioIndex | null;
   neighbors: Neighbors | undefined;
   rules: ArtistRules;
+  /** Playlists hidden from suggestions (and ignored when deciding what's sorted). */
+  hidden: string[];
   queue: string[];
   picked: string[];
   order: Order;
@@ -37,9 +39,11 @@ type State = {
   status: Status;
   pendingWrites: number;
 
-  load: (lib: Library, audio: AudioIndex | null, rules: ArtistRules) => void;
+  load: (lib: Library, audio: AudioIndex | null, rules: ArtistRules, hidden: string[]) => void;
   /** Sets (or with [] clears) a playlist's artist rule, saves it, and updates the current picks. */
   setRule: (playlistId: string, artists: ArtistRules[string]) => void;
+  /** Hides a playlist from suggestions (or shows it again), saves, and rebuilds the queue. */
+  setHidden: (playlistId: string, hide: boolean) => void;
   replaceLibrary: (lib: Library) => void;
   setOrder: (order: Order) => void;
   togglePick: (playlistId: string) => void;
@@ -58,8 +62,8 @@ function initialPicks(s: Pick<State, "lib" | "model" | "neighbors">, trackId: st
 }
 
 /** Orders the inbox. "similar" chains each song to its nearest unsorted neighbor by sound. */
-function buildQueue(lib: Library, model: Model, neighbors: Neighbors | undefined, order: Order): string[] {
-  const items = inbox(lib);
+function buildQueue(lib: Library, model: Model, neighbors: Neighbors | undefined, order: Order, hidden: string[]): string[] {
+  const items = inbox(lib, hidden);
   if (order === "newest") return items.toSorted((a, b) => b.addedAt.localeCompare(a.addedAt)).map((l) => l.id);
 
   const confidence = new Map(
@@ -114,10 +118,10 @@ export const useApp = create<State>()((set, get) => {
   };
 
   const setLib = (lib: Library, keepQueue: boolean) => {
-    const model = buildModel(lib, { rules: get().rules });
     const s = get();
-    const stillInbox = new Set(inbox(lib).map((l) => l.id));
-    const queue = keepQueue ? s.queue.filter((id) => stillInbox.has(id)) : buildQueue(lib, model, s.neighbors, s.order);
+    const model = buildModel(lib, { rules: s.rules, hidden: s.hidden });
+    const stillInbox = new Set(inbox(lib, s.hidden).map((l) => l.id));
+    const queue = keepQueue ? s.queue.filter((id) => stillInbox.has(id)) : buildQueue(lib, model, s.neighbors, s.order, s.hidden);
     set({ lib, model, queue });
     persist(lib);
   };
@@ -128,6 +132,7 @@ export const useApp = create<State>()((set, get) => {
     audio: null,
     neighbors: undefined,
     rules: {},
+    hidden: [],
     queue: [],
     picked: [],
     order: "confident",
@@ -136,23 +141,37 @@ export const useApp = create<State>()((set, get) => {
     status: { kind: "idle" },
     pendingWrites: 0,
 
-    load: (lib, audio, rules) => {
+    load: (lib, audio, rules, hidden) => {
       const neighbors = audio ? neighborsFrom(audio) : undefined;
-      const model = buildModel(lib, { rules });
+      const model = buildModel(lib, { rules, hidden });
       const order: Order = audio ? "similar" : "confident";
-      const queue = buildQueue(lib, model, neighbors, order);
-      set({ lib, model, audio, neighbors, rules, order, queue, picked: initialPicks({ lib, model, neighbors }, queue[0]) });
+      const queue = buildQueue(lib, model, neighbors, order, hidden);
+      set({ lib, model, audio, neighbors, rules, hidden, order, queue, picked: initialPicks({ lib, model, neighbors }, queue[0]) });
+    },
+
+    setHidden: (playlistId, hide) => {
+      const s = get();
+      const hidden = hide ? [...new Set([...s.hidden, playlistId])] : s.hidden.filter((p) => p !== playlistId);
+      void fetch("/api/hidden", { method: "PUT", body: JSON.stringify(hidden) });
+      if (!s.lib) return set({ hidden });
+      const model = buildModel(s.lib, { rules: s.rules, hidden });
+      // The inbox can change (songs only in a hidden playlist count as unsorted); keep the current song up.
+      const current = s.queue[0];
+      const rebuilt = buildQueue(s.lib, model, s.neighbors, s.order, hidden);
+      const queue = current && rebuilt.includes(current) ? [current, ...rebuilt.filter((id) => id !== current)] : rebuilt;
+      const picked = queue[0] === current ? s.picked.filter((p) => !(hide && p === playlistId)) : initialPicks({ ...s, model }, queue[0]);
+      set({ hidden, model, queue, picked });
     },
 
     setRule: (playlistId, artists) => {
-      const { lib, queue, picked, neighbors } = get();
+      const { lib, queue, picked, neighbors, hidden } = get();
       const rules = { ...get().rules };
       if (artists.length) rules[playlistId] = artists;
       else delete rules[playlistId];
       void fetch("/api/rules", { method: "PUT", body: JSON.stringify(rules) });
       if (!lib) return set({ rules });
 
-      const model = buildModel(lib, { rules });
+      const model = buildModel(lib, { rules, hidden });
       const track = queue[0] ? lib.tracks[queue[0]] : undefined;
       if (!track) return set({ rules, model });
       // Keep your picks except ones the rules now rule out, and check new rule matches.
@@ -168,9 +187,9 @@ export const useApp = create<State>()((set, get) => {
     },
 
     setOrder: (order) => {
-      const { lib, model, neighbors } = get();
+      const { lib, model, neighbors, hidden } = get();
       if (!lib || !model) return;
-      const queue = buildQueue(lib, model, neighbors, order);
+      const queue = buildQueue(lib, model, neighbors, order, hidden);
       set({ order, queue, picked: initialPicks(get(), queue[0]) });
     },
 
@@ -192,10 +211,14 @@ export const useApp = create<State>()((set, get) => {
         if (unliked) d.liked = d.liked.filter((l) => l.id !== trackId);
       });
       setLib(next, true);
+      // Drop it from the queue even if it's still technically unsorted (e.g. only put in hidden playlists).
+      const rest = get().queue.filter((id) => id !== trackId);
       set((s) => ({
+        queue: rest,
         history: [...s.history, { trackId, picked, added, addedToAll, unliked }],
-        picked: initialPicks(s, s.queue[0]),
+        picked: initialPicks(s, rest[0]),
       }));
+
 
       write("Sorting", async () => {
         for (const id of added) await addToPlaylist(client, id, [trackId]);

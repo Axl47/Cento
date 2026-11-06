@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { config } from "./config.ts";
-import type { Library, Track } from "./library.ts";
+import { inbox, type Library, type Track } from "./library.ts";
+
 import { buildModel, prechecked, suggest } from "./suggest.ts";
 
 const track = (id: string, artist: string): Track => ({
@@ -77,6 +78,16 @@ test("artist rules: matching songs get the playlist on top and prechecked; other
   // "new" is by a1: gym is not suggested at all, even with audio pointing at it.
   const neighbors = () => [{ id: "s4", sim: 0.99 }, { id: "s5", sim: 0.99 }];
   assert.ok(!suggest(ruled, lib.tracks.new!, [], neighbors).some((s) => s.playlistId === "gym"));
+});
+
+test("hidden playlists are never suggested, and songs only in them still need sorting", () => {
+  const hidden = ["night"];
+  const ids = suggest(buildModel(lib, { hidden }), lib.tracks.new!).map((s) => s.playlistId);
+  assert.deepEqual(ids.toSorted(), ["chill", "gym"]);
+
+  const onlyHidden: Library = { ...lib, liked: [{ id: "new", addedAt: "" }], playlists: [...lib.playlists, { id: "best", name: "Best of", imageUrl: null, trackIds: ["new"] }] };
+  assert.deepEqual(inbox(onlyHidden).map((l) => l.id), []);
+  assert.deepEqual(inbox(onlyHidden, ["best"]).map((l) => l.id), ["new"]);
 });
 
 test("an empty rule is the same as no rule", () => {

@@ -22,6 +22,8 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
   const [query, setQuery] = useState("");
   const [ruleFor, setRuleFor] = useState<string | null>(null); // playlist whose artist rule is being edited
   const rules = useApp((s) => s.rules);
+  const hidden = useApp((s) => s.hidden);
+  const setHidden = useApp((s) => s.setHidden);
   const [cursor, setCursor] = useState(0);
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -35,10 +37,14 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
     [model, track, picked, neighbors],
   );
   // Checked playlists first, then the best unchecked ones; number keys follow this order.
+  // Picks the model doesn't suggest (hidden, or ruled out by an artist rule) still show, unscored.
   const rows = useMemo(() => {
-    const checked = suggestions.filter((s) => picked.includes(s.playlistId));
+    const checked = picked.map(
+      (p): Suggestion =>
+        suggestions.find((s) => s.playlistId === p) ?? { playlistId: p, score: 0, parts: { rule: 0, artist: 0, audio: 0, pairing: 0, prior: 0 } },
+    );
     const rest = suggestions.filter((s) => !picked.includes(s.playlistId));
-    return [...checked, ...rest.slice(0, Math.max(KEYED - checked.length, 3))];
+    return [...checked.toSorted((a, b) => b.score - a.score), ...rest.slice(0, Math.max(KEYED - checked.length, 3))];
   }, [suggestions, picked]);
 
   // Evidence per playlist: how many of the artist's songs / sound neighbors are in it.
@@ -173,6 +179,8 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
               nearTotal={evidence.nearTotal}
               rule={rules[s.playlistId]?.map((a) => a.name)}
               onEditRule={() => setRuleFor(s.playlistId)}
+              hidden={hidden.includes(s.playlistId)}
+              onHide={() => setHidden(s.playlistId, true)}
             />
           ))}
         </div>
@@ -202,8 +210,16 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
                     <span className="size-2.5 shrink-0 rounded-full" style={{ background: colors.get(p.id) }} />
                     <span className="truncate text-zinc-200">{p.name}</span>
                     {rules[p.id] && <span className="truncate text-xs text-zinc-500">only {rules[p.id]!.map((a) => a.name).join(", ")}</span>}
+                    {hidden.includes(p.id) && <span className="text-xs text-zinc-500">hidden</span>}
                     <span className="flex-1" />
                     {picked.includes(p.id) && <span className="text-xs text-emerald-400">checked</span>}
+                  </button>
+                  <button
+                    onMouseDown={(e) => (e.preventDefault(), setHidden(p.id, !hidden.includes(p.id)))}
+                    className="rounded px-2 py-1 text-xs text-zinc-400 hover:bg-white/10 hover:text-zinc-100"
+                    title={hidden.includes(p.id) ? "Suggest this playlist again" : "Never suggest this playlist"}
+                  >
+                    {hidden.includes(p.id) ? "Unhide" : "Hide"}
                   </button>
                   <button
                     onMouseDown={(e) => (e.preventDefault(), setRuleFor(p.id), setQuery(""))}
@@ -217,6 +233,22 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
             </div>
           )}
         </div>
+
+        {hidden.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 text-xs text-zinc-500">
+            <span title="Never suggested, and songs only in these still count as unsorted">Hidden:</span>
+            {hidden.map((id) => (
+              <button
+                key={id}
+                onClick={() => setHidden(id, false)}
+                className="rounded-full border border-white/10 px-2 py-0.5 text-zinc-400 hover:border-white/25 hover:text-zinc-100"
+                title="Unhide: suggest this playlist again"
+              >
+                {byId.get(id)?.name ?? "Deleted playlist"} ×
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="space-y-2 rounded-xl border border-white/10 bg-zinc-900/60 p-3">
           <button
@@ -341,9 +373,13 @@ function Row(props: {
   /** Artist names of this playlist's rule, if it has one. */
   rule: string[] | undefined;
   onEditRule: () => void;
+  /** Hidden playlists only show up here when picked from search. */
+  hidden: boolean;
+  onHide: () => void;
 }) {
   const { s, index, name, color, checked, onToggle } = props;
   const why = [
+    props.hidden ? "hidden from suggestions" : null,
     props.rule ? `artist rule: ${props.rule.join(", ")}` : null,
     props.artistIn ? `${props.artistIn}/${props.artistTotal} of the artist's songs` : null,
     props.nearIn ? `${props.nearIn}/${props.nearTotal} closest-sounding songs` : null,
@@ -353,7 +389,7 @@ function Row(props: {
     <div className="group relative">
     <button
       onClick={onToggle}
-      className={`flex w-full items-center gap-3 rounded-lg border py-2 pl-3 pr-20 text-left transition ${
+      className={`flex w-full items-center gap-3 rounded-lg border py-2 pl-3 pr-28 text-left transition ${
         checked ? "border-emerald-500/60 bg-emerald-500/10" : "border-white/5 bg-zinc-900/60 hover:border-white/15"
       }`}
     >
@@ -377,16 +413,29 @@ function Row(props: {
       </span>
       <span className="w-8 shrink-0 text-right font-mono text-xs text-zinc-400">{Math.round(s.score * 100)}</span>
     </button>
-    <button
-      onClick={props.onEditRule}
-      className={`absolute right-2 top-1/2 -translate-y-1/2 rounded px-2 py-1 text-xs transition hover:bg-white/10 hover:text-zinc-100 ${
-        props.rule ? "text-emerald-300" : "text-zinc-500 opacity-0 group-hover:opacity-100 focus:opacity-100"
-      }`}
-      title="Only suggest this playlist for certain artists"
-    >
-      Artists…
-    </button>
+    <div className="absolute right-2 top-1/2 flex -translate-y-1/2 gap-0.5">
+      {!props.hidden && (
+        <button
+          onClick={props.onHide}
+          className="rounded px-1.5 py-1 text-xs text-zinc-500 opacity-0 transition hover:bg-white/10 hover:text-zinc-100 focus:opacity-100 group-hover:opacity-100"
+          title="Never suggest this playlist (e.g. a Best of)"
+        >
+          Hide
+        </button>
+      )}
+      <button
+        onClick={props.onEditRule}
+        className={`rounded px-1.5 py-1 text-xs transition hover:bg-white/10
+ hover:text-zinc-100 ${
+          props.rule ? "text-emerald-300" : "text-zinc-500 opacity-0 group-hover:opacity-100 focus:opacity-100"
+        }`}
+        title="Only suggest this playlist for certain artists"
+      >
+        Artists…
+      </button>
     </div>
+    </div>
+
   );
 }
 

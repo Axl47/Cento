@@ -28,13 +28,19 @@ export type Library = {
   tracks: Record<string, Track>;
 };
 
-/** Playlists that can be suggested: owned, not the all-songs playlist, not ignored. */
-export const sortTargets = (lib: Library) =>
-  lib.playlists.filter((p) => p.id !== config.allPlaylistId && !config.ignoredPlaylistIds.includes(p.id));
+/**
+ * Playlists that can be suggested: owned, not the all-songs playlist, not ignored, and not
+ * one you've hidden (e.g. "Best of 2020"; saved in data/hidden.json).
+ */
+export const sortTargets = (lib: Library, hidden: readonly string[] = []) =>
+  lib.playlists.filter(
+    (p) => p.id !== config.allPlaylistId && !config.ignoredPlaylistIds.includes(p.id) && !hidden.includes(p.id),
+  );
 
-/** Liked songs that are in no sort target yet: the inbox. */
-export function inbox(lib: Library) {
-  const sorted = new Set(sortTargets(lib).flatMap((p) => p.trackIds));
+/** Liked songs that are in no sort target yet: the inbox. Hidden playlists don't count as sorted. */
+export function inbox(lib: Library, hidden: readonly string[] = []) {
+  const sorted = new Set(sortTargets(lib, hidden).flatMap((p) => p.trackIds));
+
   return lib.liked.filter((l) => !sorted.has(l.id));
 }
 

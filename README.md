@@ -42,6 +42,11 @@ track-URI play request is accepted but loads nothing on this account.
   is for these artists" (any of them matches; autocomplete from your library). Matching songs get the
   playlist on top and checked; it's never suggested for other songs. Saved in `data/rules.json`, which
   `pnpm eval` also reads.
+- **Hidden playlists**: for playlists like "Best of 2020", click **Hide** on a row (or a search result).
+  They're never suggested, the model doesn't learn from them, they're left off the sound map, and a
+  liked song that's only in hidden playlists still counts as unsorted. You can still pick one from
+  search. Unhide from the "Hidden:" list under the search box. Saved in `data/hidden.json`.
+
 - **Sound map**: every song placed by sound; zoomed out shows playlist bubbles, zoom in for songs.
   Click a playlist to highlight it, click a song to select/play it.
 

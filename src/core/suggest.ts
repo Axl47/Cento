@@ -3,7 +3,8 @@
 //   audio    playlists of the song's nearest sorted neighbors by sound (optional)
 //   pairing  playlists that usually go with the ones already picked for this song
 // plus artist rules you set: a playlist with a rule is suggested (at the top, prechecked)
-// only for songs by one of its artists, and never for anything else.
+// only for songs by one of its artists, and never for anything else. Hidden playlists are
+// left out entirely: never suggested, and not learned from.
 import { PRECHECK } from "./config.ts";
 import { sortTargets, type Library, type Track } from "./library.ts";
 
@@ -36,8 +37,12 @@ export type Suggestion = {
 };
 
 /** Learns from sort-target memberships. Pass `trainIds` to hold songs out (evaluation). */
-export function buildModel(lib: Library, { rules = {}, trainIds }: { rules?: ArtistRules; trainIds?: Set<string> } = {}): Model {
-  const targets = sortTargets(lib);
+export function buildModel(
+  lib: Library,
+  { rules = {}, hidden = [], trainIds }: { rules?: ArtistRules; hidden?: readonly string[]; trainIds?: Set<string> } = {},
+): Model {
+  const targets = sortTargets(lib, hidden);
+
   const membership = new Map<string, string[]>();
   for (const p of targets)
     for (const id of p.trackIds)
