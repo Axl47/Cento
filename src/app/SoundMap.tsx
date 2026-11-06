@@ -2,6 +2,7 @@
 // Zoomed out, playlists show as bubbles at the center of their songs; zooming in fades
 // the bubbles into individual songs, colored by their most specific playlist, and
 // eventually song names. A focused song shows lines to its nearest neighbors.
+// Highlighting playlists grays out every other song and keeps only their bubbles.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { neighborsFrom, type AudioIndex } from "../core/audio.ts";
 import { sortTargets, type Library } from "../core/library.ts";
@@ -16,8 +17,8 @@ type Props = {
   focusId?: string | null;
   /** When set, the view glides to the focused song at this zoom. */
   focusZoom?: number;
-  /** Playlist to emphasize; everything else dims. */
-  highlight?: string | null;
+  /** Playlists to emphasize; every other song turns gray, and focus lines only go to their songs. */
+  highlight?: readonly string[];
   onSelect?: (trackId: string) => void;
 };
 
@@ -28,7 +29,7 @@ const LABEL_ZOOM = 7; // zoom where song names start to show
 const UNSORTED = "#71717a";
 const FOCUS_NEIGHBORS = 15;
 
-export function SoundMap({ audio, lib, colors, height, focusId, focusZoom, highlight, onSelect }: Props) {
+export function SoundMap({ audio, lib, colors, height, focusId, focusZoom, highlight = [], onSelect }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const view = useRef<View>({ k: 1, cx: 0, cy: 0 });
@@ -70,6 +71,14 @@ export function SoundMap({ audio, lib, colors, height, focusId, focusZoom, highl
   }, [audio, lib, hidden]);
 
 
+  // Song -> the first highlighted playlist it's in. Built from all playlists, so a hidden one still lights up.
+  const lit = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const id of highlight.toReversed())
+      for (const t of lib.playlists.find((p) => p.id === id)?.trackIds ?? []) m.set(t, id);
+    return m;
+  }, [lib, highlight]);
+
   const neighbors = useMemo(() => neighborsFrom(audio), [audio]);
 
   useEffect(() => {
@@ -102,22 +111,26 @@ export function SoundMap({ audio, lib, colors, height, focusId, focusZoom, highl
     const { k } = view.current;
     const groupAlpha = Math.min(Math.max((GROUP_FADE_END - k) / (GROUP_FADE_END - 1), 0), 1);
     const r = Math.min(Math.max(1.4 * Math.sqrt(k), 1.6), 5);
+    const highlighting = lit.size > 0;
+    // Highlighting colors songs by their highlighted playlist and grays the rest.
     const colorOf = (i: number) => {
-      const p = data.primary[i];
+      const p = highlighting ? lit.get(audio.ids[i]!) : data.primary[i];
       return p ? (colors.get(p) ?? UNSORTED) : UNSORTED;
     };
 
-    // Songs
+    // Songs: gray ones first so highlighted songs draw on top.
     const dotAlpha = 0.3 + 0.6 * (1 - groupAlpha);
-    for (let i = 0; i < audio.ids.length; i++) {
-      const [sx, sy] = toScreen(...audio.xy[i]!);
-      if (sx < -10 || sy < -10 || sx > width + 10 || sy > height + 10) continue;
-      const lit = !highlight || data.playlistsOf[i]!.includes(highlight);
-      ctx.globalAlpha = lit ? (highlight ? 0.95 : dotAlpha) : 0.07;
-      ctx.fillStyle = highlight && lit ? (colors.get(highlight) ?? UNSORTED) : colorOf(i);
-      ctx.beginPath();
-      ctx.arc(sx, sy, highlight && lit ? r + 1 : r, 0, Math.PI * 2);
-      ctx.fill();
+    for (const pass of highlighting ? [false, true] : [true]) {
+      for (let i = 0; i < audio.ids.length; i++) {
+        if (highlighting && lit.has(audio.ids[i]!) !== pass) continue;
+        const [sx, sy] = toScreen(...audio.xy[i]!);
+        if (sx < -10 || sy < -10 || sx > width + 10 || sy > height + 10) continue;
+        ctx.globalAlpha = !highlighting ? dotAlpha : pass ? 0.95 : 0.18;
+        ctx.fillStyle = colorOf(i);
+        ctx.beginPath();
+        ctx.arc(sx, sy, highlighting && pass ? r + 1 : r, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
 
     // Playlist bubbles (zoomed out)
@@ -125,7 +138,7 @@ export function SoundMap({ audio, lib, colors, height, focusId, focusZoom, highl
       const taken: [number, number, number, number][] = [];
       ctx.font = "600 11px ui-sans-serif, system-ui";
       for (const g of data.groups) {
-        if (highlight && g.id !== highlight) continue;
+        if (highlighting && !highlight.includes(g.id)) continue;
         const [sx, sy] = toScreen(g.x, g.y);
         const radius = 3 + Math.sqrt(g.n) * 1.1;
         const color = colors.get(g.id) ?? UNSORTED;
@@ -142,7 +155,7 @@ export function SoundMap({ audio, lib, colors, height, focusId, focusZoom, highl
         const w = ctx.measureText(g.name).width;
         const box: [number, number, number, number] = [sx - w / 2 - 3, sy - radius - 16, w + 6, 14];
         const overlaps = taken.some(([x, y, bw, bh]) => box[0] < x + bw && box[0] + box[2] > x && box[1] < y + bh && box[1] + box[3] > y);
-        if (overlaps && g.id !== highlight) continue;
+        if (overlaps && !highlight.includes(g.id)) continue;
         taken.push(box);
         ctx.globalAlpha = groupAlpha;
         ctx.fillStyle = "#fafafa";
@@ -170,7 +183,8 @@ export function SoundMap({ audio, lib, colors, height, focusId, focusZoom, highl
     const fi = focusId ? data.pos.get(focusId) : undefined;
     if (fi !== undefined) {
       const [fx, fy] = toScreen(...audio.xy[fi]!);
-      for (const n of neighbors(focusId!).slice(0, FOCUS_NEIGHBORS)) {
+      const near = neighbors(focusId!).filter((n) => !highlighting || lit.has(n.id));
+      for (const n of near.slice(0, FOCUS_NEIGHBORS)) {
         const ni = data.pos.get(n.id);
         if (ni === undefined) continue;
         const [nx, ny] = toScreen(...audio.xy[ni]!);

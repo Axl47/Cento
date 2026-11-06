@@ -1,5 +1,6 @@
 // The sorting screen: the current song playing, ranked playlist suggestions with the
 // confident ones prechecked, keyboard controls, and a map of the song's sound neighbors.
+// Hovering a playlist row narrows the map and the neighbor list to that playlist.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { config } from "../core/config.ts";
 import { sortTargets } from "../core/library.ts";
@@ -26,6 +27,7 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
   const setHidden = useApp((s) => s.setHidden);
   const createPlaylist = useApp((s) => s.createPlaylist);
   const [cursor, setCursor] = useState(0);
+  const [hovered, setHovered] = useState<string | null>(null); // playlist row under the mouse
   const searchRef = useRef<HTMLInputElement>(null);
 
   const trackId = queue[0];
@@ -47,6 +49,8 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
     const rest = suggestions.filter((s) => !picked.includes(s.playlistId));
     return [...checked.toSorted((a, b) => b.score - a.score), ...rest.slice(0, Math.max(KEYED - checked.length, 3))];
   }, [suggestions, picked]);
+  // A row can vanish under the mouse (hidden, next song) without firing mouseleave.
+  const focusPlaylist = hovered && rows.some((r) => r.playlistId === hovered) ? hovered : null;
 
   // Evidence per playlist: how many of the artist's songs / sound neighbors are in it.
   const evidence = useMemo(() => {
@@ -186,6 +190,7 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
               onEditRule={() => setRuleFor(s.playlistId)}
               hidden={hidden.includes(s.playlistId)}
               onHide={() => setHidden(s.playlistId, true)}
+              onHover={(on) => setHovered(on ? s.playlistId : null)}
             />
           ))}
         </div>
@@ -319,13 +324,14 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
                 height={340}
                 focusId={track.id}
                 focusZoom={5}
+                highlight={focusPlaylist ? [focusPlaylist] : undefined}
                 onSelect={(id) => {
                   const t = lib.tracks[id];
                   if (t) void player.play(t.id, t.durationMs);
                 }}
               />
             </div>
-            <Neighbors trackId={track.id} colors={colors} />
+            <Neighbors trackId={track.id} colors={colors} playlistId={focusPlaylist} />
           </>
         ) : (
           <div className="rounded-xl border border-dashed border-white/15 p-6 text-sm text-zinc-400">
@@ -395,6 +401,7 @@ function Row(props: {
   /** Hidden playlists only show up here when picked from search. */
   hidden: boolean;
   onHide: () => void;
+  onHover: (on: boolean) => void;
 }) {
   const { s, index, name, color, checked, onToggle } = props;
   const why = [
@@ -405,7 +412,7 @@ function Row(props: {
     s.parts.pairing > 0.02 ? "goes with your picks" : null,
   ].filter(Boolean);
   return (
-    <div className="group relative">
+    <div className="group relative" onMouseEnter={() => props.onHover(true)} onMouseLeave={() => props.onHover(false)}>
     <button
       onClick={onToggle}
       className={`flex w-full items-center gap-3 rounded-lg border py-2 pl-3 pr-28 text-left transition ${
@@ -501,13 +508,19 @@ function Progress({ playing, duration }: { playing: boolean; duration: number })
   );
 }
 
-/** Closest sorted songs by sound, clickable to hear them. */
-function Neighbors({ trackId, colors }: { trackId: string; colors: Map<string, string> }) {
+/** Closest sorted songs by sound, clickable to hear them. With `playlistId`, only that playlist's songs. */
+function Neighbors({ trackId, colors, playlistId }: { trackId: string; colors: Map<string, string>; playlistId: string | null }) {
   const { lib, model, neighbors } = useApp();
   const play = usePlayer((s) => s.play);
   if (!lib || !model || !neighbors) return null;
   const names = new Map(lib.playlists.map((p) => [p.id, p.name]));
-  const near = neighbors(trackId).filter((n) => model.membership.has(n.id)).slice(0, 6);
+  // Playlist trackIds rather than model.membership, so hidden playlists work too.
+  const inPlaylist = playlistId ? new Set(lib.playlists.find((p) => p.id === playlistId)?.trackIds) : null;
+  const near = neighbors(trackId)
+    .filter((n) => (inPlaylist ? inPlaylist.has(n.id) : model.membership.has(n.id)))
+    .slice(0, 6);
+  if (playlistId && near.length === 0)
+    return <p className="px-2 py-1.5 text-xs text-zinc-500">None of the closest-sounding songs are in {names.get(playlistId)}.</p>;
   return (
     <div className="space-y-1">
       {near.map((n) => {
@@ -524,7 +537,7 @@ function Neighbors({ trackId, colors }: { trackId: string; colors: Map<string, s
             <span className="min-w-0 flex-1 truncate text-zinc-200">
               {t.name} <span className="text-zinc-500">· {t.artists[0]?.name}</span>
             </span>
-            {(model.membership.get(n.id) ?? []).slice(0, 2).map((p) => (
+            {(playlistId ? [playlistId] : (model.membership.get(n.id) ?? []).slice(0, 2)).map((p) => (
               <span key={p} className="rounded px-1.5 py-0.5 text-[10px] text-zinc-950" style={{ background: colors.get(p) }}>
                 {names.get(p)}
               </span>

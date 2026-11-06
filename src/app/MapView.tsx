@@ -1,4 +1,4 @@
-// Full-size sound map with a playlist legend (click to highlight), song search, and a
+// Full-size sound map with a playlist legend (click to highlight, several at once), song search, and a
 // card for the selected song.
 import { useEffect, useMemo, useState } from "react";
 import { inbox, sortTargets } from "../core/library.ts";
@@ -9,7 +9,7 @@ import { useApp } from "./store.ts";
 export function MapView({ colors, onSortSong }: { colors: Map<string, string>; onSortSong: (id: string) => void }) {
   const { lib, audio, hidden } = useApp();
   const play = usePlayer((s) => s.play);
-  const [highlight, setHighlight] = useState<string | null>(null);
+  const [highlight, setHighlight] = useState<string[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [height, setHeight] = useState(() => Math.max(window.innerHeight - 140, 420));
@@ -123,8 +123,8 @@ export function MapView({ colors, onSortSong }: { colors: Map<string, string>; o
         <div>
           <div className="mb-1.5 flex items-center justify-between text-xs uppercase tracking-wider text-zinc-500">
             <span>Playlists</span>
-            {highlight && (
-              <button className="normal-case text-zinc-300 hover:text-white" onClick={() => setHighlight(null)}>
+            {highlight.length > 0 && (
+              <button className="normal-case text-zinc-300 hover:text-white" onClick={() => setHighlight([])}>
                 clear
               </button>
             )}
@@ -133,9 +133,9 @@ export function MapView({ colors, onSortSong }: { colors: Map<string, string>; o
             {legend.map(({ p, n }) => (
               <button
                 key={p.id}
-                onClick={() => setHighlight(highlight === p.id ? null : p.id)}
+                onClick={() => setHighlight((h) => (h.includes(p.id) ? h.filter((x) => x !== p.id) : [...h, p.id]))}
                 className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm ${
-                  highlight === p.id ? "bg-white/10 text-zinc-50" : "text-zinc-300 hover:bg-white/5"
+                  highlight.includes(p.id) ? "bg-white/10 text-zinc-50" : "text-zinc-300 hover:bg-white/5"
                 }`}
               >
                 <span className="size-2.5 shrink-0 rounded-full" style={{ background: colors.get(p.id) }} />
@@ -148,7 +148,7 @@ export function MapView({ colors, onSortSong }: { colors: Map<string, string>; o
             </div>
           </div>
         </div>
-        <p className="text-[11px] text-zinc-500">Scroll to zoom, drag to pan. Zoomed out shows playlist centers; zoom in for songs.</p>
+        <p className="text-[11px] text-zinc-500">Scroll to zoom, drag to pan. Zoomed out shows playlist centers; zoom in for songs. Click playlists to compare them.</p>
       </aside>
     </div>
   );
