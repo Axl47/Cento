@@ -13,6 +13,7 @@ import { join, resolve } from "node:path";
  *   GET/PUT /api/hidden   -> data/hidden.json (playlists hidden from suggestions; same)
  *   GET/PUT /api/ledger   -> data/ledger.json (sorts not yet confirmed by a resync; same)
  *   GET     /api/audio    -> data/audio.json (404 until `pnpm audio` has run)
+ *   GET     /api/vectors  -> data/vectors.bin (same; binary)
  */
 /** Vite serves any file under the root (also via /@fs/); keep .cache/ and data/ private. */
 function isPrivate(url: string): boolean {
@@ -32,6 +33,7 @@ function localData(): Plugin {
     "/api/hidden": "data/hidden.json",
     "/api/ledger": "data/ledger.json",
     "/api/audio": "data/audio.json",
+    "/api/vectors": "data/vectors.bin",
   };
   const writable = new Set(["data/library.json", "data/rules.json", "data/hidden.json", "data/ledger.json"]);
 
@@ -51,7 +53,7 @@ function localData(): Plugin {
           return void res.writeHead(204).end();
         }
         try {
-          res.setHeader("Content-Type", "application/json");
+          res.setHeader("Content-Type", path.endsWith(".bin") ? "application/octet-stream" : "application/json");
           res.end(await readFile(path));
         } catch {
           res.writeHead(404).end();

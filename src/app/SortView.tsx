@@ -2,6 +2,7 @@
 // confident ones prechecked, keyboard controls, and a map of the song's sound neighbors.
 // Hovering a playlist row narrows the map and the neighbor list to that playlist.
 import { useEffect, useMemo, useRef, useState } from "react";
+import { closestAmong } from "../core/audio.ts";
 import { config } from "../core/config.ts";
 import { sortTargets } from "../core/library.ts";
 import { knownArtistSongs, suggest, type Suggestion } from "../core/suggest.ts";
@@ -508,19 +509,24 @@ function Progress({ playing, duration }: { playing: boolean; duration: number })
   );
 }
 
-/** Closest sorted songs by sound, clickable to hear them. With `playlistId`, only that playlist's songs. */
+/**
+ * Closest sorted songs by sound, clickable to hear them. With `playlistId`, that playlist's
+ * closest songs (exact, once the vectors load), down to the library's random-pair baseline.
+ */
 function Neighbors({ trackId, colors, playlistId }: { trackId: string; colors: Map<string, string>; playlistId: string | null }) {
-  const { lib, model, neighbors } = useApp();
+  const { lib, model, neighbors, audio, vectors } = useApp();
   const play = usePlayer((s) => s.play);
-  if (!lib || !model || !neighbors) return null;
+  if (!lib || !model || !neighbors || !audio) return null;
   const names = new Map(lib.playlists.map((p) => [p.id, p.name]));
   // Playlist trackIds rather than model.membership, so hidden playlists work too.
-  const inPlaylist = playlistId ? new Set(lib.playlists.find((p) => p.id === playlistId)?.trackIds) : null;
-  const near = neighbors(trackId)
-    .filter((n) => (inPlaylist ? inPlaylist.has(n.id) : model.membership.has(n.id)))
-    .slice(0, 6);
+  const members = playlistId ? (lib.playlists.find((p) => p.id === playlistId)?.trackIds ?? []) : null;
+  const near = !members
+    ? neighbors(trackId).filter((n) => model.membership.has(n.id)).slice(0, 6)
+    : vectors
+      ? closestAmong(audio, vectors, trackId, members, 6)
+      : neighbors(trackId).filter((n) => members.includes(n.id)).slice(0, 6);
   if (playlistId && near.length === 0)
-    return <p className="px-2 py-1.5 text-xs text-zinc-500">None of the closest-sounding songs are in {names.get(playlistId)}.</p>;
+    return <p className="px-2 py-1.5 text-xs text-zinc-500">No songs in {names.get(playlistId)} sound similar.</p>;
   return (
     <div className="space-y-1">
       {near.map((n) => {

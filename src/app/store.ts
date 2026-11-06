@@ -4,7 +4,7 @@
 import { create } from "zustand";
 import { config } from "../core/config.ts";
 import { inbox, type Library } from "../core/library.ts";
-import { neighborsFrom, type AudioIndex } from "../core/audio.ts";
+import { neighborsFrom, type AudioIndex, type Vectors } from "../core/audio.ts";
 import { applyLedger, unconfirmed, type LedgerEntry } from "../core/ledger.ts";
 import { buildModel, prechecked, suggest, type ArtistRules, type Model, type Neighbors } from "../core/suggest.ts";
 import { addToPlaylist, createPlaylist, removeFromPlaylist, setLiked } from "../core/spotify.ts";
@@ -30,6 +30,8 @@ type State = {
   model: Model | null;
   audio: AudioIndex | null;
   neighbors: Neighbors | undefined;
+  /** Exact sound vectors, loaded in the background after `audio`; null until then or if missing. */
+  vectors: Vectors | null;
   rules: ArtistRules;
   /** Playlists hidden from suggestions (and ignored when deciding what's sorted). */
   hidden: string[];
@@ -43,6 +45,7 @@ type State = {
   status: Status;
   pendingWrites: number;
 
+  setVectors: (vectors: Vectors) => void;
   load: (lib: Library, audio: AudioIndex | null, rules: ArtistRules, hidden: string[], ledger: LedgerEntry[]) => void;
   /** Sets (or with [] clears) a playlist's artist rule, saves it, and updates the current picks. */
   setRule: (playlistId: string, artists: ArtistRules[string]) => void;
@@ -152,6 +155,7 @@ export const useApp = create<State>()((set, get) => {
     model: null,
     audio: null,
     neighbors: undefined,
+    vectors: null,
     rules: {},
     hidden: [],
     ledger: [],
@@ -162,6 +166,8 @@ export const useApp = create<State>()((set, get) => {
     history: [],
     status: { kind: "idle" },
     pendingWrites: 0,
+
+    setVectors: (vectors) => set({ vectors }),
 
     load: (synced, audio, rules, hidden, ledger) => {
       const lib = applyLedger(synced, ledger);

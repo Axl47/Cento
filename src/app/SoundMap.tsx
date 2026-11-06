@@ -4,7 +4,7 @@
 // eventually song names. A focused song shows lines to its nearest neighbors.
 // Highlighting playlists grays out every other song and keeps only their bubbles.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { neighborsFrom, type AudioIndex } from "../core/audio.ts";
+import { closestAmong, neighborsFrom, type AudioIndex } from "../core/audio.ts";
 import { sortTargets, type Library } from "../core/library.ts";
 import { useApp } from "./store.ts";
 
@@ -38,6 +38,7 @@ export function SoundMap({ audio, lib, colors, height, focusId, focusZoom, highl
   const redraw = useRef<() => void>(() => {});
 
   const hidden = useApp((s) => s.hidden);
+  const vectors = useApp((s) => s.vectors);
   // Per-point data, parallel to audio.ids. Hidden playlists get no bubble and don't color songs.
   const data = useMemo(() => {
     const targets = sortTargets(lib, hidden);
@@ -77,9 +78,16 @@ export function SoundMap({ audio, lib, colors, height, focusId, focusZoom, highl
     for (const id of highlight.toReversed())
       for (const t of lib.playlists.find((p) => p.id === id)?.trackIds ?? []) m.set(t, id);
     return m;
-  }, [lib, highlight]);
+  }, [lib, highlight.join()]); // by content: callers pass fresh arrays
 
   const neighbors = useMemo(() => neighborsFrom(audio), [audio]);
+  // Songs the focus lines go to; while highlighting, the closest highlighted ones (exact once vectors load).
+  const focusNear = useMemo(() => {
+    if (!focusId) return [];
+    if (lit.size === 0) return neighbors(focusId).slice(0, FOCUS_NEIGHBORS);
+    if (vectors) return closestAmong(audio, vectors, focusId, lit.keys(), FOCUS_NEIGHBORS);
+    return neighbors(focusId).filter((n) => lit.has(n.id)).slice(0, FOCUS_NEIGHBORS);
+  }, [focusId, lit, neighbors, vectors, audio]);
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -183,8 +191,7 @@ export function SoundMap({ audio, lib, colors, height, focusId, focusZoom, highl
     const fi = focusId ? data.pos.get(focusId) : undefined;
     if (fi !== undefined) {
       const [fx, fy] = toScreen(...audio.xy[fi]!);
-      const near = neighbors(focusId!).filter((n) => !highlighting || lit.has(n.id));
-      for (const n of near.slice(0, FOCUS_NEIGHBORS)) {
+      for (const n of focusNear) {
         const ni = data.pos.get(n.id);
         if (ni === undefined) continue;
         const [nx, ny] = toScreen(...audio.xy[ni]!);

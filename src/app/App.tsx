@@ -1,6 +1,6 @@
 // App shell: login, loading the shared library/audio files, syncing from Spotify, tabs.
 import { useEffect, useMemo, useState } from "react";
-import type { AudioIndex } from "../core/audio.ts";
+import { decodeVectors, type AudioIndex } from "../core/audio.ts";
 import type { ArtistRules } from "../core/suggest.ts";
 import type { LedgerEntry } from "../core/ledger.ts";
 import { sortTargets, syncLibrary, type Library } from "../core/library.ts";
@@ -17,6 +17,19 @@ const getJson = async <T,>(url: string): Promise<T | null> => {
   const res = await fetch(url);
   return res.ok ? ((await res.json()) as T) : null;
 };
+
+/** Fetches the sound vectors in the background (large, and only needed for hover details). */
+async function loadVectors(audio: AudioIndex) {
+  try {
+    const res = await fetch("/api/vectors");
+    if (!res.ok) return;
+    const vectors = decodeVectors(await res.arrayBuffer());
+    // Written alongside audio.json; a mismatch means a half-finished `pnpm audio`.
+    if (vectors.scale.length === audio.ids.length) useApp.getState().setVectors(vectors);
+  } catch {
+    // Optional: hover falls back to the stored nearest neighbors.
+  }
+}
 
 export function App() {
   const [phase, setPhase] = useState<Phase>({ kind: "starting" });
@@ -40,6 +53,7 @@ export function App() {
         if (!library) return setPhase({ kind: "needs-sync" });
         load(library, audio, rules ?? {}, hidden ?? [], ledger ?? []);
         setPhase({ kind: "ready" });
+        if (audio) void loadVectors(audio);
       } catch (e) {
         setPhase({ kind: "error", message: e instanceof Error ? e.message : String(e) });
       }
@@ -71,13 +85,15 @@ export function App() {
       await fetch("/api/library", { method: "PUT", body: JSON.stringify(fresh) });
       if (phase.kind === "ready") replaceLibrary(fresh);
       else {
+        const audio = await getJson<AudioIndex>("/api/audio");
         load(
           fresh,
-          await getJson<AudioIndex>("/api/audio"),
+          audio,
           (await getJson<ArtistRules>("/api/rules")) ?? {},
           (await getJson<string[]>("/api/hidden")) ?? [],
           (await getJson<LedgerEntry[]>("/api/ledger")) ?? [],
         );
+        if (audio) void loadVectors(audio);
 
 
         setPhase({ kind: "ready" });

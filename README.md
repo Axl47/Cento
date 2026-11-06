@@ -78,5 +78,6 @@ Spotify shows them; entries older than a day are dropped too.
 - `pnpm eval` runs a 5-fold check of the suggestion model against existing playlist memberships.
 - `pnpm backfill [--apply]` adds sorted songs missing from the all-songs playlist (dry run by default).
 - `pnpm audio [--vectors <file>]` runs the engine (or reads its vectors) and writes `data/audio.json`:
-  top-50 neighbors and a UMAP layout per track. Skipped when vectors and settings are unchanged.
+  top-50 neighbors and a UMAP layout per track, plus `data/vectors.bin` (8-bit vectors, ~8 MB) so the app
+  can rank any playlist's closest songs. Skipped when vectors and settings are unchanged.
 - `pnpm test` runs the suggestion-model tests.

@@ -1,4 +1,5 @@
-// Builds data/audio.json (neighbors + 2D map layout) from audio-embed-engine vectors.
+// Builds data/audio.json (neighbors + 2D map layout) and data/vectors.bin (the vectors, 8-bit)
+// from audio-embed-engine vectors.
 //
 //   pnpm audio                     run the engine on data/tracks.jsonl, then build the index
 //   pnpm audio --vectors <file>    build from an existing vectors JSONL, skipping the engine
@@ -14,11 +15,13 @@ import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { UMAP } from "umap-js";
-import type { AudioIndex } from "../core/audio.ts";
+import { encodeVectors, type AudioIndex } from "../core/audio.ts";
 
 const NEIGHBORS = 50; // stored per track (some will be unsorted songs, which don't vote)
 const LAYOUT_NEIGHBORS = 15; // used for the UMAP layout
 const OUT = "data/audio.json";
+const VECTORS_OUT = "data/vectors.bin";
+const FORMAT = 2; // bump when the outputs change shape, so the cache below rebuilds them
 
 type VectorLine = { key: string; status: string; vector?: number[] };
 
@@ -44,7 +47,7 @@ function runEngine(): string {
 async function readVectors(path: string) {
   const ids: string[] = [];
   const rows: Float32Array[] = [];
-  const hash = createHash("sha1").update(`${NEIGHBORS}:${LAYOUT_NEIGHBORS}\n`); // settings are part of the cache key
+  const hash = createHash("sha1").update(`${FORMAT}:${NEIGHBORS}:${LAYOUT_NEIGHBORS}\n`); // settings are part of the cache key
   const statuses = new Map<string, number>();
   for await (const line of createInterface({ input: createReadStream(path) })) {
     if (!line.trim()) continue;
@@ -91,6 +94,22 @@ function nearest(rows: Float32Array[], k: number) {
   return { nn, sim };
 }
 
+/** Median cosine of random pairs (seeded): how alike two unrelated songs are. */
+function baselineSimilarity(rows: Float32Array[], samples = 20_000) {
+  let seed = 11;
+  const rand = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+  const sims: number[] = [];
+  for (let t = 0; t < samples; t++) {
+    const a = rows[Math.floor(rand() * rows.length)]!;
+    const b = rows[Math.floor(rand() * rows.length)]!;
+    if (a === b) continue;
+    let d = 0;
+    for (let x = 0; x < a.length; x++) d += a[x]! * b[x]!;
+    sims.push(d);
+  }
+  return Math.round(sims.sort((x, y) => x - y)[sims.length >> 1]! * 1000) / 1000;
+}
+
 const vectorsPath = arg("--vectors") ?? runEngine();
 const { ids, rows, hash, statuses } = await readVectors(vectorsPath);
 console.log(`Vectors: ${ids.length} tracks · statuses: ${[...statuses].map(([s, c]) => `${s} ${c}`).join(", ")}`);
@@ -131,7 +150,9 @@ const index: AudioIndex & { sourceHash: string } = {
   xy,
   nn,
   sim,
+  baseline: baselineSimilarity(rows),
   sourceHash: hash,
 };
+await writeFile(VECTORS_OUT, encodeVectors(rows));
 await writeFile(OUT, JSON.stringify(index));
 console.log(`Wrote ${OUT} in ${((performance.now() - started) / 1000).toFixed(1)}s`);
