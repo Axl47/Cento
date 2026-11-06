@@ -3,8 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "export": "tsx --env-file=.env src/export.ts",
-    "eval": "tsx --env-file=.env src/eval.ts",
+    "export": "tsx --env-file=.env src/cli/export.ts",
+    "eval": "tsx --env-file=.env src/cli/eval.ts",
+    "backfill": "tsx --env-file=.env src/cli/backfill.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
