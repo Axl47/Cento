@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { config } from "../core/config.ts";
 import { sortTargets } from "../core/library.ts";
 import { knownArtistSongs, suggest, type Suggestion } from "../core/suggest.ts";
-import { startLogin } from "./auth.ts";
 import { RuleEditor } from "./RuleEditor.tsx";
 import { SoundMap } from "./SoundMap.tsx";
 import { usePlayer } from "./player.ts";
@@ -60,9 +59,9 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
     return q ? targets.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 8) : [];
   }, [query, targets]);
 
-  // Queue each new song; the player starts it once it's ready and audio is unlocked.
+  // Each new song starts on its own once you've started playback the first time.
   useEffect(() => {
-    if (track) void player.play(track.id, track.durationMs);
+    if (track) player.autoplay(track.id, track.durationMs);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [track?.id]);
 
@@ -152,6 +151,7 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
           </button>
         </div>
         <PlayerStatus onRetry={() => void player.play(track.id, track.durationMs)} />
+        <DevicePicker />
       </section>
 
       {/* Suggestions */}
@@ -287,27 +287,44 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
   );
 }
 
-/** Player hints and errors. Only login problems offer a new login; others offer a retry. */
+/** Player hints and errors. */
 function PlayerStatus({ onRetry }: { onRetry: () => void }) {
-  const { deviceId, error, unlocked } = usePlayer();
+  const { devices, error, armed } = usePlayer();
   if (error)
     return (
       <p className="text-xs text-rose-400">
-        {error.kind === "init" ? `This browser can't play Spotify (${error.message}). Try Chrome or Firefox.` : error.message}{" "}
-        {error.kind === "auth" ? (
-          <button className="underline hover:text-rose-300" onClick={() => void startLogin()}>
-            Log in again
-          </button>
-        ) : error.kind === "playback" ? (
-          <button className="underline hover:text-rose-300" onClick={onRetry}>
-            Retry
-          </button>
-        ) : null}
+        {error}{" "}
+        <button className="underline hover:text-rose-300" onClick={onRetry}>
+          Retry
+        </button>
       </p>
     );
-  if (!deviceId) return <p className="text-xs text-zinc-500">Connecting player…</p>;
-  if (!unlocked) return <p className="text-xs text-amber-300">Press Space or click Play to start playback.</p>;
+  if (devices.length === 0)
+    return <p className="text-xs text-amber-300">Open Spotify on your Mac or phone: the sorter plays through it.</p>;
+  if (!armed) return <p className="text-xs text-zinc-400">Press Space or click Play to start; songs then play as they come up.</p>;
   return null;
+}
+
+/** Which Spotify app plays the previews. */
+function DevicePicker() {
+  const { devices, deviceId, setDevice } = usePlayer();
+  if (devices.length === 0) return null;
+  return (
+    <label className="flex items-center gap-2 text-xs text-zinc-500">
+      Playing on
+      <select
+        value={deviceId ?? ""}
+        onChange={(e) => setDevice(e.target.value)}
+        className="min-w-0 flex-1 rounded-md border border-white/10 bg-zinc-900 px-2 py-1 text-zinc-300"
+      >
+        {devices.map((d) => (
+          <option key={d.id} value={d.id}>
+            {d.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
 }
 
 function Row(props: {

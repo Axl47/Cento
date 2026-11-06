@@ -27,8 +27,11 @@ ENGINE_MODEL=discogs-effnet   # label only
 
 ## App
 
-`pnpm dev`, then open http://127.0.0.1:3000 (must match the Spotify app's redirect URI). Playback uses the
-Web Playback SDK, which needs Spotify Premium.
+`pnpm dev`, then open http://127.0.0.1:3000 (must match the Spotify app's redirect URI). Playback is remote
+control (Spotify Connect): the app tells one of your Spotify apps (picker under the player; the Mac app by
+default) what to play and shows the position Spotify reports. Audio never plays in the page, so any browser
+works. Needs Premium and Spotify open somewhere. Tracks are started as a position in their album: a plain
+track-URI play request is accepted but loads nothing on this account.
 
 - **Sort**: the current liked song plays from ~35% in. Confident suggestions start checked, but only for
   artists you've sorted before (audio-only prechecks were right ~35% of the time; see `pnpm eval`).

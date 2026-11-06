@@ -21,8 +21,10 @@ export function createClient(getToken: () => Promise<string>) {
         body: body === undefined ? undefined : JSON.stringify(body),
       });
       if (res.ok) {
+        // Some player endpoints reply with plain text (e.g. a snapshot id) or nothing at all.
+        const isJson = res.headers.get("content-type")?.includes("json");
         const text = await res.text();
-        return (text ? JSON.parse(text) : undefined) as T;
+        return (isJson && text ? JSON.parse(text) : undefined) as T;
       }
       const retryable = res.status === 429 || res.status >= 500;
       if (!retryable || attempt >= 5) throw new Error(`${method} ${url} -> ${res.status} ${await res.text()}`);

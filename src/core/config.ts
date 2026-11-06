@@ -17,8 +17,5 @@ export const config = {
     "user-library-modify",
     "user-read-playback-state",
     "user-modify-playback-state",
-    "user-read-email",
-    "user-read-private",
-    "streaming",
   ],
 };
