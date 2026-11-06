@@ -3,14 +3,30 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "dev": "vite",
     "export": "tsx --env-file=.env src/cli/export.ts",
     "eval": "tsx --env-file=.env src/cli/eval.ts",
     "backfill": "tsx --env-file=.env src/cli/backfill.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "audio": "tsx --env-file=.env src/cli/audio.ts",
+    "test": "tsx --test src/**/*.test.ts"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.3.4",
     "@types/node": "^20.19.43",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/spotify-web-playback-sdk": "^0.1.19",
+    "@vitejs/plugin-react": "^6.2.1",
+    "tailwindcss": "^4.3.4",
     "tsx": "^4.23.15",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "umap-js": "^1.4.0",
+    "vite": "^8.3.6"
+  },
+  "dependencies": {
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "zustand": "^5.0.16"
   }
 }

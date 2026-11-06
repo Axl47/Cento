@@ -1,0 +1,64 @@
+import { defineConfig, loadEnv, type Plugin } from "vite";
+import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { join, resolve } from "node:path";
+
+/**
+ * Serves the local data files to the app so the scripts and the app share them
+ * (and blocks direct requests for .cache/ and data/):
+ *   GET/PUT /api/library  -> data/library.json
+ *   GET     /api/audio    -> data/audio.json (404 until `pnpm audio` has run)
+ */
+/** Vite serves any file under the root (also via /@fs/); keep .cache/ and data/ private. */
+function isPrivate(url: string): boolean {
+  try {
+    const raw = decodeURIComponent(url.split("?")[0] ?? "");
+    const file = resolve(raw.startsWith("/@fs/") ? raw.slice(4) : join(process.cwd(), raw));
+    return [".cache", "data"].some((dir) => (file + "/").startsWith(join(process.cwd(), dir) + "/"));
+  } catch {
+    return true; // malformed encoding
+  }
+}
+
+function localData(): Plugin {
+  const files: Record<string, string> = { "/api/library": "data/library.json", "/api/audio": "data/audio.json" };
+  return {
+    name: "local-data",
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        if (isPrivate(req.url ?? "")) return void res.writeHead(403).end();
+        const path = files[req.url ?? ""];
+        if (!path) return next();
+        if (req.method === "PUT" && path.endsWith("library.json")) {
+          const chunks: Buffer[] = [];
+          for await (const chunk of req) chunks.push(chunk as Buffer);
+          await mkdir("data", { recursive: true });
+          await writeFile(path, Buffer.concat(chunks));
+          return void res.writeHead(204).end();
+        }
+        try {
+          res.setHeader("Content-Type", "application/json");
+          res.end(await readFile(path));
+        } catch {
+          res.writeHead(404).end();
+        }
+      });
+    },
+  };
+}
+
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), "SPOTIFY_");
+  const redirect = new URL(env.SPOTIFY_REDIRECT_URI ?? "http://127.0.0.1:3000/web_player");
+  return {
+    plugins: [react(), tailwindcss(), localData()],
+    envPrefix: "SPOTIFY_",
+    // Must match the redirect URI registered on the Spotify app.
+    server: {
+      host: redirect.hostname,
+      port: Number(redirect.port),
+      strictPort: true,
+    },
+  };
+});

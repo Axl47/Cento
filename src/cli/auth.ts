@@ -1,17 +1,20 @@
 // Spotify login for Node scripts: PKCE via the loopback redirect, with the token cached
-// in .cache/token.json and refreshed as needed. Exports a ready client, plus library
+// in ~/.cache/playlist-sorter/token.json and refreshed as needed. Exports a ready client, plus library
 // file helpers.
 import { createHash, randomBytes } from "node:crypto";
 import { createServer } from "node:http";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
 import { config } from "../core/config.ts";
 import { createClient } from "../core/spotify.ts";
 import type { Library } from "../core/library.ts";
 
 const CLIENT_ID = requireEnv("SPOTIFY_CLIENT_ID");
 const REDIRECT_URI = requireEnv("SPOTIFY_REDIRECT_URI");
-const TOKEN_PATH = ".cache/token.json";
+// Outside the project so the app's dev server can never serve it.
+const TOKEN_PATH = join(homedir(), ".cache", "playlist-sorter", "token.json");
 export const LIBRARY_PATH = "data/library.json";
 
 type StoredToken = { accessToken: string; refreshToken: string; expiresAt: number };
@@ -43,7 +46,7 @@ async function tokenRequest(body: Record<string, string>, previousRefresh?: stri
     refreshToken: json.refresh_token ?? previousRefresh ?? "",
     expiresAt: Date.now() + (json.expires_in - 60) * 1000,
   };
-  await mkdir(".cache", { recursive: true });
+  await mkdir(dirname(TOKEN_PATH), { recursive: true });
   await writeFile(TOKEN_PATH, JSON.stringify(token));
   return token;
 }

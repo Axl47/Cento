@@ -1,0 +1,153 @@
+// App shell: login, loading the shared library/audio files, syncing from Spotify, tabs.
+import { useEffect, useMemo, useState } from "react";
+import type { AudioIndex } from "../core/audio.ts";
+import { sortTargets, syncLibrary, type Library } from "../core/library.ts";
+import { client, completeLogin, startLogin } from "./auth.ts";
+import { usePlaylistColors } from "./colors.ts";
+import { MapView } from "./MapView.tsx";
+import { usePlayer } from "./player.ts";
+import { SortView } from "./SortView.tsx";
+import { useApp } from "./store.ts";
+
+type Phase = { kind: "starting" } | { kind: "login" } | { kind: "needs-sync" } | { kind: "ready" } | { kind: "error"; message: string };
+
+const getJson = async <T,>(url: string): Promise<T | null> => {
+  const res = await fetch(url);
+  return res.ok ? ((await res.json()) as T) : null;
+};
+
+export function App() {
+  const [phase, setPhase] = useState<Phase>({ kind: "starting" });
+  const [tab, setTab] = useState<"sort" | "map">("sort");
+  const [syncing, setSyncing] = useState<string | null>(null);
+  const { lib, load, replaceLibrary, status, pendingWrites, queue, jumpTo } = useApp();
+  const initPlayer = usePlayer((s) => s.init);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        if (!(await completeLogin())) return setPhase({ kind: "login" });
+        initPlayer();
+        const [library, audio] = await Promise.all([getJson<Library>("/api/library"), getJson<AudioIndex>("/api/audio")]);
+        if (!library) return setPhase({ kind: "needs-sync" });
+        load(library, audio);
+        setPhase({ kind: "ready" });
+      } catch (e) {
+        setPhase({ kind: "error", message: e instanceof Error ? e.message : String(e) });
+      }
+    })();
+  }, [initPlayer, load]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.metaKey || e.ctrlKey) return;
+      if (e.key.toLowerCase() === "m") setTab((t) => (t === "map" ? "sort" : "map"));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Don't lose queued Spotify writes by closing the tab.
+  useEffect(() => {
+    const onUnload = (e: BeforeUnloadEvent) => {
+      if (useApp.getState().pendingWrites > 0) e.preventDefault();
+    };
+    window.addEventListener("beforeunload", onUnload);
+    return () => window.removeEventListener("beforeunload", onUnload);
+  }, []);
+
+  const resync = async () => {
+    setSyncing("Starting…");
+    try {
+      const fresh = await syncLibrary(client, setSyncing);
+      await fetch("/api/library", { method: "PUT", body: JSON.stringify(fresh) });
+      if (phase.kind === "ready") replaceLibrary(fresh);
+      else {
+        load(fresh, await getJson<AudioIndex>("/api/audio"));
+        setPhase({ kind: "ready" });
+      }
+    } catch (e) {
+      setPhase({ kind: "error", message: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setSyncing(null);
+    }
+  };
+
+  const targets = useMemo(() => (lib ? sortTargets(lib) : []), [lib]);
+  const colors = usePlaylistColors(targets);
+
+  if (phase.kind === "starting") return <Center>Loading…</Center>;
+  if (phase.kind === "login")
+    return (
+      <Center>
+        <button className="btn bg-emerald-500 px-6 py-3 text-base font-semibold text-emerald-950 hover:bg-emerald-400" onClick={() => void startLogin()}>
+          Log in with Spotify
+        </button>
+      </Center>
+    );
+  if (phase.kind === "error") return <Center><span className="text-rose-400">{phase.message}</span></Center>;
+  if (phase.kind === "needs-sync")
+    return (
+      <Center>
+        <div className="space-y-3 text-center">
+          <p className="text-zinc-300">No local library yet.</p>
+          <button className="btn bg-zinc-100 px-5 py-2.5 font-semibold text-zinc-950" disabled={!!syncing} onClick={() => void resync()}>
+            {syncing ?? "Sync from Spotify (~1.5 min)"}
+          </button>
+        </div>
+      </Center>
+    );
+
+  return (
+    <div className="mx-auto max-w-[1400px] px-4 py-4 sm:px-6">
+      <header className="mb-5 flex flex-wrap items-center gap-4">
+        <h1 className="text-lg font-black tracking-tight text-zinc-50">
+          playlist<span className="text-emerald-400">/</span>sorter
+        </h1>
+        <nav className="flex rounded-lg border border-white/10 bg-zinc-900 p-0.5 text-sm">
+          {(["sort", "map"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`rounded-md px-3 py-1 ${tab === t ? "bg-white/10 text-zinc-50" : "text-zinc-400 hover:text-zinc-200"}`}
+            >
+              {t === "sort" ? "Sort" : "Sound map"}
+            </button>
+          ))}
+        </nav>
+        <span className="text-[11px] text-zinc-500">
+          <kbd>M</kbd> switch
+        </span>
+        <div className="ml-auto flex items-center gap-3 text-xs">
+          <span
+            className={
+              status.kind === "error" ? "text-rose-400" : status.kind === "saving" ? "text-amber-300" : "text-zinc-500"
+            }
+            title={status.message}
+          >
+            {status.kind === "error" ? `⚠ ${status.message}` : pendingWrites > 0 ? `Saving to Spotify… (${pendingWrites})` : "All changes saved"}
+          </span>
+          <button className="btn" disabled={!!syncing} onClick={() => void resync()} title="Refetch everything from Spotify">
+            {syncing ?? "Resync"}
+          </button>
+        </div>
+      </header>
+
+      {tab === "sort" ? (
+        <SortView colors={colors} />
+      ) : (
+        <MapView
+          colors={colors}
+          onSortSong={(id) => {
+            if (queue.includes(id)) jumpTo(id);
+            setTab("sort");
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function Center({ children }: { children: React.ReactNode }) {
+  return <div className="grid min-h-screen place-items-center p-6 text-zinc-300">{children}</div>;
+}
