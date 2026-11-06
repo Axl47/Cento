@@ -9,7 +9,8 @@ import { readFile } from "node:fs/promises";
 import { loadLibrary } from "./auth.ts";
 import { neighborsFrom, type AudioIndex } from "../core/audio.ts";
 import { inbox, sortTargets } from "../core/library.ts";
-import { buildModel, knownArtistSongs, suggest, type Neighbors } from "../core/suggest.ts";
+import { buildModel, knownArtistSongs, prechecked, suggest, type Neighbors } from "../core/suggest.ts";
+import { PRECHECK } from "../core/config.ts";
 
 const FOLDS = 5;
 const lib = await loadLibrary();
@@ -50,7 +51,15 @@ for (let f = 0; f < FOLDS; f++) {
 
     for (const [name, nb] of variants) {
       if (nb && !hasAudio) continue; // compare like with like: only songs that have audio
-      const cold = suggest(model, track, [], nb).map((s) => s.playlistId);
+      const scored = suggest(model, track, [], nb);
+      const cold = scored.map((s) => s.playlistId);
+      // Prechecked suggestions (what the app checks for you): how many, and how many are right.
+      const checked = prechecked(model, track, scored);
+      for (const b of ["all", bucket]) {
+        record(`pre|${name}|count|${b}`, checked.length);
+        if (checked.length) record(`pre|${name}|precision|${b}`, checked.filter((p) => truth.includes(p)).length / checked.length);
+        record(`pre|${name}|recall|${b}`, checked.filter((p) => truth.includes(p)).length / truth.length);
+      }
       for (const k of [1, 3, 5]) for (const b of ["all", bucket]) record(`cold|${name}|R@${k}|${b}`, recall(cold, truth, k));
 
       if (truth.length < 2) continue;
@@ -75,6 +84,18 @@ console.log(`Playlists per sorted song: 1→${dist[0]}  2→${dist[1]}  3→${di
 console.log(audio ? "Audio index: loaded (with-audio rows use only songs that have audio)" : "Audio index: none (data/audio.json missing)");
 console.log(`\nRecall@k = share of a song's true playlists in the top k suggestions.`);
 console.log(`"known" = other songs by the artist were in training; "new" = none were.\n`);
+
+const avg = (key: string) => {
+  const r = results.get(key);
+  return r ? (r.sum / r.count).toFixed(2).padEnd(15) : "-".padEnd(15);
+};
+console.log(`PRECHECKED (score >= ${PRECHECK})`.padEnd(28) + "all".padEnd(15) + "known".padEnd(15) + "new");
+for (const [name] of variants) {
+  console.log(`  ${name} checked/song`.padEnd(28) + ["all", "known", "new"].map((b) => avg(`pre|${name}|count|${b}`)).join(""));
+  console.log(`  ${name} precision`.padEnd(28) + ["all", "known", "new"].map((b) => cell(`pre|${name}|precision|${b}`)).join(""));
+  console.log(`  ${name} recall`.padEnd(28) + ["all", "known", "new"].map((b) => cell(`pre|${name}|recall|${b}`)).join(""));
+}
+console.log();
 
 for (const [scenario, title, ks] of [["cold", "COLD (nothing picked yet)", [1, 3, 5]], ["pick", "AFTER FIRST PICK (songs in 2+)", [2, 3]]] as const) {
   console.log(title.padEnd(28) + "all".padEnd(15) + "known".padEnd(15) + "new");

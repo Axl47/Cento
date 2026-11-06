@@ -20,9 +20,9 @@ For the sound map and "sounds like" suggestions, point `pnpm audio` at audio-emb
 
 ```
 ENGINE_DIR=/Users/axel/.t3/projects/audio-embed-engine
-ENGINE_EMBED=...    # e.g. <engine cli> embed {input}
-ENGINE_EXPORT=...   # e.g. <engine cli> export {input} --out {output}  -> JSONL { key, status, vector? }
-ENGINE_MODEL=...    # label only
+ENGINE_EMBED="uv run --project /Users/axel/.t3/projects/audio-embed-engine audio-embed embed {input}"
+ENGINE_EXPORT="uv run --project /Users/axel/.t3/projects/audio-embed-engine audio-embed export {input} --out {output}"
+ENGINE_MODEL=discogs-effnet   # label only
 ```
 
 ## App
@@ -30,7 +30,8 @@ ENGINE_MODEL=...    # label only
 `pnpm dev`, then open http://127.0.0.1:3000 (must match the Spotify app's redirect URI). Playback uses the
 Web Playback SDK, which needs Spotify Premium.
 
-- **Sort**: the current liked song plays from ~35% in. Confident suggestions start checked.
+- **Sort**: the current liked song plays from ~35% in. Confident suggestions start checked, but only for
+  artists you've sorted before (audio-only prechecks were right ~35% of the time; see `pnpm eval`).
   `1`–`9` toggle, `/` searches all playlists, `Enter` sorts (adds to checked playlists + the all-songs
   playlist, removes from Liked Songs), `S` skips, `⌘Z` undoes (re-liking loses the original liked date),
   `Space` play/pause, `←`/`→` seek 10s, `M` switches tabs.

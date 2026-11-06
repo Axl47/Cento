@@ -4,12 +4,10 @@ import { create } from "zustand";
 import { config } from "../core/config.ts";
 import { inbox, type Library } from "../core/library.ts";
 import { neighborsFrom, type AudioIndex } from "../core/audio.ts";
-import { buildModel, suggest, type Model, type Neighbors } from "../core/suggest.ts";
+import { buildModel, prechecked, suggest, type Model, type Neighbors } from "../core/suggest.ts";
 import { addToPlaylist, removeFromPlaylist, setLiked } from "../core/spotify.ts";
 import { client } from "./auth.ts";
 
-/** Suggestions at or above this score start out checked. */
-export const PRECHECK = 0.4;
 
 export type Order = "confident" | "similar" | "newest";
 
@@ -49,13 +47,11 @@ type State = {
   setRemoveFromLikes: (on: boolean) => void;
 };
 
-/** Playlists checked when a song comes up: confident cold suggestions. */
+/** Playlists checked when a song comes up: confident cold suggestions for known artists. */
 function initialPicks(s: Pick<State, "lib" | "model" | "neighbors">, trackId: string | undefined): string[] {
   const track = trackId ? s.lib?.tracks[trackId] : undefined;
   if (!track || !s.model) return [];
-  return suggest(s.model, track, [], s.neighbors)
-    .filter((x) => x.score >= PRECHECK)
-    .map((x) => x.playlistId);
+  return prechecked(s.model, track, suggest(s.model, track, [], s.neighbors));
 }
 
 /** Orders the inbox. "similar" chains each song to its nearest unsorted neighbor by sound. */

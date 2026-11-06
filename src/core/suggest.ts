@@ -2,6 +2,7 @@
 //   artist   share of the artist's other sorted songs in each playlist
 //   audio    playlists of the song's nearest sorted neighbors by sound (optional)
 //   pairing  playlists that usually go with the ones already picked for this song
+import { PRECHECK } from "./config.ts";
 import { sortTargets, type Library, type Track } from "./library.ts";
 
 const ARTIST_SMOOTHING = 1; // pseudo-songs pulling sparse artist counts toward the prior
@@ -118,3 +119,12 @@ export function suggest(model: Model, track: Track, picked: string[] = [], neigh
     })
     .sort((a, b) => b.score - a.score);
 }
+
+/**
+ * Playlists to check automatically. Only for artists you've sorted before: with audio as the
+ * only evidence, prechecks were right ~35% of the time at any useful cutoff (see `pnpm eval`).
+ */
+export const prechecked = (model: Model, track: Track, suggestions: Suggestion[]): string[] =>
+  knownArtistSongs(model, track).size === 0
+    ? []
+    : suggestions.filter((s) => s.score >= PRECHECK).map((s) => s.playlistId);

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { config } from "./config.ts";
 import type { Library, Track } from "./library.ts";
-import { buildModel, suggest } from "./suggest.ts";
+import { buildModel, prechecked, suggest } from "./suggest.ts";
 
 const track = (id: string, artist: string): Track => ({
   id,
@@ -55,4 +55,12 @@ test("audio neighbors vote for their playlists", () => {
   const [first] = suggest(model, lib.tracks.stranger!, [], neighbors);
   assert.equal(first?.playlistId, "gym");
   assert.ok(first!.parts.audio > 0);
+});
+
+test("prechecks confident playlists for known artists only, never on audio alone", () => {
+  assert.deepEqual(prechecked(model, lib.tracks.new!, suggest(model, lib.tracks.new!)), ["chill", "night"]);
+  const neighbors = () => [{ id: "s4", sim: 0.95 }, { id: "s5", sim: 0.95 }];
+  const audioOnly = suggest(model, lib.tracks.stranger!, [], neighbors);
+  assert.ok(audioOnly[0]!.score >= 0.4);
+  assert.deepEqual(prechecked(model, lib.tracks.stranger!, audioOnly), []);
 });
