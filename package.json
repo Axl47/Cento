@@ -1,0 +1,15 @@
+{
+  "name": "playlist-sorter",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "export": "tsx --env-file=.env src/export.ts",
+    "eval": "tsx --env-file=.env src/eval.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}
