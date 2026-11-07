@@ -57,15 +57,17 @@ type State = {
   replaceLibrary: (lib: Library) => void;
   setOrder: (order: Order) => void;
   togglePick: (playlistId: string) => void;
-  sortCurrent: () => void;
+  /** Sorts these songs (normally the current one, plus a run of alike ones) into the checked playlists. */
+  sort: (trackIds: string[]) => void;
   skip: () => void;
-  undo: () => void;
+  /** Undoes the sort of `trackId` (default: the latest) and brings it back up. */
+  undo: (trackId?: string) => void;
   jumpTo: (trackId: string) => void;
   setRemoveFromLikes: (on: boolean) => void;
 };
 
 /** Playlists checked when a song comes up: confident cold suggestions for known artists. */
-function initialPicks(s: Pick<State, "lib" | "model" | "neighbors">, trackId: string | undefined): string[] {
+export function initialPicks(s: Pick<State, "lib" | "model" | "neighbors">, trackId: string | undefined): string[] {
   const track = trackId ? s.lib?.tracks[trackId] : undefined;
   if (!track || !s.model) return [];
   return prechecked(s.model, track, suggest(s.model, track, [], s.neighbors));
@@ -243,38 +245,41 @@ export const useApp = create<State>()((set, get) => {
 
     togglePick: (id) => set((s) => ({ picked: s.picked.includes(id) ? s.picked.filter((p) => p !== id) : [...s.picked, id] })),
 
-    sortCurrent: () => {
-      const { lib, queue, picked, removeFromLikes } = get();
-      const trackId = queue[0];
-      if (!lib || !trackId || picked.length === 0) return;
+    sort: (trackIds) => {
+      const { lib, picked, removeFromLikes } = get();
+      if (!lib || trackIds.length === 0 || picked.length === 0) return;
 
-      const inPlaylist = (id: string) => lib.playlists.find((p) => p.id === id)?.trackIds.includes(trackId) ?? false;
-      const added = picked.filter((id) => !inPlaylist(id));
-      const addedToAll = !inPlaylist(config.allPlaylistId);
-      const likedEntry = lib.liked.find((l) => l.id === trackId);
-      const unliked = removeFromLikes && likedEntry ? { addedAt: likedEntry.addedAt } : null;
+      const members = new Map(lib.playlists.map((p) => [p.id, new Set(p.trackIds)]));
+      const has = (playlistId: string, trackId: string) => members.get(playlistId)?.has(trackId) ?? false;
+      const likedAt = new Map(lib.liked.map((l) => [l.id, l.addedAt]));
+      const sorted = trackIds.map((trackId): Sorted => {
+        const addedAt = likedAt.get(trackId);
+        return {
+          trackId,
+          picked,
+          added: picked.filter((p) => !has(p, trackId)),
+          addedToAll: !has(config.allPlaylistId, trackId),
+          unliked: removeFromLikes && addedAt ? { addedAt } : null,
+        };
+      });
+      const playlistsOf = (s: Sorted) => [...s.added, ...(s.addedToAll ? [config.allPlaylistId] : [])];
 
-      const entry: LedgerEntry = {
-        trackId,
-        added: [...added, ...(addedToAll ? [config.allPlaylistId] : [])],
-        unliked: unliked !== null,
-        at: new Date().toISOString(),
-      };
-      setLedger([...get().ledger, entry]);
-      setLib(applyLedger(lib, [entry]), true);
-      // Drop it from the queue even if it's still technically unsorted (e.g. only put in hidden playlists).
-      const rest = get().queue.filter((id) => id !== trackId);
-      set((s) => ({
-        queue: rest,
-        history: [...s.history, { trackId, picked, added, addedToAll, unliked }],
-        picked: initialPicks(s, rest[0]),
-      }));
+      const at = new Date().toISOString();
+      const entries = sorted.map((s): LedgerEntry => ({ trackId: s.trackId, added: playlistsOf(s), unliked: s.unliked !== null, at }));
+      setLedger([...get().ledger, ...entries]);
+      setLib(applyLedger(lib, entries), true);
+      // Drop them from the queue even if still technically unsorted (e.g. only put in hidden playlists).
+      const done = new Set(trackIds);
+      const rest = get().queue.filter((id) => !done.has(id));
+      set((s) => ({ queue: rest, history: [...s.history, ...sorted], picked: initialPicks(s, rest[0]) }));
 
-
+      // One request per playlist, so a run costs about as much as a single song.
+      const byPlaylist = new Map<string, string[]>();
+      for (const s of sorted) for (const p of playlistsOf(s)) byPlaylist.set(p, [...(byPlaylist.get(p) ?? []), s.trackId]);
+      const unlike = sorted.filter((s) => s.unliked).map((s) => s.trackId);
       write("Sorting", async () => {
-        for (const id of added) await addToPlaylist(client, id, [trackId]);
-        if (addedToAll) await addToPlaylist(client, config.allPlaylistId, [trackId]);
-        if (unliked) await setLiked(client, [trackId], false);
+        for (const [playlistId, ids] of byPlaylist) await addToPlaylist(client, playlistId, ids);
+        if (unlike.length) await setLiked(client, unlike, false);
       });
     },
 
@@ -292,9 +297,9 @@ export const useApp = create<State>()((set, get) => {
         return { queue, picked: initialPicks(s, trackId) };
       }),
 
-    undo: () => {
+    undo: (target) => {
       const { lib, history } = get();
-      const last = history.at(-1);
+      const last = target ? history.findLast((h) => h.trackId === target) : history.at(-1);
       if (!lib || !last) return;
       const { trackId, added, addedToAll, unliked } = last;
 
@@ -309,7 +314,7 @@ export const useApp = create<State>()((set, get) => {
       setLib(next, true);
 
       set((s) => ({
-        history: s.history.slice(0, -1),
+        history: s.history.filter((h) => h !== last),
         queue: [trackId, ...s.queue.filter((id) => id !== trackId)],
         picked: last.picked,
       }));

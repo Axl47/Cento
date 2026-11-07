@@ -134,22 +134,20 @@ export function App() {
     <div className="mx-auto max-w-[1400px] px-4 py-4 sm:px-6">
       <header className="mb-5 flex flex-wrap items-center gap-4">
         <h1 className="text-lg font-black tracking-tight text-zinc-50">
-          playlist<span className="text-emerald-400">/</span>sorter
+          playlist<span className="text-commit">/</span>sorter
         </h1>
         <nav className="flex rounded-lg border border-white/10 bg-zinc-900 p-0.5 text-sm">
           {(["sort", "map"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
+              title="Switch with M"
               className={`rounded-md px-3 py-1 ${tab === t ? "bg-white/10 text-zinc-50" : "text-zinc-400 hover:text-zinc-200"}`}
             >
               {t === "sort" ? "Sort" : "Sound map"}
             </button>
           ))}
         </nav>
-        <span className="text-[11px] text-zinc-500">
-          <kbd>M</kbd> switch
-        </span>
         <div className="ml-auto flex items-center gap-3 text-xs">
           <span
             className={
