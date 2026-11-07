@@ -148,7 +148,7 @@ export function MapView({ colors, onSortSong }: { colors: Map<string, string>; o
             </div>
           </div>
         </div>
-        <p className="text-[11px] text-zinc-500">Scroll to zoom, drag to pan. Zoomed out shows playlist centers; zoom in for songs. Click playlists to compare them.</p>
+        <p className="text-[11px] text-zinc-500">Scroll to zoom, drag to pan. Zoomed out shows where each playlist's songs concentrate; zoom in for songs. Click playlists to compare them.</p>
       </aside>
     </div>
   );

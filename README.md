@@ -62,8 +62,10 @@ track-URI play request is accepted but loads nothing on this account.
   liked song that's only in hidden playlists still counts as unsorted. You can still pick one from `⌘K`,
   which also lists them to unhide. Saved in `data/hidden.json`.
 
-- **Sound map**: every song placed by sound; zoomed out shows playlist bubbles, zoom in for songs.
-  Click a playlist to highlight it, click a song to select/play it.
+- **Sound map**: every song placed by sound. Zoomed out, each playlist shows as a bubble where its songs
+  are densest (up to three bubbles for a playlist split across tight groups; see `src/core/clusters.ts`);
+  zoom in for songs. The focused song is always labeled, and its nearest neighbors' names show from a
+  medium zoom in their playlist's color. Click a playlist to highlight it, click a song to select/play it.
 
 Spotify writes run in order in the background; the header shows pending/failed writes. The app saves its
 view of the library to `data/library.json` (shared with the scripts) through the dev server. Each sort is

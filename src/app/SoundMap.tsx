@@ -1,11 +1,14 @@
 // Canvas map of every song placed by how it sounds (2D layout of audio embeddings).
-// Zoomed out, playlists show as bubbles at the center of their songs; zooming in fades
-// the bubbles into individual songs, colored by their most specific playlist, and
-// eventually song names. A focused song shows lines to its nearest neighbors.
+// Zoomed out, playlists show as bubbles where their songs are densest (a playlist split
+// across a few tight groups gets a bubble per group); zooming in fades the bubbles into
+// individual songs, colored by their most specific playlist, and eventually song names.
+// A focused song is always labeled and shows lines to its nearest neighbors, whose names
+// show from a medium zoom on, in their playlist's color.
 // Highlighting playlists grays out every other song and keeps only their bubbles. A marked
 // song (hovered elsewhere on the page) gets a ring, a line from the focused song, and its name.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { closestAmong, neighborsFrom, type AudioIndex } from "../core/audio.ts";
+import { clusters } from "../core/clusters.ts";
 import { sortTargets, type Library } from "../core/library.ts";
 import { useApp } from "./store.ts";
 
@@ -34,7 +37,8 @@ const clip = (name: string) => (name.length > LABEL_CHARS ? `${name.slice(0, LAB
 type View = { k: number; cx: number; cy: number };
 
 const GROUP_FADE_END = 2.6; // zoom where playlist bubbles have fully faded out
-const LABEL_ZOOM = 7; // zoom where song names start to show
+const LABEL_ZOOM = 7; // zoom where every song's name can show
+const NEIGHBOR_LABEL_ZOOM = 1.8; // zoom where the focused song's neighbors get names
 const UNSORTED = "#71717a";
 const FOCUS_NEIGHBORS = 15;
 
@@ -45,6 +49,14 @@ export function SoundMap({ audio, lib, colors, height, focusId, focusZoom, highl
   const [width, setWidth] = useState(600);
   const [hover, setHover] = useState<{ i: number; x: number; y: number } | null>(null);
   const redraw = useRef<() => void>(() => {});
+  const frame = useRef(0);
+  /** Redraws on the next animation frame, once however many pointer/wheel events arrive before it. */
+  const schedule = () => {
+    frame.current ||= requestAnimationFrame(() => {
+      frame.current = 0;
+      redraw.current();
+    });
+  };
 
   const hidden = useApp((s) => s.hidden);
   const vectors = useApp((s) => s.vectors);
@@ -61,21 +73,15 @@ export function SoundMap({ audio, lib, colors, height, focusId, focusZoom, highl
     // Most specific (smallest) playlist decides a song's color.
     const primary = playlistsOf.map((ps) => ps.toSorted((a, b) => size.get(a)! - size.get(b)!)[0] ?? null);
 
-    const sums = new Map<string, { x: number; y: number; n: number }>();
+    const pointsOf = new Map<string, [number, number][]>();
     playlistsOf.forEach((ps, i) => {
-      const [x, y] = audio.xy[i]!;
-      for (const p of ps) {
-        const s = sums.get(p) ?? { x: 0, y: 0, n: 0 };
-        s.x += x;
-        s.y += y;
-        s.n++;
-        sums.set(p, s);
-      }
+      for (const p of ps) pointsOf.set(p, [...(pointsOf.get(p) ?? []), audio.xy[i]!]);
     });
-    const groups = [...sums]
-      .filter(([, s]) => s.n >= 3)
-      .map(([id, s]) => ({ id, name: names.get(id) ?? "", x: s.x / s.n, y: s.y / s.n, n: s.n }))
-      .sort((a, b) => b.n - a.n);
+    // Bubbles at each playlist's dense spots, sized by the songs there. Main spots come first so
+    // their labels win collisions over secondary ones.
+    const groups = [...pointsOf]
+      .flatMap(([id, points]) => clusters(points).map((c, rank) => ({ id, name: names.get(id) ?? "", ...c, main: rank === 0 })))
+      .sort((a, b) => +b.main - +a.main || b.n - a.n);
 
     return { playlistsOf, primary, groups, names, pos: new Map(audio.ids.map((id, i) => [id, i])) };
   }, [audio, lib, hidden]);
@@ -135,31 +141,53 @@ export function SoundMap({ audio, lib, colors, height, focusId, focusZoom, highl
       return p ? (colors.get(p) ?? UNSORTED) : UNSORTED;
     };
 
-    // Songs: gray ones first so highlighted songs draw on top.
+    // Songs: gray ones first so highlighted songs draw on top. One path per color, so a frame
+    // is a few dozen fills instead of one per song.
     const dotAlpha = 0.3 + 0.6 * (1 - groupAlpha);
     for (const pass of highlighting ? [false, true] : [true]) {
+      const paths = new Map<string, Path2D>();
+      const dr = highlighting && pass ? r + 1 : r;
       for (let i = 0; i < audio.ids.length; i++) {
         if (highlighting && lit.has(audio.ids[i]!) !== pass) continue;
         const [sx, sy] = toScreen(...audio.xy[i]!);
         if (sx < -10 || sy < -10 || sx > width + 10 || sy > height + 10) continue;
-        ctx.globalAlpha = !highlighting ? dotAlpha : pass ? 0.95 : 0.18;
-        ctx.fillStyle = colorOf(i);
-        ctx.beginPath();
-        ctx.arc(sx, sy, highlighting && pass ? r + 1 : r, 0, Math.PI * 2);
-        ctx.fill();
+        const color = colorOf(i);
+        let path = paths.get(color);
+        if (!path) paths.set(color, (path = new Path2D()));
+        path.moveTo(sx + dr, sy);
+        path.arc(sx, sy, dr, 0, Math.PI * 2);
       }
+      ctx.globalAlpha = !highlighting ? dotAlpha : pass ? 0.95 : 0.18;
+      for (const [color, path] of paths) {
+        ctx.fillStyle = color;
+        ctx.fill(path);
+      }
+    }
+
+    const fi = focusId ? data.pos.get(focusId) : undefined;
+    const marked = mark ? data.pos.get(mark) : undefined; // gets its own label below
+    // The focused song's label is placed before anything else so other labels steer around it.
+    let focusLabel: { x: number; y: number; name: string; box: Box } | null = null;
+    if (fi !== undefined) {
+      const [fx, fy] = toScreen(...audio.xy[fi]!);
+      ctx.font = "700 13px ui-sans-serif, system-ui";
+      const name = clip(lib.tracks[focusId!]?.name ?? "");
+      const w = ctx.measureText(name).width + 14;
+      const x = Math.min(Math.max(fx + 14, 4), width - w - 4);
+      const y = Math.min(Math.max(fy - 11, 4), height - 26);
+      focusLabel = { x, y, name, box: [x, y, w, 22] };
     }
 
     // Playlist bubbles (zoomed out)
     if (groupAlpha > 0) {
-      const taken: Box[] = [];
+      const taken: Box[] = focusLabel ? [focusLabel.box] : [];
       ctx.font = "600 11px ui-sans-serif, system-ui";
       for (const g of data.groups) {
         if (highlighting && !highlight.includes(g.id)) continue;
         const [sx, sy] = toScreen(g.x, g.y);
         const radius = 3 + Math.sqrt(g.n) * 1.1;
         const color = colors.get(g.id) ?? UNSORTED;
-        ctx.globalAlpha = 0.22 * groupAlpha;
+        ctx.globalAlpha = (g.main ? 0.22 : 0.14) * groupAlpha;
         ctx.fillStyle = color;
         ctx.beginPath();
         ctx.arc(sx, sy, radius, 0, Math.PI * 2);
@@ -171,46 +199,23 @@ export function SoundMap({ audio, lib, colors, height, focusId, focusZoom, highl
 
         const w = ctx.measureText(g.name).width;
         const box: Box = [sx - w / 2 - 3, sy - radius - 16, w + 6, 14];
+        // Highlighted playlists keep their label through overlaps, except with the focused song's.
+        if (focusLabel && overlaps([focusLabel.box], box)) continue;
         if (overlaps(taken, box) && !highlight.includes(g.id)) continue;
         taken.push(box);
-        ctx.globalAlpha = groupAlpha;
-        ctx.fillStyle = "#fafafa";
+        ctx.globalAlpha = (g.main ? 1 : 0.6) * groupAlpha;
         ctx.textAlign = "center";
+        ctx.lineJoin = "round";
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = "#17111b";
+        ctx.strokeText(g.name, sx, sy - radius - 5);
+        ctx.fillStyle = "#fafafa";
         ctx.fillText(g.name, sx, sy - radius - 5);
       }
     }
 
-    // Song names (zoomed in): the focus's neighbors first, then highlighted songs, then the rest,
-    // skipping any name that would overlap one already drawn.
-    if (k >= LABEL_ZOOM) {
-      ctx.font = "11px ui-sans-serif, system-ui";
-      ctx.textAlign = "left";
-      ctx.fillStyle = "#f2ebe3";
-      ctx.globalAlpha = Math.min((k - LABEL_ZOOM) / 3 + 0.5, 0.9);
-      const order = new Set<number>();
-      for (const n of focusNear) {
-        const i = data.pos.get(n.id);
-        if (i !== undefined) order.add(i);
-      }
-      if (highlighting) for (let i = 0; i < audio.ids.length; i++) if (lit.has(audio.ids[i]!)) order.add(i);
-      for (let i = 0; i < audio.ids.length; i++) order.add(i);
-      const taken: Box[] = [];
-      const marked = mark ? data.pos.get(mark) : undefined; // gets its own label below
-      for (const i of order) {
-        if (taken.length >= MAX_LABELS) break;
-        if (i === marked) continue;
-        const [sx, sy] = toScreen(...audio.xy[i]!);
-        if (sx < 0 || sy < 0 || sx > width || sy > height) continue;
-        const name = clip(lib.tracks[audio.ids[i]!]?.name ?? "");
-        const box: Box = [sx + r + 2, sy - 7, ctx.measureText(name).width + 2, 13];
-        if (overlaps(taken, box)) continue;
-        taken.push(box);
-        ctx.fillText(name, sx + r + 3, sy + 4);
-      }
-    }
 
     // Focused song and its neighbors
-    const fi = focusId ? data.pos.get(focusId) : undefined;
     if (fi !== undefined) {
       const [fx, fy] = toScreen(...audio.xy[fi]!);
       for (const n of focusNear) {
@@ -242,7 +247,57 @@ export function SoundMap({ audio, lib, colors, height, focusId, focusZoom, highl
       ctx.stroke();
     }
 
-    const mi = mark ? data.pos.get(mark) : undefined;
+    // Song names. The focused song's label is placed first (and drawn last, on top), then its
+    // neighbors' (from a medium zoom, in their playlist color), then everyone else's (zoomed in,
+    // dimmer); a name that would overlap one already placed is skipped.
+    const taken: Box[] = focusLabel ? [focusLabel.box] : [];
+    const label = (i: number, font: string, color: string, alpha: number) => {
+      const [sx, sy] = toScreen(...audio.xy[i]!);
+      if (sx < 0 || sy < 0 || sx > width || sy > height) return;
+      ctx.font = font;
+      const name = clip(lib.tracks[audio.ids[i]!]?.name ?? "");
+      const box: Box = [sx + r + 2, sy - 7, ctx.measureText(name).width + 4, 14];
+      if (overlaps(taken, box)) return;
+      taken.push(box);
+      ctx.globalAlpha = alpha;
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = "#17111b"; // halo so names stay legible over dots and lines
+      ctx.strokeText(name, sx + r + 3, sy + 4);
+      ctx.fillStyle = color;
+      ctx.fillText(name, sx + r + 3, sy + 4);
+    };
+    ctx.textAlign = "left";
+    ctx.lineJoin = "round";
+    const named = new Set<number>([...(fi !== undefined ? [fi] : []), ...(marked !== undefined ? [marked] : [])]);
+    if (k >= NEIGHBOR_LABEL_ZOOM)
+      for (const n of focusNear) {
+        const i = data.pos.get(n.id);
+        if (i === undefined || named.has(i)) continue;
+        named.add(i);
+        label(i, "600 12px ui-sans-serif, system-ui", colorOf(i), 1);
+      }
+    if (k >= LABEL_ZOOM) {
+      const alpha = Math.min((k - LABEL_ZOOM) / 3 + 0.45, 0.75);
+      const rest = (i: number) => {
+        if (taken.length < MAX_LABELS && !named.has(i)) label(i, "11px ui-sans-serif, system-ui", "#c2b6c9", alpha);
+      };
+      if (highlighting) for (let i = 0; i < audio.ids.length; i++) if (lit.has(audio.ids[i]!)) rest(i);
+      for (let i = 0; i < audio.ids.length; i++) rest(i);
+    }
+
+    if (focusLabel) {
+      ctx.globalAlpha = 1;
+      ctx.font = "700 13px ui-sans-serif, system-ui";
+      const w = ctx.measureText(focusLabel.name).width + 14;
+      ctx.fillStyle = "#f2ebe3";
+      ctx.beginPath();
+      ctx.roundRect(focusLabel.x, focusLabel.y, w, 22, 6);
+      ctx.fill();
+      ctx.fillStyle = "#17111b";
+      ctx.fillText(focusLabel.name, focusLabel.x + 7, focusLabel.y + 15);
+    }
+
+    const mi = marked;
     if (mi !== undefined) {
       const [mx, my] = toScreen(...audio.xy[mi]!);
       ctx.globalAlpha = 0.8;
@@ -342,7 +397,7 @@ export function SoundMap({ audio, lib, colors, height, focusId, focusZoom, highl
       const [dx, dy] = toData(sx, sy);
       const k = Math.min(Math.max(view.current.k * Math.exp(-e.deltaY * 0.0015), 0.6), 80);
       view.current = { k, cx: dx - (sx - width / 2) / (base * k), cy: dy - (sy - height / 2) / (base * k) };
-      redraw.current();
+      schedule();
     };
     canvas.addEventListener("wheel", onWheel, { passive: false });
     return () => canvas.removeEventListener("wheel", onWheel);
@@ -371,12 +426,13 @@ export function SoundMap({ audio, lib, colors, height, focusId, focusZoom, highl
             [d.x, d.y] = [e.clientX, e.clientY];
             const { k } = view.current;
             view.current = { k, cx: view.current.cx - dx / (base * k), cy: view.current.cy - dy / (base * k) };
-            redraw.current();
+            schedule();
             return;
           }
           const [sx, sy] = local(e);
           const i = nearest(sx, sy);
-          setHover(i >= 0 ? { i, x: sx, y: sy } : null);
+          // Re-render only when the hovered song changes, not on every pixel of movement.
+          if (i !== (hover?.i ?? -1)) setHover(i >= 0 ? { i, x: sx, y: sy } : null);
         }}
         onPointerUp={(e) => {
           const d = drag.current;
