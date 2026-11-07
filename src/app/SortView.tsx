@@ -154,11 +154,14 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
 
         {/* The song */}
         <div className="grid grid-cols-[160px_minmax(0,1fr)] items-end gap-5 sm:grid-cols-[200px_minmax(0,1fr)]">
-          {track.album.imageUrl ? (
-            <img src={track.album.imageUrl} alt="" className="aspect-square w-full rounded-md object-cover shadow-2xl shadow-black/60" />
-          ) : (
-            <div className="aspect-square w-full rounded-md bg-zinc-900" />
-          )}
+          {/* Opens the song in the Spotify app: a way to listen that doesn't need the player API. */}
+          <a href={`spotify:track:${track.id}`} title="Open in Spotify" className="block transition hover:brightness-110">
+            {track.album.imageUrl ? (
+              <img src={track.album.imageUrl} alt={`${track.name} in Spotify`} className="aspect-square w-full rounded-md object-cover shadow-2xl shadow-black/60" />
+            ) : (
+              <div className="aspect-square w-full rounded-md bg-zinc-900" />
+            )}
+          </a>
           <div className="min-w-0">
             <h2 className="mb-2 text-4xl font-extrabold leading-[0.95] tracking-tight text-balance text-zinc-50 xl:text-5xl">{track.name}</h2>
             <p className="font-medium text-zinc-100">{track.artists.map((a) => a.name).join(", ")}</p>

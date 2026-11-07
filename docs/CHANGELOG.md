@@ -13,6 +13,7 @@ All notable changes to this project are documented here. The format follows
 - Undo any song sorted this session from the row of recent sorts, not just the latest one.
 - `↑`/`↓` move through the playlist tiles, so the evidence panel can be browsed without the mouse.
 - Hovering a song in the evidence panel or the run / up-next strip points it out on the sound map.
+- Clicking the current song's cover opens it in the Spotify app.
 - A Log out button in the header (and on the error screen) forgets the Spotify login so you can sign in fresh.
 - The evidence panel shows the artist's sorted songs as covers, how many of the 15 nearest songs are in the playlist, and the playlist's closest songs with similarity bars.
 
