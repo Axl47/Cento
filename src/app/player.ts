@@ -3,6 +3,7 @@
 // plays in the page, so there's no DRM, no browser autoplay policy, and your output device
 // stays where it is. Needs Premium and Spotify open on at least one device.
 import { create } from "zustand";
+import { SpotifyBlockedError } from "../core/spotify.ts";
 import { client } from "./auth.ts";
 
 /** Where previews start, as a share of the track's length. */
@@ -63,6 +64,9 @@ async function albumUri(trackId: string): Promise<string> {
 }
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
+/** User-facing text for a failed request: a block says until when, a short 429 says it'll pass. */
+const explain = (e: unknown) =>
+  e instanceof SpotifyBlockedError ? `${e.message}. Playback controls return then.` : message(e).includes(" 429 ") ? RATE_LIMITED : message(e);
 const savedDeviceName = () => {
   try {
     return localStorage.getItem(DEVICE_KEY);
@@ -87,8 +91,9 @@ export const usePlayer = create<PlayerState>()((set, get) => {
         duration: p.item.duration_ms,
         updatedAt: performance.now(),
       });
-    } catch {
-      // Transient; the next poll retries.
+    } catch (e) {
+      // Transient errors: the next poll retries. A block: say so, since polls now skip until it ends.
+      if (e instanceof SpotifyBlockedError) set({ error: explain(e) });
     } finally {
       polling = false;
     }
@@ -110,7 +115,7 @@ export const usePlayer = create<PlayerState>()((set, get) => {
       if (get().error === RATE_LIMITED) set({ error: null });
       return true;
     } catch (e) {
-      set({ error: message(e).includes(" 429 ") ? RATE_LIMITED : message(e) });
+      set({ error: explain(e) });
       return false;
     }
   };
@@ -131,8 +136,7 @@ export const usePlayer = create<PlayerState>()((set, get) => {
     } catch (e) {
       const name = devices.find((d) => d.id === target)?.name ?? "the device";
       const notFound = message(e).includes("404");
-      const limited = message(e).includes(" 429 ");
-      set({ error: notFound ? `Spotify isn't reachable on ${name}. Open Spotify there, or pick another device.` : limited ? RATE_LIMITED : message(e) });
+      set({ error: notFound ? `Spotify isn't reachable on ${name}. Open Spotify there, or pick another device.` : explain(e) });
       void loadDevices();
     }
   };

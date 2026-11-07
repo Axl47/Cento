@@ -7,6 +7,16 @@ type Page<T> = { items: T[]; next: string | null };
 
 export type SpotifyClient = ReturnType<typeof createClient>;
 
+/** Longest Retry-After we sit out quietly; past this Spotify has blocked the app (quota), not throttled it. */
+const MAX_WAIT_MS = 60_000;
+
+/** Thrown instead of waiting when Spotify asks us to back off for longer than MAX_WAIT_MS. */
+export class SpotifyBlockedError extends Error {
+  constructor(readonly until: number) {
+    super(`Spotify has blocked this app until ${new Date(until).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} (rate limit)`);
+  }
+}
+
 export function createClient(getToken: () => Promise<string>) {
   // After a 429 every request waits until this time (ms since epoch), so callers that keep
   // asking (pollers) don't each retry on their own and keep the rate limit going.
@@ -17,6 +27,7 @@ export function createClient(getToken: () => Promise<string>) {
     const url = pathOrUrl.startsWith("http") ? pathOrUrl : `${API}${pathOrUrl}`;
     for (let attempt = 0; ; attempt++) {
       const wait = pausedUntil - Date.now();
+      if (wait > MAX_WAIT_MS) throw new SpotifyBlockedError(pausedUntil);
       if (wait > 0) await new Promise((r) => setTimeout(r, wait));
       const res = await fetch(url, {
         method,
@@ -35,8 +46,10 @@ export function createClient(getToken: () => Promise<string>) {
       const retryable = res.status === 429 || res.status >= 500;
       if (!retryable || attempt >= 5) throw new Error(`${method} ${url} -> ${res.status} ${await res.text()}`);
       const backoff = Number(res.headers.get("retry-after") ?? 2 ** attempt) * 1000;
-      if (res.status === 429) pausedUntil = Math.max(pausedUntil, Date.now() + backoff);
-      else await new Promise((r) => setTimeout(r, backoff));
+      if (res.status === 429) {
+        pausedUntil = Math.max(pausedUntil, Date.now() + backoff);
+        if (backoff > MAX_WAIT_MS) throw new SpotifyBlockedError(pausedUntil);
+      } else await new Promise((r) => setTimeout(r, backoff));
     }
   }
 

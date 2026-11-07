@@ -35,6 +35,8 @@ export function App() {
   const [phase, setPhase] = useState<Phase>({ kind: "starting" });
   const [tab, setTab] = useState<"sort" | "map">("sort");
   const [syncing, setSyncing] = useState<string | null>(null);
+  /** Why the last resync from the main screen failed; earlier phases show errors full-screen instead. */
+  const [syncError, setSyncError] = useState<string | null>(null);
   const { lib, load, replaceLibrary, status, pendingWrites, queue, jumpTo } = useApp();
   const initPlayer = usePlayer((s) => s.init);
 
@@ -80,6 +82,7 @@ export function App() {
 
   const resync = async () => {
     setSyncing("Starting…");
+    setSyncError(null);
     try {
       const fresh = await syncLibrary(client, setSyncing);
       await fetch("/api/library", { method: "PUT", body: JSON.stringify(fresh) });
@@ -99,7 +102,9 @@ export function App() {
         setPhase({ kind: "ready" });
       }
     } catch (e) {
-      setPhase({ kind: "error", message: e instanceof Error ? e.message : String(e) });
+      const message = e instanceof Error ? e.message : String(e);
+      if (phase.kind === "ready") setSyncError(message);
+      else setPhase({ kind: "error", message });
     } finally {
       setSyncing(null);
     }
@@ -165,6 +170,7 @@ export function App() {
           >
             {status.kind === "error" ? `⚠ ${status.message}` : pendingWrites > 0 ? `Saving to Spotify… (${pendingWrites})` : "All changes saved"}
           </span>
+          {syncError && <span className="text-rose-400">⚠ Resync failed: {syncError}</span>}
           <button className="btn" disabled={!!syncing} onClick={() => void resync()} title="Refetch everything from Spotify">
             {syncing ?? "Resync"}
           </button>

@@ -13,6 +13,7 @@ All notable changes to this project are documented here. The format follows
 - Undo any song sorted this session from the row of recent sorts, not just the latest one.
 - `↑`/`↓` move through the playlist tiles, so the evidence panel can be browsed without the mouse.
 - Hovering a song in the evidence panel or the run / up-next strip points it out on the sound map.
+- A Log out button in the header (and on the error screen) forgets the Spotify login so you can sign in fresh.
 - The evidence panel shows the artist's sorted songs as covers, how many of the 15 nearest songs are in the playlist, and the playlist's closest songs with similarity bars.
 
 ### Changed
@@ -26,6 +27,8 @@ All notable changes to this project are documented here. The format follows
 - The current song's name is always shown on the sound map, even fully zoomed out, and its nearest neighbors are named from a medium zoom on, in their playlist's color.
 
 ### Fixed
+
+- When Spotify blocks the app for hours, the player and Resync say so and until when, instead of waiting silently (Resync looked stuck and the current song never showed).
 
 - Playlist bubbles on the sound map sit where the playlist's songs are concentrated instead of at their average position, which could land between groups or in empty space; a playlist split across tight groups gets a bubble per group.
 - Panning and zooming the sound map draws at most once per frame and batches dots by color, so it does less work per movement.
