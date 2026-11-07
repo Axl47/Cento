@@ -131,7 +131,7 @@ export function App() {
     );
 
   return (
-    <div className="mx-auto max-w-[1400px] px-4 py-4 sm:px-6">
+    <div className="mx-auto max-w-[1600px] px-4 py-4 sm:px-6">
       <header className="mb-5 flex flex-wrap items-center gap-4">
         <h1 className="text-lg font-black tracking-tight text-zinc-50">
           playlist<span className="text-commit">/</span>sorter

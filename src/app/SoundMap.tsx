@@ -2,7 +2,8 @@
 // Zoomed out, playlists show as bubbles at the center of their songs; zooming in fades
 // the bubbles into individual songs, colored by their most specific playlist, and
 // eventually song names. A focused song shows lines to its nearest neighbors.
-// Highlighting playlists grays out every other song and keeps only their bubbles.
+// Highlighting playlists grays out every other song and keeps only their bubbles. A marked
+// song (hovered elsewhere on the page) gets a ring, a line from the focused song, and its name.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { closestAmong, neighborsFrom, type AudioIndex } from "../core/audio.ts";
 import { sortTargets, type Library } from "../core/library.ts";
@@ -19,8 +20,16 @@ type Props = {
   focusZoom?: number;
   /** Playlists to emphasize; every other song turns gray, and focus lines only go to their songs. */
   highlight?: readonly string[];
+  /** Song to point out, e.g. one hovered in a list next to the map. */
+  mark?: string | null;
   onSelect?: (trackId: string) => void;
 };
+
+type Box = [x: number, y: number, w: number, h: number];
+const overlaps = (taken: Box[], b: Box) => taken.some(([x, y, w, h]) => b[0] < x + w && b[0] + b[2] > x && b[1] < y + h && b[1] + b[3] > y);
+const LABEL_CHARS = 30;
+const MAX_LABELS = 70;
+const clip = (name: string) => (name.length > LABEL_CHARS ? `${name.slice(0, LABEL_CHARS - 1)}…` : name);
 
 type View = { k: number; cx: number; cy: number };
 
@@ -29,7 +38,7 @@ const LABEL_ZOOM = 7; // zoom where song names start to show
 const UNSORTED = "#71717a";
 const FOCUS_NEIGHBORS = 15;
 
-export function SoundMap({ audio, lib, colors, height, focusId, focusZoom, highlight = [], onSelect }: Props) {
+export function SoundMap({ audio, lib, colors, height, focusId, focusZoom, highlight = [], mark, onSelect }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const view = useRef<View>({ k: 1, cx: 0, cy: 0 });
@@ -143,7 +152,7 @@ export function SoundMap({ audio, lib, colors, height, focusId, focusZoom, highl
 
     // Playlist bubbles (zoomed out)
     if (groupAlpha > 0) {
-      const taken: [number, number, number, number][] = [];
+      const taken: Box[] = [];
       ctx.font = "600 11px ui-sans-serif, system-ui";
       for (const g of data.groups) {
         if (highlighting && !highlight.includes(g.id)) continue;
@@ -161,9 +170,8 @@ export function SoundMap({ audio, lib, colors, height, focusId, focusZoom, highl
         ctx.stroke();
 
         const w = ctx.measureText(g.name).width;
-        const box: [number, number, number, number] = [sx - w / 2 - 3, sy - radius - 16, w + 6, 14];
-        const overlaps = taken.some(([x, y, bw, bh]) => box[0] < x + bw && box[0] + box[2] > x && box[1] < y + bh && box[1] + box[3] > y);
-        if (overlaps && !highlight.includes(g.id)) continue;
+        const box: Box = [sx - w / 2 - 3, sy - radius - 16, w + 6, 14];
+        if (overlaps(taken, box) && !highlight.includes(g.id)) continue;
         taken.push(box);
         ctx.globalAlpha = groupAlpha;
         ctx.fillStyle = "#fafafa";
@@ -172,18 +180,32 @@ export function SoundMap({ audio, lib, colors, height, focusId, focusZoom, highl
       }
     }
 
-    // Song names (zoomed in)
+    // Song names (zoomed in): the focus's neighbors first, then highlighted songs, then the rest,
+    // skipping any name that would overlap one already drawn.
     if (k >= LABEL_ZOOM) {
       ctx.font = "11px ui-sans-serif, system-ui";
       ctx.textAlign = "left";
-      ctx.fillStyle = "#e4e4e7";
-      ctx.globalAlpha = Math.min((k - LABEL_ZOOM) / 3 + 0.4, 0.9);
-      let drawn = 0;
-      for (let i = 0; i < audio.ids.length && drawn < 160; i++) {
+      ctx.fillStyle = "#f2ebe3";
+      ctx.globalAlpha = Math.min((k - LABEL_ZOOM) / 3 + 0.5, 0.9);
+      const order = new Set<number>();
+      for (const n of focusNear) {
+        const i = data.pos.get(n.id);
+        if (i !== undefined) order.add(i);
+      }
+      if (highlighting) for (let i = 0; i < audio.ids.length; i++) if (lit.has(audio.ids[i]!)) order.add(i);
+      for (let i = 0; i < audio.ids.length; i++) order.add(i);
+      const taken: Box[] = [];
+      const marked = mark ? data.pos.get(mark) : undefined; // gets its own label below
+      for (const i of order) {
+        if (taken.length >= MAX_LABELS) break;
+        if (i === marked) continue;
         const [sx, sy] = toScreen(...audio.xy[i]!);
         if (sx < 0 || sy < 0 || sx > width || sy > height) continue;
-        ctx.fillText(lib.tracks[audio.ids[i]!]?.name ?? "", sx + r + 3, sy + 4);
-        drawn++;
+        const name = clip(lib.tracks[audio.ids[i]!]?.name ?? "");
+        const box: Box = [sx + r + 2, sy - 7, ctx.measureText(name).width + 2, 13];
+        if (overlaps(taken, box)) continue;
+        taken.push(box);
+        ctx.fillText(name, sx + r + 3, sy + 4);
       }
     }
 
@@ -218,6 +240,45 @@ export function SoundMap({ audio, lib, colors, height, focusId, focusZoom, highl
       ctx.beginPath();
       ctx.arc(fx, fy, 10, 0, Math.PI * 2);
       ctx.stroke();
+    }
+
+    const mi = mark ? data.pos.get(mark) : undefined;
+    if (mi !== undefined) {
+      const [mx, my] = toScreen(...audio.xy[mi]!);
+      ctx.globalAlpha = 0.8;
+      ctx.strokeStyle = "#f2ebe3";
+      ctx.lineWidth = 1.5;
+      if (fi !== undefined && audio.ids[mi] !== focusId) {
+        const [fx, fy] = toScreen(...audio.xy[fi]!);
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(fx, fy);
+        ctx.lineTo(mx, my);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = colorOf(mi);
+      ctx.beginPath();
+      ctx.arc(mx, my, r + 2.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(mx, my, r + 6, 0, Math.PI * 2);
+      ctx.stroke();
+      // Name in a pill, kept inside the map even when the song is off-screen.
+      ctx.font = "600 12px ui-sans-serif, system-ui";
+      const name = clip(lib.tracks[mark!]?.name ?? "");
+      const w = ctx.measureText(name).width + 14;
+      const px = Math.min(Math.max(mx + 12, 6), width - w - 6);
+      const py = Math.min(Math.max(my - 26, 6), height - 26);
+      ctx.fillStyle = "#17111bee";
+      ctx.beginPath();
+      ctx.roundRect(px, py, w, 20, 6);
+      ctx.fill();
+      ctx.fillStyle = "#f7f2ec";
+      ctx.textAlign = "left";
+      ctx.fillText(name, px + 7, py + 14);
     }
 
     if (hover) {

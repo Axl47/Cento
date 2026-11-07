@@ -48,7 +48,8 @@ track-URI play request is accepted but loads nothing on this account.
     Click one to leave it out; `⇧Enter` sorts the whole run with the current picks.
   - **Why panel**: hover a tile (or `↑`/`↓`) to see its evidence: the sound map narrowed to it, which of the
     artist's sorted songs are in it, how many of the 15 nearest sorted songs are, and its closest songs
-    (bars run from the random-pair baseline to this song's nearest neighbor anywhere).
+    (bars run from the random-pair baseline to this song's nearest neighbor anywhere). Hovering any song
+    there, or in the run / up-next strip, points it out on the map.
   - **Undo**: each sorted song stays in a row below the actions with its own Undo; `⌘Z` undoes the latest
     (re-liking loses the original liked date).
   - **`⌘K`** (or `/`): find a playlist and check it, create a private one named after the search (checked,

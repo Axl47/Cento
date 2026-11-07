@@ -1,6 +1,7 @@
 // Evidence for one playlist (the focused tile) and the current song: the sound map narrowed
 // to that playlist, which of the artist's sorted songs are in it, how many of the nearest
-// sorted songs are in it, and its closest-sounding songs.
+// sorted songs are in it, and its closest-sounding songs. Hovering any of those songs (or one
+// passed in as `mark`, e.g. from the run strip) points it out on the map.
 import { useMemo } from "react";
 import { closestAmong } from "../core/audio.ts";
 import type { Track } from "../core/library.ts";
@@ -17,11 +18,15 @@ export function WhyPanel({
   track,
   playlistId,
   colors,
+  mark,
+  onMark,
   onEditRule,
 }: {
   track: Track;
   playlistId: string;
   colors: Map<string, string>;
+  mark: string | null;
+  onMark: (trackId: string | null) => void;
   onEditRule: () => void;
 }) {
   const { lib, model, audio, neighbors, vectors, rules, hidden, setHidden } = useApp();
@@ -45,14 +50,15 @@ export function WhyPanel({
     const floor = audio?.baseline ?? 0;
     const ceiling = Math.max((neighbors?.(track.id) ?? [])[0]?.sim ?? 1, ...closest.map((n) => n.sim));
     const artistNames = track.artists.filter((a) => model.artistSongs.has(a.id)).map((a) => a.name).join(", ");
-    return { artist, artistNames, nearest: nearest.map((n) => members.has(n.id)), closest, hasAudio, floor, ceiling };
+    return { artist, artistNames, nearest: nearest.map((n) => ({ id: n.id, inside: members.has(n.id) })), closest, hasAudio, floor, ceiling };
   }, [lib, model, audio, neighbors, vectors, playlist, track]);
 
   if (!lib || !playlist || !evidence) return null;
   const rule = rules[playlistId];
   const isHidden = hidden.includes(playlistId);
   const artistIn = evidence.artist.filter((a) => a.inside).length;
-  const nearIn = evidence.nearest.filter(Boolean).length;
+  const nearIn = evidence.nearest.filter((n) => n.inside).length;
+  const hoverProps = (id: string) => ({ onMouseEnter: () => onMark(id), onMouseLeave: () => onMark(null) });
 
   return (
     <div className="space-y-5">
@@ -81,10 +87,11 @@ export function WhyPanel({
             audio={audio}
             lib={lib}
             colors={colors}
-            height={260}
+            height={400}
             focusId={track.id}
             focusZoom={5}
             highlight={[playlistId]}
+            mark={mark}
             onSelect={(id) => {
               const t = lib.tracks[id];
               if (t) void play(t.id, t.durationMs);
@@ -101,6 +108,7 @@ export function WhyPanel({
               return (
                 <button
                   key={id}
+                  {...hoverProps(id)}
                   onClick={() => t && void play(t.id, t.durationMs)}
                   title={t?.name}
                   className={`size-7 rounded-[3px] bg-zinc-800 bg-cover bg-center transition ${inside ? "" : "opacity-30 grayscale"}`}
@@ -117,10 +125,20 @@ export function WhyPanel({
 
       {evidence.nearest.length > 0 && (
         <Evidence label="Nearest by sound" count={`${nearIn}/${evidence.nearest.length}`}>
-          <div className="flex gap-0.5" title="Closest sorted songs, nearest on the left">
-            {evidence.nearest.map((inside, i) => (
-              <span key={i} className="h-3 flex-1 rounded-[2px]" style={{ background: inside ? color : "var(--color-zinc-800)" }} />
-            ))}
+          <div className="flex gap-0.5">
+            {evidence.nearest.map(({ id, inside }) => {
+              const t = lib.tracks[id];
+              return (
+                <button
+                  key={id}
+                  {...hoverProps(id)}
+                  onClick={() => t && void play(t.id, t.durationMs)}
+                  title={t ? `${t.name} · ${t.artists[0]?.name}` : undefined}
+                  className={`h-4 flex-1 rounded-[2px] transition-transform hover:scale-y-150 ${id === mark ? "scale-y-150" : ""}`}
+                  style={{ background: inside ? color : "var(--color-zinc-700)" }}
+                />
+              );
+            })}
           </div>
         </Evidence>
       )}
@@ -137,6 +155,7 @@ export function WhyPanel({
             return (
               <button
                 key={n.id}
+                {...hoverProps(n.id)}
                 onClick={() => void play(t.id, t.durationMs)}
                 className="relative flex w-full items-center gap-2.5 overflow-hidden rounded-md p-1 pr-2 text-left text-xs hover:bg-white/5"
                 title="Play"

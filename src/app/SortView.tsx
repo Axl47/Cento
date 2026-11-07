@@ -29,6 +29,7 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
   // Both belong to one song; a new song starts with the top tile focused and the whole run in.
   const [focus, setFocus] = useState<{ track: string; playlist: string } | null>(null);
   const [excluded, setExcluded] = useState<{ track: string; ids: Set<string> } | null>(null);
+  const [mark, setMark] = useState<string | null>(null); // song hovered anywhere, pointed out on the map
 
   const trackId = queue[0];
   const track = trackId ? lib?.tracks[trackId] : undefined;
@@ -131,7 +132,7 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
   const recent = history.slice(-RECENT).toReversed();
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_380px]">
+    <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(420px,0.8fr)]">
       <main className="min-w-0">
         <div className="mb-5 flex items-center gap-3 text-xs text-zinc-400">
           <span>
@@ -177,7 +178,7 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
         </div>
 
         {/* Playlists */}
-        <div className="mt-7 grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-1.5">
+        <div className="mt-7 grid grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-1.5">
           {rows.map((s, i) => (
             <Tile
               key={s.playlistId}
@@ -198,18 +199,22 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
         {/* The run, then what's after it */}
         {(run.length > 0 || upNext.length > 0) && (
           <div className="mt-6 border-t border-white/10 pt-4">
-            {run.length > 0 && (
-              <p className="mb-2.5 text-xs text-zinc-400">
-                <b className="font-semibold text-zinc-100">{runIn.length + 1} in a row</b> with the same picks
-              </p>
-            )}
+            <p className="mb-2.5 text-xs text-zinc-400">
+              {run.length > 0 ? (
+                <>
+                  <b className="font-semibold text-zinc-100">{runIn.length + 1} in a row</b> with the same picks
+                </>
+              ) : (
+                "Up next"
+              )}
+            </p>
             <div className="-m-1 flex items-start gap-2.5 overflow-hidden p-1">
               {run.map((id) => (
-                <Cover key={id} id={id} state={left.has(id) ? "out" : "in"} onClick={() => toggleRun(id)} />
+                <Cover key={id} id={id} state={left.has(id) ? "out" : "in"} onClick={() => toggleRun(id)} onMark={setMark} />
               ))}
               {run.length > 0 && upNext.length > 0 && <span className="mx-1 w-px self-stretch bg-white/10" />}
               {upNext.map((id) => (
-                <Cover key={id} id={id} state="later" />
+                <Cover key={id} id={id} state="later" onMark={setMark} />
               ))}
             </div>
           </div>
@@ -262,7 +267,9 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
       </main>
 
       <aside className="min-w-0 lg:border-l lg:border-white/10 lg:pl-8">
-        {focused && <WhyPanel track={track} playlistId={focused} colors={colors} onEditRule={() => setRuleFor(focused)} />}
+        {focused && (
+          <WhyPanel track={track} playlistId={focused} colors={colors} mark={mark} onMark={setMark} onEditRule={() => setRuleFor(focused)} />
+        )}
       </aside>
 
       {palette && <CommandPalette colors={colors} onClose={() => setPalette(false)} onEditRule={setRuleFor} />}
@@ -310,16 +317,28 @@ function Tile(props: {
   );
 }
 
-/** An upcoming song: in the run (outlined, click to leave out), left out, or just later in the queue. */
-function Cover({ id, state, onClick }: { id: string; state: "in" | "out" | "later"; onClick?: () => void }) {
+/** An upcoming song: in the run (outlined, click to leave out), left out, or just later in the queue. Hover marks it on the map. */
+function Cover({
+  id,
+  state,
+  onClick,
+  onMark,
+}: {
+  id: string;
+  state: "in" | "out" | "later";
+  onClick?: () => void;
+  onMark: (id: string | null) => void;
+}) {
   const t = useApp((s) => s.lib?.tracks[id]);
   if (!t) return null;
   return (
     <button
       onClick={onClick}
-      disabled={!onClick}
+      onMouseEnter={() => onMark(id)}
+      onMouseLeave={() => onMark(null)}
+      aria-disabled={!onClick}
       title={state === "later" ? t.name : `${t.name} (${state === "in" ? "click to leave out" : "click to include"})`}
-      className="w-16 shrink-0 text-left disabled:cursor-default"
+      className={`w-16 shrink-0 text-left ${onClick ? "" : "cursor-default"}`}
     >
       <span
         className={`block size-16 rounded bg-zinc-900 bg-cover bg-center outline-2 outline-offset-2 transition ${
