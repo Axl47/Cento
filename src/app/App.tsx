@@ -4,7 +4,7 @@ import { decodeVectors, type AudioIndex } from "../core/audio.ts";
 import type { ArtistRules } from "../core/suggest.ts";
 import type { LedgerEntry } from "../core/ledger.ts";
 import { sortTargets, syncLibrary, type Library } from "../core/library.ts";
-import { client, completeLogin, startLogin } from "./auth.ts";
+import { client, completeLogin, logout, startLogin } from "./auth.ts";
 import { usePlaylistColors } from "./colors.ts";
 import { MapView } from "./MapView.tsx";
 import { usePlayer } from "./player.ts";
@@ -117,7 +117,15 @@ export function App() {
         </button>
       </Center>
     );
-  if (phase.kind === "error") return <Center><span className="text-rose-400">{phase.message}</span></Center>;
+  if (phase.kind === "error")
+    return (
+      <Center>
+        <div className="space-y-3 text-center">
+          <p className="text-rose-400">{phase.message}</p>
+          <button className="btn" onClick={logout}>Log out</button>
+        </div>
+      </Center>
+    );
   if (phase.kind === "needs-sync")
     return (
       <Center>
@@ -159,6 +167,9 @@ export function App() {
           </span>
           <button className="btn" disabled={!!syncing} onClick={() => void resync()} title="Refetch everything from Spotify">
             {syncing ?? "Resync"}
+          </button>
+          <button className="btn" onClick={logout} title="Forget the Spotify login and sign in again">
+            Log out
           </button>
         </div>
       </header>

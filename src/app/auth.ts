@@ -84,3 +84,9 @@ export async function accessToken(): Promise<string> {
 }
 
 export const client = createClient(accessToken);
+
+/** Forgets the stored token so the next login starts fresh (e.g. to pick up new scopes). */
+export function logout() {
+  localStorage.removeItem(TOKEN_KEY);
+  location.assign("/");
+}
