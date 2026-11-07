@@ -1,17 +1,41 @@
 @import "tailwindcss";
 
+/*
+ * The zinc scale is retinted toward aubergine so every zinc class in the app (map, dialogs)
+ * shares one palette. `commit` is reserved for the action that sorts a song.
+ */
+@theme {
+  --font-sans: "Bricolage Grotesque", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --color-zinc-50: #f7f2ec;
+  --color-zinc-100: #f2ebe3;
+  --color-zinc-200: #ddd3dc;
+  --color-zinc-300: #c2b6c9;
+  --color-zinc-400: #a092ab;
+  --color-zinc-500: #7d6f88;
+  --color-zinc-600: #5b4d66;
+  --color-zinc-700: #463a50;
+  --color-zinc-800: #3a2f43;
+  --color-zinc-900: #221a28;
+  --color-zinc-950: #17111b;
+  --color-commit: #ffb547;
+}
+
 @layer base {
   html {
     color-scheme: dark;
-    background: #09090b;
-    color: #e4e4e7;
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--color-zinc-950);
+    color: var(--color-zinc-100);
+    font-family: var(--font-sans);
+    font-variant-numeric: tabular-nums;
   }
   kbd {
-    @apply rounded border border-white/15 bg-white/5 px-1 py-px font-mono text-[10px] text-zinc-400;
+    @apply rounded-[5px] border border-b-2 border-white/15 px-1.5 py-px font-sans text-[11px] font-medium text-zinc-400;
   }
   code {
     @apply rounded bg-white/10 px-1 font-mono text-[0.9em] text-zinc-200;
+  }
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-commit;
   }
 }
 
