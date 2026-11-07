@@ -8,8 +8,11 @@ import { client } from "./auth.ts";
 /** Where previews start, as a share of the track's length. */
 export const START_AT = 0.35;
 
-const POLL_MS = 1000;
-const DEVICES_MS = 15_000;
+// Spotify rate-limits per app across every open tab, so poll gently; the progress bar
+// animates between polls, and every command polls right after it lands.
+const POLL_MS = 3000;
+const DEVICES_MS = 60_000;
+const RATE_LIMITED = "Spotify is rate-limiting this app. Playback controls come back in a moment.";
 const DEVICE_KEY = "spotify-device-name"; // device ids change between app restarts; names don't
 /** The in-page player earlier versions registered; Spotify lists it for a while after. */
 const OLD_IN_PAGE_DEVICE = "Playlist Sorter";
@@ -69,8 +72,11 @@ const savedDeviceName = () => {
 };
 
 export const usePlayer = create<PlayerState>()((set, get) => {
-  /** Re-reads playback state from Spotify. */
+  let polling = false;
+  /** Re-reads playback state from Spotify; skipped while one is in flight or we're rate-limited. */
   const poll = async () => {
+    if (polling || client.limited()) return;
+    polling = true;
     try {
       const p = await client.get<ApiPlayback | undefined>("/me/player");
       if (!p?.item) return set({ paused: true });
@@ -83,11 +89,13 @@ export const usePlayer = create<PlayerState>()((set, get) => {
       });
     } catch {
       // Transient; the next poll retries.
+    } finally {
+      polling = false;
     }
   };
 
-  /** Refreshes the device list and keeps a sensible target selected. */
-  const loadDevices = async () => {
+  /** Refreshes the device list and keeps a sensible target selected; false if Spotify didn't answer. */
+  const loadDevices = async (): Promise<boolean> => {
     try {
       const { devices } = await client.get<{ devices: Device[] }>("/me/player/devices");
       const usable = devices.filter((d) => !d.is_restricted && d.name !== OLD_IN_PAGE_DEVICE);
@@ -99,8 +107,11 @@ export const usePlayer = create<PlayerState>()((set, get) => {
         usable.find((d) => d.type === "Computer") ??
         usable[0];
       set({ devices: usable, deviceId: pick?.id ?? null });
+      if (get().error === RATE_LIMITED) set({ error: null });
+      return true;
     } catch (e) {
-      set({ error: message(e) });
+      set({ error: message(e).includes(" 429 ") ? RATE_LIMITED : message(e) });
+      return false;
     }
   };
 
@@ -108,7 +119,8 @@ export const usePlayer = create<PlayerState>()((set, get) => {
   const command = async (method: string, path: string, body?: unknown) => {
     const { deviceId, devices } = get();
     if (!deviceId) {
-      await loadDevices();
+      // A failed lookup already explains itself (e.g. rate-limited); don't blame missing devices.
+      if (!(await loadDevices())) return;
       if (!get().deviceId) return set({ error: "No Spotify device found. Open Spotify on your Mac or phone." });
     }
     const target = get().deviceId!;
@@ -119,7 +131,8 @@ export const usePlayer = create<PlayerState>()((set, get) => {
     } catch (e) {
       const name = devices.find((d) => d.id === target)?.name ?? "the device";
       const notFound = message(e).includes("404");
-      set({ error: notFound ? `Spotify isn't reachable on ${name}. Open Spotify there, or pick another device.` : message(e) });
+      const limited = message(e).includes(" 429 ");
+      set({ error: notFound ? `Spotify isn't reachable on ${name}. Open Spotify there, or pick another device.` : limited ? RATE_LIMITED : message(e) });
       void loadDevices();
     }
   };
@@ -140,7 +153,7 @@ export const usePlayer = create<PlayerState>()((set, get) => {
       void poll();
       // Poll only while the tab is visible.
       setInterval(() => document.visibilityState === "visible" && void poll(), POLL_MS);
-      setInterval(() => document.visibilityState === "visible" && void loadDevices(), DEVICES_MS);
+      setInterval(() => document.visibilityState === "visible" && !client.limited() && void loadDevices(), DEVICES_MS);
     },
 
     setDevice: (id) => {

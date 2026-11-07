@@ -8,10 +8,16 @@ type Page<T> = { items: T[]; next: string | null };
 export type SpotifyClient = ReturnType<typeof createClient>;
 
 export function createClient(getToken: () => Promise<string>) {
+  // After a 429 every request waits until this time (ms since epoch), so callers that keep
+  // asking (pollers) don't each retry on their own and keep the rate limit going.
+  let pausedUntil = 0;
+
   /** Sends a request to an API path or full URL, retrying on 429 and transient 5xx. */
   async function request<T>(method: string, pathOrUrl: string, body?: unknown): Promise<T> {
     const url = pathOrUrl.startsWith("http") ? pathOrUrl : `${API}${pathOrUrl}`;
     for (let attempt = 0; ; attempt++) {
+      const wait = pausedUntil - Date.now();
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
       const res = await fetch(url, {
         method,
         headers: {
@@ -28,8 +34,9 @@ export function createClient(getToken: () => Promise<string>) {
       }
       const retryable = res.status === 429 || res.status >= 500;
       if (!retryable || attempt >= 5) throw new Error(`${method} ${url} -> ${res.status} ${await res.text()}`);
-      const wait = Number(res.headers.get("retry-after") ?? 2 ** attempt) * 1000;
-      await new Promise((r) => setTimeout(r, wait));
+      const backoff = Number(res.headers.get("retry-after") ?? 2 ** attempt) * 1000;
+      if (res.status === 429) pausedUntil = Math.max(pausedUntil, Date.now() + backoff);
+      else await new Promise((r) => setTimeout(r, backoff));
     }
   }
 
@@ -48,6 +55,8 @@ export function createClient(getToken: () => Promise<string>) {
     request,
     getAll,
     get: <T>(path: string) => request<T>("GET", path),
+    /** True while Spotify has asked us to back off; optional requests (polls) should skip. */
+    limited: () => Date.now() < pausedUntil,
   };
 }
 
