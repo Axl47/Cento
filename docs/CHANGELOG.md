@@ -28,7 +28,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
-- When Spotify blocks the app for hours, the player and Resync say so and until when, instead of waiting silently (Resync looked stuck and the current song never showed).
+- When Spotify blocks playback control for hours, the player says so and until when, instead of waiting silently and never showing the current song; syncing and playlist changes keep working, since Spotify blocks the player separately.
 
 - Playlist bubbles on the sound map sit where the playlist's songs are concentrated instead of at their average position, which could land between groups or in empty space; a playlist split across tight groups gets a bubble per group.
 - Panning and zooming the sound map draws at most once per frame and batches dots by color, so it does less work per movement.

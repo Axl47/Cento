@@ -79,7 +79,7 @@ export const usePlayer = create<PlayerState>()((set, get) => {
   let polling = false;
   /** Re-reads playback state from Spotify; skipped while one is in flight or we're rate-limited. */
   const poll = async () => {
-    if (polling || client.limited()) return;
+    if (polling || client.limited("/me/player")) return;
     polling = true;
     try {
       const p = await client.get<ApiPlayback | undefined>("/me/player");
@@ -157,7 +157,7 @@ export const usePlayer = create<PlayerState>()((set, get) => {
       void poll();
       // Poll only while the tab is visible.
       setInterval(() => document.visibilityState === "visible" && void poll(), POLL_MS);
-      setInterval(() => document.visibilityState === "visible" && !client.limited() && void loadDevices(), DEVICES_MS);
+      setInterval(() => document.visibilityState === "visible" && !client.limited("/me/player") && void loadDevices(), DEVICES_MS);
     },
 
     setDevice: (id) => {

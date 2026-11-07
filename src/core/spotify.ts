@@ -7,27 +7,34 @@ type Page<T> = { items: T[]; next: string | null };
 
 export type SpotifyClient = ReturnType<typeof createClient>;
 
-/** Longest Retry-After we sit out quietly; past this Spotify has blocked the app (quota), not throttled it. */
+/** Longest Retry-After we sit out quietly; past this Spotify has blocked us (quota), not throttled it. */
 const MAX_WAIT_MS = 60_000;
 
 /** Thrown instead of waiting when Spotify asks us to back off for longer than MAX_WAIT_MS. */
 export class SpotifyBlockedError extends Error {
-  constructor(readonly until: number) {
-    super(`Spotify has blocked this app until ${new Date(until).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} (rate limit)`);
+  constructor(readonly until: number, scope: "player" | "api") {
+    super(`Spotify has blocked ${scope === "player" ? "playback control" : "requests"} for this app until ${new Date(until).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} (rate limit)`);
   }
 }
 
+/**
+ * Which pause a request shares. Spotify can block the player endpoints for hours while the
+ * rest of the API keeps working (seen 2026-11), so a player 429 mustn't stall syncing.
+ */
+const scopeOf = (url: string) => (new URL(url).pathname.startsWith("/v1/me/player") ? "player" : "api");
+
 export function createClient(getToken: () => Promise<string>) {
-  // After a 429 every request waits until this time (ms since epoch), so callers that keep
-  // asking (pollers) don't each retry on their own and keep the rate limit going.
-  let pausedUntil = 0;
+  // After a 429 every request in that scope waits until this time (ms since epoch), so callers
+  // that keep asking (pollers) don't each retry on their own and keep the rate limit going.
+  const pausedUntil = { player: 0, api: 0 };
 
   /** Sends a request to an API path or full URL, retrying on 429 and transient 5xx. */
   async function request<T>(method: string, pathOrUrl: string, body?: unknown): Promise<T> {
     const url = pathOrUrl.startsWith("http") ? pathOrUrl : `${API}${pathOrUrl}`;
+    const scope = scopeOf(url);
     for (let attempt = 0; ; attempt++) {
-      const wait = pausedUntil - Date.now();
-      if (wait > MAX_WAIT_MS) throw new SpotifyBlockedError(pausedUntil);
+      const wait = pausedUntil[scope] - Date.now();
+      if (wait > MAX_WAIT_MS) throw new SpotifyBlockedError(pausedUntil[scope], scope);
       if (wait > 0) await new Promise((r) => setTimeout(r, wait));
       const res = await fetch(url, {
         method,
@@ -47,8 +54,8 @@ export function createClient(getToken: () => Promise<string>) {
       if (!retryable || attempt >= 5) throw new Error(`${method} ${url} -> ${res.status} ${await res.text()}`);
       const backoff = Number(res.headers.get("retry-after") ?? 2 ** attempt) * 1000;
       if (res.status === 429) {
-        pausedUntil = Math.max(pausedUntil, Date.now() + backoff);
-        if (backoff > MAX_WAIT_MS) throw new SpotifyBlockedError(pausedUntil);
+        pausedUntil[scope] = Math.max(pausedUntil[scope], Date.now() + backoff);
+        if (backoff > MAX_WAIT_MS) throw new SpotifyBlockedError(pausedUntil[scope], scope);
       } else await new Promise((r) => setTimeout(r, backoff));
     }
   }
@@ -68,8 +75,8 @@ export function createClient(getToken: () => Promise<string>) {
     request,
     getAll,
     get: <T>(path: string) => request<T>("GET", path),
-    /** True while Spotify has asked us to back off; optional requests (polls) should skip. */
-    limited: () => Date.now() < pausedUntil,
+    /** True while Spotify has asked us to back off from this path's scope; optional requests (polls) should skip. */
+    limited: (path: string) => Date.now() < pausedUntil[scopeOf(`${API}${path}`)],
   };
 }
 
