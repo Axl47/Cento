@@ -7,7 +7,7 @@ import { suggest, type Suggestion } from "../core/suggest.ts";
 import { CommandPalette } from "./CommandPalette.tsx";
 import { RuleEditor } from "./RuleEditor.tsx";
 import { WhyPanel } from "./WhyPanel.tsx";
-import { usePlayer } from "./player.ts";
+import { openInSpotify, usePlayer } from "./player.ts";
 import { initialPicks, useApp } from "./store.ts";
 
 /** Tiles with a number key. */
@@ -155,7 +155,12 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
         {/* The song */}
         <div className="grid grid-cols-[160px_minmax(0,1fr)] items-end gap-5 sm:grid-cols-[200px_minmax(0,1fr)]">
           {/* Opens the song in the Spotify app: a way to listen that doesn't need the player API. */}
-          <a href={`spotify:track:${track.id}`} title="Open in Spotify" className="block transition hover:brightness-110">
+          <a
+            href={`spotify:track:${track.id}`}
+            onClick={(e) => (e.preventDefault(), openInSpotify(track.id))}
+            title="Open in Spotify"
+            className="block transition hover:brightness-110"
+          >
             {track.album.imageUrl ? (
               <img src={track.album.imageUrl} alt={`${track.name} in Spotify`} className="aspect-square w-full rounded-md object-cover shadow-2xl shadow-black/60" />
             ) : (
@@ -166,17 +171,21 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
             <h2 className="mb-2 text-4xl font-extrabold leading-[0.95] tracking-tight text-balance text-zinc-50 xl:text-5xl">{track.name}</h2>
             <p className="font-medium text-zinc-100">{track.artists.map((a) => a.name).join(", ")}</p>
             <p className="truncate text-xs text-zinc-400">{track.album.name}</p>
-            <div className="mt-4 flex items-center gap-3">
-              <button
-                onClick={() => (playingThis ? player.toggle() : void player.play(track.id, track.durationMs))}
-                className="grid size-9 shrink-0 place-items-center rounded-full bg-zinc-100 text-zinc-950 hover:bg-white"
-                aria-label={playingThis && !player.paused ? "Pause" : "Play"}
-              >
-                {playingThis && !player.paused ? <PauseIcon /> : <PlayIcon />}
-              </button>
-              <Progress playing={playingThis} duration={track.durationMs} />
-            </div>
-            <PlayerStatus onRetry={() => void player.play(track.id, track.durationMs)} />
+            {player.enabled && (
+              <>
+                <div className="mt-4 flex items-center gap-3">
+                  <button
+                    onClick={() => (playingThis ? player.toggle() : void player.play(track.id, track.durationMs))}
+                    className="grid size-9 shrink-0 place-items-center rounded-full bg-zinc-100 text-zinc-950 hover:bg-white"
+                    aria-label={playingThis && !player.paused ? "Pause" : "Play"}
+                  >
+                    {playingThis && !player.paused ? <PauseIcon /> : <PlayIcon />}
+                  </button>
+                  <Progress playing={playingThis} duration={track.durationMs} />
+                </div>
+                <PlayerStatus onRetry={() => void player.play(track.id, track.durationMs)} />
+              </>
+            )}
           </div>
         </div>
 
@@ -358,13 +367,16 @@ function Cover({
 
 /** Player hints and errors. */
 function PlayerStatus({ onRetry }: { onRetry: () => void }) {
-  const { devices, error, armed } = usePlayer();
+  const { devices, error, armed, setEnabled } = usePlayer();
   if (error)
     return (
       <p className="mt-2 text-xs text-rose-400">
         {error}{" "}
         <button className="underline hover:text-rose-300" onClick={onRetry}>
           Retry
+        </button>{" "}
+        <button className="underline hover:text-rose-300" onClick={() => setEnabled(false)} title="Back on from ⌘K">
+          Turn off player
         </button>
       </p>
     );

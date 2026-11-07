@@ -33,7 +33,7 @@ export function CommandPalette({
 }) {
   const { lib, audio, picked, hidden, rules, order, removeFromLikes } = useApp();
   const { togglePick, setHidden, createPlaylist, setOrder, setRemoveFromLikes } = useApp.getState();
-  const { devices, deviceId, setDevice } = usePlayer();
+  const { enabled: playerOn, setEnabled: setPlayerOn, devices, deviceId, setDevice } = usePlayer();
   const [query, setQuery] = useState("");
   const [cursor, setCursor] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -75,7 +75,8 @@ export function CommandPalette({
         hint: removeFromLikes ? "on" : "off",
         run: () => setRemoveFromLikes(!removeFromLikes),
       },
-      ...devices.map((d) => ({ key: d.id, label: `Play on ${d.name}`, hint: d.id === deviceId ? "current" : "", run: () => setDevice(d.id) })),
+      { key: "player", label: "Player controls (off: covers and Space open songs in Spotify)", hint: playerOn ? "on" : "off", run: () => setPlayerOn(!playerOn) },
+      ...(playerOn ? devices : []).map((d) => ({ key: d.id, label: `Play on ${d.name}`, hint: d.id === deviceId ? "current" : "", run: () => setDevice(d.id) })),
     ].filter((i) => matches(i.label));
 
     const unhide: Item[] = hidden
@@ -83,7 +84,7 @@ export function CommandPalette({
       .map((id) => ({ key: `hidden-${id}`, label: `Unhide ${name(id)}`, color: colors.get(id), run: () => setHidden(id, false) }));
 
     return ([["Playlists", playlists], ["Settings", settings], ["Hidden", unhide]] as const).filter(([, items]) => items.length > 0);
-  }, [lib, audio, query, picked, hidden, rules, order, removeFromLikes, devices, deviceId, colors, togglePick, setHidden, createPlaylist, setOrder, setRemoveFromLikes, setDevice, onEditRule]);
+  }, [lib, audio, query, picked, hidden, rules, order, removeFromLikes, playerOn, setPlayerOn, devices, deviceId, colors, togglePick, setHidden, createPlaylist, setOrder, setRemoveFromLikes, setDevice, onEditRule]);
 
   const items = groups.flatMap(([, xs]) => xs);
   const choose = (item: Item | undefined) => {

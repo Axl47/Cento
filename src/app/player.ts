@@ -15,8 +15,12 @@ const POLL_MS = 3000;
 const DEVICES_MS = 60_000;
 const RATE_LIMITED = "Spotify is rate-limiting this app. Playback controls come back in a moment.";
 const DEVICE_KEY = "spotify-device-name"; // device ids change between app restarts; names don't
+const ENABLED_KEY = "player-enabled";
 /** The in-page player earlier versions registered; Spotify lists it for a while after. */
 const OLD_IN_PAGE_DEVICE = "Playlist Sorter";
+
+/** Hands the song to the Spotify app itself: listening without the player API. */
+export const openInSpotify = (trackId: string) => location.assign(`spotify:track:${trackId}`);
 
 export type Device = { id: string; name: string; type: string; is_active: boolean; is_restricted: boolean };
 
@@ -28,6 +32,8 @@ type ApiPlayback = {
 };
 
 type PlayerState = {
+  /** Off: no polling or player requests, the controls are hidden, and Play opens the song in Spotify. */
+  enabled: boolean;
   devices: Device[];
   /** Device the app plays on. */
   deviceId: string | null;
@@ -43,6 +49,7 @@ type PlayerState = {
   updatedAt: number;
 
   init: () => void;
+  setEnabled: (on: boolean) => void;
   setDevice: (id: string) => void;
   /** Explicit play (Space, Play button, clicking a song); also arms autoplay. */
   play: (trackId: string, durationMs: number) => Promise<void>;
@@ -67,6 +74,13 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 /** User-facing text for a failed request: a block says until when, a short 429 says it'll pass. */
 const explain = (e: unknown) =>
   e instanceof SpotifyBlockedError ? `${e.message}. Playback controls return then.` : message(e).includes(" 429 ") ? RATE_LIMITED : message(e);
+const savedEnabled = () => {
+  try {
+    return localStorage.getItem(ENABLED_KEY) !== "false";
+  } catch {
+    return true;
+  }
+};
 const savedDeviceName = () => {
   try {
     return localStorage.getItem(DEVICE_KEY);
@@ -79,7 +93,7 @@ export const usePlayer = create<PlayerState>()((set, get) => {
   let polling = false;
   /** Re-reads playback state from Spotify; skipped while one is in flight or we're rate-limited. */
   const poll = async () => {
-    if (polling || client.limited("/me/player")) return;
+    if (polling || !get().enabled || client.limited("/me/player")) return;
     polling = true;
     try {
       const p = await client.get<ApiPlayback | undefined>("/me/player");
@@ -122,6 +136,7 @@ export const usePlayer = create<PlayerState>()((set, get) => {
 
   /** Sends a player command to the target device; on failure explains and refreshes devices. */
   const command = async (method: string, path: string, body?: unknown) => {
+    if (!get().enabled) return;
     const { deviceId, devices } = get();
     if (!deviceId) {
       // A failed lookup already explains itself (e.g. rate-limited); don't blame missing devices.
@@ -142,6 +157,7 @@ export const usePlayer = create<PlayerState>()((set, get) => {
   };
 
   return {
+    enabled: savedEnabled(),
     devices: [],
     deviceId: null,
     error: null,
@@ -153,11 +169,22 @@ export const usePlayer = create<PlayerState>()((set, get) => {
     updatedAt: 0,
 
     init: () => {
-      void loadDevices();
+      if (get().enabled) void loadDevices();
       void poll();
       // Poll only while the tab is visible.
       setInterval(() => document.visibilityState === "visible" && void poll(), POLL_MS);
-      setInterval(() => document.visibilityState === "visible" && !client.limited("/me/player") && void loadDevices(), DEVICES_MS);
+      setInterval(
+        () => document.visibilityState === "visible" && get().enabled && !client.limited("/me/player") && void loadDevices(),
+        DEVICES_MS,
+      );
+    },
+
+    setEnabled: (on) => {
+      try {
+        localStorage.setItem(ENABLED_KEY, String(on));
+      } catch {}
+      set({ enabled: on, error: null, armed: false });
+      if (on) void loadDevices().then(() => poll());
     },
 
     setDevice: (id) => {
@@ -169,6 +196,7 @@ export const usePlayer = create<PlayerState>()((set, get) => {
     },
 
     play: async (trackId, durationMs) => {
+      if (!get().enabled) return openInSpotify(trackId);
       set({ armed: true });
       // Play the track as a position in its album. A plain `uris: [track]` request is accepted
       // but loads nothing on this account (tested against the Mac app, 2026-11), while
