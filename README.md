@@ -71,6 +71,8 @@ track-URI play request is accepted but loads nothing on this account.
   are densest (up to three bubbles for a playlist split across tight groups; see `src/core/clusters.ts`);
   zoom in for songs. The focused song is always labeled, and its nearest neighbors' names show from a
   medium zoom in their playlist's color. Click a playlist to highlight it, click a song to select/play it.
+  **Added between** narrows the map to songs first liked or added to a playlist in that date range (playlist dates
+  arrive with the next resync).
 
 Spotify writes run in order in the background; the header shows pending/failed writes. The app saves its
 view of the library to `data/library.json` (shared with the scripts) through the dev server. Each sort is

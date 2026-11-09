@@ -1,7 +1,7 @@
 // Full-size sound map with a playlist legend (click to highlight, several at once), song search, and a
 // card for the selected song.
 import { useEffect, useMemo, useState } from "react";
-import { inbox, sortTargets } from "../core/library.ts";
+import { firstAdded, inbox, sortTargets } from "../core/library.ts";
 import { SoundMap } from "./SoundMap.tsx";
 import { usePlayer } from "./player.ts";
 import { useApp } from "./store.ts";
@@ -12,6 +12,8 @@ export function MapView({ colors, onSortSong }: { colors: Map<string, string>; o
   const [highlight, setHighlight] = useState<string[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [from, setFrom] = useState(""); // yyyy-mm-dd; empty means no limit on that side
+  const [to, setTo] = useState("");
   const [height, setHeight] = useState(() => Math.max(window.innerHeight - 140, 420));
 
   useEffect(() => {
@@ -28,6 +30,18 @@ export function MapView({ colors, onSortSong }: { colors: Map<string, string>; o
       .filter((x) => x.n > 0)
       .sort((a, b) => b.n - a.n);
   }, [lib, audio, hidden]);
+
+  const dates = useMemo(() => (lib ? firstAdded(lib) : new Map<string, string>()), [lib]);
+  const only = useMemo(() => {
+    if (!from && !to) return null;
+    return new Set(
+      (audio?.ids ?? []).filter((id) => {
+        const day = dates.get(id)?.slice(0, 10);
+        return day !== undefined && (!from || day >= from) && (!to || day <= to);
+      }),
+    );
+  }, [audio, dates, from, to]);
+  const undated = useMemo(() => (audio?.ids ?? []).filter((id) => !dates.has(id)).length, [audio, dates]);
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -62,6 +76,7 @@ export function MapView({ colors, onSortSong }: { colors: Map<string, string>; o
           height={height}
           focusId={selected}
           highlight={highlight}
+          only={only}
           onSelect={setSelected}
         />
       </div>
@@ -119,6 +134,35 @@ export function MapView({ colors, onSortSong }: { colors: Map<string, string>; o
             </div>
           </div>
         )}
+
+        <div>
+          <div className="mb-1.5 flex items-center justify-between text-xs uppercase tracking-wider text-zinc-500">
+            <span>Added between</span>
+            {only && (
+              <button className="normal-case text-zinc-300 hover:text-white" onClick={() => (setFrom(""), setTo(""))}>
+                clear
+              </button>
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {([["From", from, setFrom], ["To", to, setTo]] as const).map(([label, value, set]) => (
+              <input
+                key={label}
+                type="date"
+                aria-label={`Added ${label.toLowerCase()}`}
+                value={value}
+                onChange={(e) => set(e.target.value)}
+                className="w-full rounded-lg border border-white/10 bg-zinc-900 px-2 py-1.5 text-xs text-zinc-100 [color-scheme:dark] focus:border-white/30 focus:outline-none"
+              />
+            ))}
+          </div>
+          {only && (
+            <p className="mt-1.5 text-xs text-zinc-500">
+              {only.size.toLocaleString()} songs in range
+              {undated > 0 && ` · ${undated.toLocaleString()} have no date until you resync`}
+            </p>
+          )}
+        </div>
 
         <div>
           <div className="mb-1.5 flex items-center justify-between text-xs uppercase tracking-wider text-zinc-500">

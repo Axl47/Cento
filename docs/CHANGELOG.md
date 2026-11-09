@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- The sound map can be narrowed to songs added in a date range, and a resync now saves when each song was added to each playlist.
 - A playlist can be marked as not counting as sorted, from `⌘K` or a new on/off row on the sort screen, which brings its songs back into the queue for a proper second pass without changing anything on Spotify.
 - Sort several alike songs at once: upcoming songs that would get the same picks are outlined after the current one; leave any out with a click and sort the rest with `⇧Enter`.
 - `⌘K` (or `/`) opens one palette for finding, checking and creating playlists, hiding and unhiding them, artist rules, queue order, "Remove from Liked Songs" and the playback device.

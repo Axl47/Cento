@@ -23,6 +23,8 @@ type Props = {
   focusZoom?: number;
   /** Playlists to emphasize; every other song turns gray, and focus lines only go to their songs. */
   highlight?: readonly string[];
+  /** When set, only these songs are drawn and hoverable, and playlist bubbles (which summarize every song) are off. */
+  only?: ReadonlySet<string> | null;
   /** Song to point out, e.g. one hovered in a list next to the map. */
   mark?: string | null;
   onSelect?: (trackId: string) => void;
@@ -42,7 +44,7 @@ const NEIGHBOR_LABEL_ZOOM = 1.8; // zoom where the focused song's neighbors get 
 const UNSORTED = "#71717a";
 const FOCUS_NEIGHBORS = 15;
 
-export function SoundMap({ audio, lib, colors, height, focusId, focusZoom, highlight = [], mark, onSelect }: Props) {
+export function SoundMap({ audio, lib, colors, height, focusId, focusZoom, highlight = [], only = null, mark, onSelect }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const view = useRef<View>({ k: 1, cx: 0, cy: 0 });
@@ -133,7 +135,7 @@ export function SoundMap({ audio, lib, colors, height, focusId, focusZoom, highl
 
     const { k } = view.current;
     const groupAlpha = Math.min(Math.max((GROUP_FADE_END - k) / (GROUP_FADE_END - 1), 0), 1);
-    const r = Math.min(Math.max(1.4 * Math.sqrt(k), 1.6), 5);
+    const r = Math.min(Math.max(1.4 * Math.sqrt(k), only ? 3 : 1.6), 5); // a date range can leave few songs: keep them visible
     const highlighting = lit.size > 0;
     // Highlighting colors songs by their highlighted playlist and grays the rest.
     const colorOf = (i: number) => {
@@ -143,11 +145,12 @@ export function SoundMap({ audio, lib, colors, height, focusId, focusZoom, highl
 
     // Songs: gray ones first so highlighted songs draw on top. One path per color, so a frame
     // is a few dozen fills instead of one per song.
-    const dotAlpha = 0.3 + 0.6 * (1 - groupAlpha);
+    const dotAlpha = only ? 0.9 : 0.3 + 0.6 * (1 - groupAlpha);
     for (const pass of highlighting ? [false, true] : [true]) {
       const paths = new Map<string, Path2D>();
       const dr = highlighting && pass ? r + 1 : r;
       for (let i = 0; i < audio.ids.length; i++) {
+        if (only && !only.has(audio.ids[i]!)) continue;
         if (highlighting && lit.has(audio.ids[i]!) !== pass) continue;
         const [sx, sy] = toScreen(...audio.xy[i]!);
         if (sx < -10 || sy < -10 || sx > width + 10 || sy > height + 10) continue;
@@ -179,7 +182,7 @@ export function SoundMap({ audio, lib, colors, height, focusId, focusZoom, highl
     }
 
     // Playlist bubbles (zoomed out)
-    if (groupAlpha > 0) {
+    if (groupAlpha > 0 && !only) {
       const taken: Box[] = focusLabel ? [focusLabel.box] : [];
       ctx.font = "600 11px ui-sans-serif, system-ui";
       for (const g of data.groups) {
@@ -376,6 +379,7 @@ export function SoundMap({ audio, lib, colors, height, focusId, focusZoom, highl
     let best = -1;
     let bestD = 64; // 8px radius, squared
     for (let i = 0; i < audio.ids.length; i++) {
+      if (only && !only.has(audio.ids[i]!)) continue;
       const [px, py] = toScreen(...audio.xy[i]!);
       const d = (px - sx) ** 2 + (py - sy) ** 2;
       if (d < bestD) [best, bestD] = [i, d];

@@ -17,6 +17,8 @@ export type Playlist = {
   name: string;
   imageUrl: string | null;
   trackIds: string[];
+  /** trackId -> when it was added (ISO). Missing on older snapshots until a resync, and for rows Spotify has no date for. */
+  addedAt?: Record<string, string>;
 };
 
 export type Library = {
@@ -47,6 +49,18 @@ export function inbox(lib: Library, hidden: readonly string[] = [], uncounted: r
   const liked = new Set(lib.liked.map((l) => l.id));
   const brought = new Set(lib.playlists.filter((p) => uncounted.includes(p.id)).flatMap((p) => p.trackIds));
   return [...lib.liked, ...[...brought].filter((id) => !liked.has(id)).map((id) => ({ id, addedAt: "" }))].filter((l) => !sorted.has(l.id));
+}
+
+/** trackId -> the earliest date the song was added to any playlist or liked. */
+export function firstAdded(lib: Library): Map<string, string> {
+  const first = new Map<string, string>();
+  const see = (id: string, at: string) => {
+    const known = first.get(id);
+    if (!known || at < known) first.set(id, at);
+  };
+  for (const l of lib.liked) see(l.id, l.addedAt);
+  for (const p of lib.playlists) for (const [id, at] of Object.entries(p.addedAt ?? {})) see(id, at);
+  return first;
 }
 
 type ApiImage = { url: string; width: number | null };
@@ -104,11 +118,16 @@ export async function syncLibrary(
   const playlists: Playlist[] = [];
   for (const p of owned) {
     onProgress(`Fetching ${p.name}`);
-    const items = await client.getAll<{ track: ApiTrack | null }>(
-      `/playlists/${p.id}/tracks?limit=100&fields=next,items(track(${TRACK_FIELDS}))`,
+    const items = await client.getAll<{ added_at: string | null; track: ApiTrack | null }>(
+      `/playlists/${p.id}/tracks?limit=100&fields=next,items(added_at,track(${TRACK_FIELDS}))`,
     );
-    const trackIds = [...new Set(items.map((i) => keep(i.track)).filter((id) => id !== null))];
-    playlists.push({ id: p.id, name: p.name, imageUrl: pickImage(p.images), trackIds });
+    const addedAt: Record<string, string> = {};
+    const ids = items.flatMap((i) => {
+      const id = keep(i.track);
+      if (id && i.added_at) addedAt[id] ??= i.added_at;
+      return id ? [id] : [];
+    });
+    playlists.push({ id: p.id, name: p.name, imageUrl: pickImage(p.images), trackIds: [...new Set(ids)], addedAt });
   }
 
   onProgress("Fetching Liked Songs");
