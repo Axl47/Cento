@@ -10,6 +10,7 @@
     "backfill": "tsx --env-file=.env src/cli/backfill.ts",
     "typecheck": "tsc --noEmit",
     "audio": "tsx --env-file=.env src/cli/audio.ts",
+    "classify": "tsx --env-file=.env src/cli/classify.ts",
     "test": "tsx --test src/**/*.test.ts"
   },
   "devDependencies": {

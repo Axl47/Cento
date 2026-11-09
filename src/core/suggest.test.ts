@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { config } from "./config.ts";
+import { classifierFrom } from "./classifier.ts";
 import { inbox, type Library, type Track } from "./library.ts";
 
 import { buildModel, prechecked, suggest } from "./suggest.ts";
@@ -33,6 +34,24 @@ const lib: Library = {
   ],
 };
 const model = buildModel(lib);
+
+test("a confident sound classifier ranks and checks a playlist even for a new artist", () => {
+  const classifier = classifierFrom({
+    confidence: 0.7,
+    keys: ["stranger"],
+    playlists: [
+      { id: "gym", auc: 0.95, cutoff: 0.6 },
+      { id: "chill", auc: 0.6, cutoff: null },
+    ],
+    scores: [[0.8, 0.9]],
+    picks: [0],
+  });
+  const m = buildModel(lib, { classifier });
+  const ranked = suggest(m, lib.tracks.stranger!);
+  assert.deepEqual(ranked.slice(0, 2).map((s) => s.playlistId), ["chill", "gym"]);
+  // chill scores higher, but only the classifier's pick is checked from sound alone
+  assert.deepEqual(prechecked(m, lib.tracks.stranger!, ranked), ["gym"]);
+});
 
 test("never suggests the all-songs or ignored playlists", () => {
   const ids = suggest(model, lib.tracks.new!).map((s) => s.playlistId);

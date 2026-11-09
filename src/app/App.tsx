@@ -1,6 +1,7 @@
 // App shell: login, loading the shared library/audio files, syncing from Spotify, tabs.
 import { useEffect, useMemo, useState } from "react";
 import { decodeVectors, type AudioIndex } from "../core/audio.ts";
+import type { ClassifierData } from "../core/classifier.ts";
 import type { ArtistRules } from "../core/suggest.ts";
 import type { LedgerEntry } from "../core/ledger.ts";
 import { sortTargets, syncLibrary, type Library } from "../core/library.ts";
@@ -45,15 +46,16 @@ export function App() {
       try {
         if (!(await completeLogin())) return setPhase({ kind: "login" });
         initPlayer();
-        const [library, audio, rules, hidden, ledger] = await Promise.all([
+        const [library, audio, rules, hidden, ledger, classifier] = await Promise.all([
           getJson<Library>("/api/library"),
           getJson<AudioIndex>("/api/audio"),
           getJson<ArtistRules>("/api/rules"),
           getJson<string[]>("/api/hidden"),
           getJson<LedgerEntry[]>("/api/ledger"),
+          getJson<ClassifierData>("/api/classifier"),
         ]);
         if (!library) return setPhase({ kind: "needs-sync" });
-        load(library, audio, rules ?? {}, hidden ?? [], ledger ?? []);
+        load(library, audio, rules ?? {}, hidden ?? [], ledger ?? [], classifier);
         setPhase({ kind: "ready" });
         if (audio) void loadVectors(audio);
       } catch (e) {
@@ -95,12 +97,19 @@ export function App() {
           (await getJson<ArtistRules>("/api/rules")) ?? {},
           (await getJson<string[]>("/api/hidden")) ?? [],
           (await getJson<LedgerEntry[]>("/api/ledger")) ?? [],
+          await getJson<ClassifierData>("/api/classifier"),
         );
         if (audio) void loadVectors(audio);
 
 
         setPhase({ kind: "ready" });
       }
+      // The new sorts are training data. A failure here leaves the previous classifiers in use.
+      setSyncing("Training classifiers…");
+      const trained = await fetch("/api/classifier", { method: "POST" });
+      const classifier = trained.ok ? await getJson<ClassifierData>("/api/classifier") : null;
+      if (classifier) useApp.getState().setClassifier(classifier);
+      else setSyncError("Couldn't retrain the sound classifiers (see the `pnpm dev` output); using the previous ones.");
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       if (phase.kind === "ready") setSyncError(message);

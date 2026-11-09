@@ -5,6 +5,7 @@ import { create } from "zustand";
 import { config } from "../core/config.ts";
 import { inbox, type Library } from "../core/library.ts";
 import { neighborsFrom, type AudioIndex, type Vectors } from "../core/audio.ts";
+import { classifierFrom, type ClassifierData, type SoundClassifier } from "../core/classifier.ts";
 import { applyLedger, unconfirmed, type LedgerEntry } from "../core/ledger.ts";
 import { buildModel, prechecked, suggest, type ArtistRules, type Model, type Neighbors } from "../core/suggest.ts";
 import { addToPlaylist, createPlaylist, removeFromPlaylist, setLiked } from "../core/spotify.ts";
@@ -32,6 +33,8 @@ type State = {
   neighbors: Neighbors | undefined;
   /** Exact sound vectors, loaded in the background after `audio`; null until then or if missing. */
   vectors: Vectors | null;
+  /** Per-playlist sound classifiers (data/classifier.json); undefined until trained. */
+  classifier: SoundClassifier | undefined;
   rules: ArtistRules;
   /** Playlists hidden from suggestions (and ignored when deciding what's sorted). */
   hidden: string[];
@@ -50,7 +53,9 @@ type State = {
   pendingWrites: number;
 
   setVectors: (vectors: Vectors) => void;
-  load: (lib: Library, audio: AudioIndex | null, rules: ArtistRules, hidden: string[], ledger: LedgerEntry[]) => void;
+  /** Takes freshly trained classifiers and re-ranks the queue. */
+  setClassifier: (data: ClassifierData) => void;
+  load: (lib: Library, audio: AudioIndex | null, rules: ArtistRules, hidden: string[], ledger: LedgerEntry[], classifier: ClassifierData | null) => void;
   /** Sets (or with [] clears) a playlist's artist rule, saves it, and updates the current picks. */
   setRule: (playlistId: string, artists: ArtistRules[string]) => void;
   /** Hides a playlist from suggestions (or shows it again), saves, and rebuilds the queue. */
@@ -104,8 +109,8 @@ function buildQueue(lib: Library, model: Model, neighbors: Neighbors | undefined
 }
 
 /** The model never suggests or learns from hidden or uncounted playlists. */
-const modelOf = (lib: Library, rules: ArtistRules, hidden: string[], uncounted: string[]) =>
-  buildModel(lib, { rules, hidden: [...hidden, ...uncounted] });
+const modelOf = (lib: Library, rules: ArtistRules, hidden: string[], uncounted: string[], classifier: SoundClassifier | undefined) =>
+  buildModel(lib, { rules, hidden: [...hidden, ...uncounted], classifier });
 
 const PASS_KEY = "uncounted-playlists";
 
@@ -178,7 +183,7 @@ export const useApp = create<State>()((set, get) => {
 
   const setLib = (lib: Library, keepQueue: boolean) => {
     const s = get();
-    const model = modelOf(lib, s.rules, s.hidden, s.uncounted);
+    const model = modelOf(lib, s.rules, s.hidden, s.uncounted, s.classifier);
     const stillInbox = new Set(inbox(lib, s.hidden, s.uncounted).map((l) => l.id));
     const queue = keepQueue ? s.queue.filter((id) => stillInbox.has(id)) : buildQueue(lib, model, s.neighbors, s.order, s.hidden, s.uncounted);
     set({ lib, model, queue });
@@ -189,7 +194,7 @@ export const useApp = create<State>()((set, get) => {
   const applyExclusions = (hidden: string[], uncounted: string[], dropped?: string) => {
     const s = get();
     if (!s.lib) return set({ hidden, uncounted });
-    const model = modelOf(s.lib, s.rules, hidden, uncounted);
+    const model = modelOf(s.lib, s.rules, hidden, uncounted, s.classifier);
     // The inbox can change (songs only in such a playlist count as unsorted); keep the current song up.
     const current = s.queue[0];
     const rebuilt = buildQueue(s.lib, model, s.neighbors, s.order, hidden, uncounted);
@@ -204,6 +209,7 @@ export const useApp = create<State>()((set, get) => {
     audio: null,
     neighbors: undefined,
     vectors: null,
+    classifier: undefined,
     rules: {},
     hidden: [],
     uncounted: [],
@@ -219,14 +225,26 @@ export const useApp = create<State>()((set, get) => {
 
     setVectors: (vectors) => set({ vectors }),
 
-    load: (synced, audio, rules, hidden, ledger) => {
+    setClassifier: (data) => {
+      set({ classifier: classifierFrom(data) });
+      const { lib, queue } = get();
+      if (!lib) return;
+      setLib(lib, false);
+      // Keep the song you're on; only what comes after it is re-ranked.
+      const current = queue[0];
+      const rebuilt = get().queue;
+      if (current && rebuilt.includes(current)) set({ queue: [current, ...rebuilt.filter((id) => id !== current)] });
+    },
+
+    load: (synced, audio, rules, hidden, ledger, trained) => {
       const lib = applyLedger(synced, ledger);
       const neighbors = audio ? neighborsFrom(audio) : undefined;
       const { uncounted, shelf } = readPass(lib);
-      const model = modelOf(lib, rules, hidden, uncounted);
+      const classifier = trained ? classifierFrom(trained) : undefined;
+      const model = modelOf(lib, rules, hidden, uncounted, classifier);
       const order: Order = audio ? "similar" : "confident";
       const queue = buildQueue(lib, model, neighbors, order, hidden, uncounted);
-      set({ lib, model, audio, neighbors, rules, hidden, uncounted, shelf, ledger, order, queue, picked: initialPicks({ lib, model, neighbors }, queue[0]) });
+      set({ lib, model, audio, neighbors, classifier, rules, hidden, uncounted, shelf, ledger, order, queue, picked: initialPicks({ lib, model, neighbors }, queue[0]) });
     },
 
     setHidden: (playlistId, hide) => {
@@ -255,14 +273,14 @@ export const useApp = create<State>()((set, get) => {
     },
 
     setRule: (playlistId, artists) => {
-      const { lib, queue, picked, neighbors, hidden, uncounted } = get();
+      const { lib, queue, picked, neighbors, hidden, uncounted, classifier } = get();
       const rules = { ...get().rules };
       if (artists.length) rules[playlistId] = artists;
       else delete rules[playlistId];
       void fetch("/api/rules", { method: "PUT", body: JSON.stringify(rules) });
       if (!lib) return set({ rules });
 
-      const model = modelOf(lib, rules, hidden, uncounted);
+      const model = modelOf(lib, rules, hidden, uncounted, classifier);
       const track = queue[0] ? lib.tracks[queue[0]] : undefined;
       if (!track) return set({ rules, model });
       // Keep your picks except ones the rules now rule out, and check new rule matches.

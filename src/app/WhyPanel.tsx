@@ -29,10 +29,12 @@ export function WhyPanel({
   onMark: (trackId: string | null) => void;
   onEditRule: () => void;
 }) {
-  const { lib, model, audio, neighbors, vectors, rules, hidden, setHidden } = useApp();
+  const { lib, model, audio, neighbors, vectors, rules, hidden, setHidden, classifier } = useApp();
   const play = usePlayer((s) => s.play);
   const color = colors.get(playlistId) ?? "#a092ab";
   const playlist = lib?.playlists.find((p) => p.id === playlistId);
+  const soundScore = classifier?.score(track.id, playlistId);
+  const fit = classifier?.fit(playlistId);
 
   const evidence = useMemo(() => {
     if (!lib || !model || !playlist) return null;
@@ -141,6 +143,14 @@ export function WhyPanel({
             })}
           </div>
         </Evidence>
+      )}
+
+      {soundScore !== undefined && (
+        <p className="text-xs text-zinc-400">
+          Sound model: <b className="font-semibold text-zinc-200">{Math.round(Math.min(Math.max(soundScore, 0), 1) * 100)}%</b> fit
+          {fit?.auc != null && ` · ${fit.auc.toFixed(2)} on new artists`}
+          {fit && (fit.cutoff != null ? ` · auto-checks at ${Math.round(Math.min(Math.max(fit.cutoff, 0), 1) * 100)}%` : " · too unreliable to auto-check")}
+        </p>
       )}
 
       {!evidence.hasAudio && audio && <p className="text-xs text-zinc-500">No audio for this song, so there's nothing to compare it to.</p>}

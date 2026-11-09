@@ -8,6 +8,7 @@
 import { readFile } from "node:fs/promises";
 import { loadLibrary } from "./auth.ts";
 import { neighborsFrom, type AudioIndex } from "../core/audio.ts";
+import { classifierFrom, type ClassifierData } from "../core/classifier.ts";
 import { inbox, sortTargets } from "../core/library.ts";
 import { buildModel, knownArtistSongs, prechecked, suggest, type ArtistRules, type Neighbors } from "../core/suggest.ts";
 import { PRECHECK } from "../core/config.ts";
@@ -16,6 +17,11 @@ const FOLDS = 5;
 const lib = await loadLibrary();
 const audio = await readFile("data/audio.json", "utf8")
   .then((s) => neighborsFrom(JSON.parse(s) as AudioIndex))
+  .catch(() => undefined);
+
+// A sorted song's classifier score comes from models that never saw it or its artists, so it's fair to use here.
+const classifier = await readFile("data/classifier.json", "utf8")
+  .then((s) => classifierFrom(JSON.parse(s) as ClassifierData))
   .catch(() => undefined);
 
 const rules = await readFile("data/rules.json", "utf8")
@@ -44,20 +50,24 @@ const recall = (ranked: string[], truth: string[], k: number) =>
 
 const variants: [string, Neighbors | undefined][] = [["no audio", undefined]];
 if (audio) variants.push(["with audio", audio]);
+if (audio && classifier) variants.push(["classifier", audio]);
 
 for (let f = 0; f < FOLDS; f++) {
   const test = shuffled.filter((_, i) => i % FOLDS === f);
-  const model = buildModel(lib, { rules, hidden, trainIds: new Set(shuffled.filter((_, i) => i % FOLDS !== f)) });
+  const trainIds = new Set(shuffled.filter((_, i) => i % FOLDS !== f));
+  const plain = buildModel(lib, { rules, hidden, trainIds });
+  const withClassifier = buildModel(lib, { rules, hidden, trainIds, classifier });
 
   for (const id of test) {
     const track = lib.tracks[id]!;
     const truth = full.membership.get(id)!;
-    const bucket = knownArtistSongs(model, track).size > 0 ? "known" : "new";
+    const bucket = knownArtistSongs(plain, track).size > 0 ? "known" : "new";
     const picked = truth[Math.floor(rand() * truth.length)]!;
     const hasAudio = audio ? audio(id).length > 0 : false;
 
     for (const [name, nb] of variants) {
       if (nb && !hasAudio) continue; // compare like with like: only songs that have audio
+      const model = name === "classifier" ? withClassifier : plain;
       const scored = suggest(model, track, [], nb);
       const cold = scored.map((s) => s.playlistId);
       // Prechecked suggestions (what the app checks for you): how many, and how many are right.

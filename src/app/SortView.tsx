@@ -3,7 +3,7 @@
 // session's sorts. The panel on the right explains the focused tile (hover or ↑↓).
 import { useEffect, useMemo, useState } from "react";
 import { sortTargets } from "../core/library.ts";
-import { suggest, type Suggestion } from "../core/suggest.ts";
+import { knownArtistSongs, suggest, type Suggestion } from "../core/suggest.ts";
 import { CommandPalette } from "./CommandPalette.tsx";
 import { RuleEditor } from "./RuleEditor.tsx";
 import { WhyPanel } from "./WhyPanel.tsx";
@@ -52,15 +52,16 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
   }, [suggestions, picked]);
 
   // A run: the songs right after this one that the model would precheck exactly the same way.
-  // Prechecks only happen for artists you've sorted before, so a run is never sound alone.
+  // Only artists you've sorted before can be in one: a run is never sorted on sound alone.
   const run = useMemo(() => {
     if (!lib || !model || !trackId) return [];
+    const known = (id: string) => knownArtistSongs(model, lib.tracks[id]!).size > 0;
     const key = (id: string) => initialPicks({ lib, model, neighbors }, id).toSorted().join();
     const mine = key(trackId);
-    if (!mine) return [];
+    if (!mine || !known(trackId)) return [];
     const out: string[] = [];
     for (const id of queue.slice(1, 1 + MAX_RUN)) {
-      if (key(id) !== mine) break;
+      if (key(id) !== mine || !known(id)) break;
       out.push(id);
     }
     return out;

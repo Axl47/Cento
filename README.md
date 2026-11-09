@@ -40,8 +40,8 @@ works. Needs Premium and Spotify open somewhere. Tracks are started as a positio
 track-URI play request is accepted but loads nothing on this account.
 
 - **Sort**: the current liked song plays from ~35% in. Its playlists show as tiles; the bar on each is the
-  model's confidence. Confident suggestions start checked, but only for artists you've sorted before
-  (audio-only prechecks were right ~35% of the time; see `pnpm eval`). `1`–`8` toggle, `Enter` sorts (adds to
+  model's confidence. Confident suggestions start checked. For artists you've never sorted, that's limited to the one
+  playlist the sound classifier is confident about (see `pnpm classify`). `1`–`8` toggle, `Enter` sorts (adds to
   checked playlists + the all-songs playlist, removes from Liked Songs), `S` skips, `Space` play/pause,
   `←`/`→` seek 10s, `M` switches tabs.
   - **Runs**: when the next songs would be prechecked exactly like this one, they're outlined after it.
@@ -97,4 +97,8 @@ Spotify shows them; entries older than a day are dropped too.
 - `pnpm audio [--vectors <file>]` runs the engine (or reads its vectors) and writes `data/audio.json`:
   top-50 neighbors and a UMAP layout per track, plus `data/vectors.bin` (8-bit vectors, ~8 MB) so the app
   can rank any playlist's closest songs. Skipped when vectors and settings are unchanged.
+- `pnpm classify` trains one sound classifier per playlist from your sorted songs (seconds, on the engine's vectors)
+  and writes `data/classifier.json`. Run it after `pnpm audio`; a resync in the app also runs it. Its scores replace
+  the nearest-neighbor vote where available, and it can check one playlist from sound alone when it's confident and that
+  playlist is reliably predictable (a held-out test on new artists: about two-thirds of those checks were already right).
 - `pnpm test` runs the suggestion-model tests.

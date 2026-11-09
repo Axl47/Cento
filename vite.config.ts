@@ -2,6 +2,7 @@ import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import basicSsl from "@vitejs/plugin-basic-ssl";
+import { spawn } from "node:child_process";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
@@ -14,6 +15,8 @@ import { join, resolve } from "node:path";
  *   GET/PUT /api/ledger   -> data/ledger.json (sorts not yet confirmed by a resync; same)
  *   GET     /api/audio    -> data/audio.json (404 until `pnpm audio` has run)
  *   GET     /api/vectors  -> data/vectors.bin (same; binary)
+ *   GET     /api/classifier -> data/classifier.json (404 until `pnpm classify` has run)
+ *   POST    /api/classifier -> retrains it, replying once it's done
  */
 /** Vite serves any file under the root (also via /@fs/); keep .cache/ and data/ private. */
 function isPrivate(url: string): boolean {
@@ -34,6 +37,7 @@ function localData(): Plugin {
     "/api/ledger": "data/ledger.json",
     "/api/audio": "data/audio.json",
     "/api/vectors": "data/vectors.bin",
+    "/api/classifier": "data/classifier.json",
   };
   const writable = new Set(["data/library.json", "data/rules.json", "data/hidden.json", "data/ledger.json"]);
 
@@ -45,6 +49,10 @@ function localData(): Plugin {
         if (isPrivate(req.url ?? "")) return void res.writeHead(403).end();
         const path = files[req.url ?? ""];
         if (!path) return next();
+        if (req.method === "POST" && req.url === "/api/classifier") {
+          const code = await new Promise<number | null>((done) => spawn("pnpm", ["classify"], { stdio: "inherit" }).on("close", done));
+          return void res.writeHead(code === 0 ? 204 : 500).end();
+        }
         if (req.method === "PUT" && writable.has(path)) {
           const chunks: Buffer[] = [];
           for await (const chunk of req) chunks.push(chunk as Buffer);

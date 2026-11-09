@@ -1,11 +1,12 @@
 // Playlist suggestions learned from how songs are already sorted. Three signals:
 //   artist   share of the artist's other sorted songs in each playlist
-//   audio    playlists of the song's nearest sorted neighbors by sound (optional)
+//   audio    the playlist's sound classifier, or else its share of the song's nearest sorted neighbors (optional)
 //   pairing  playlists that usually go with the ones already picked for this song
 // plus artist rules you set: a playlist with a rule is suggested (at the top, prechecked)
 // only for songs by one of its artists, and never for anything else. Hidden playlists are
 // left out entirely: never suggested, and not learned from.
 import { PRECHECK } from "./config.ts";
+import type { SoundClassifier } from "./classifier.ts";
 import { sortTargets, type Library, type Track } from "./library.ts";
 
 const ARTIST_SMOOTHING = 1; // pseudo-songs pulling sparse artist counts toward the prior
@@ -27,6 +28,7 @@ export type Model = {
   artistSongs: Map<string, Set<string>>;
   /** pair.get(r)?.get(p) = P(song in p | song in r) */
   pair: Map<string, Map<string, number>>;
+  classifier?: SoundClassifier;
 };
 
 export type Suggestion = {
@@ -39,7 +41,7 @@ export type Suggestion = {
 /** Learns from sort-target memberships. Pass `trainIds` to hold songs out (evaluation). */
 export function buildModel(
   lib: Library,
-  { rules = {}, hidden = [], trainIds }: { rules?: ArtistRules; hidden?: readonly string[]; trainIds?: Set<string> } = {},
+  { rules = {}, hidden = [], trainIds, classifier }: { rules?: ArtistRules; hidden?: readonly string[]; trainIds?: Set<string>; classifier?: SoundClassifier } = {},
 ): Model {
   const targets = sortTargets(lib, hidden);
 
@@ -81,6 +83,7 @@ export function buildModel(
     prior: new Map(playlistIds.map((p) => [p, (size.get(p) ?? 0) / total])),
     artistSongs,
     pair,
+    classifier,
   };
 }
 
@@ -119,7 +122,13 @@ export function suggest(model: Model, track: Track, picked: string[] = [], neigh
   // Artist overlap is trusted more the more of the artist's songs we've seen; the rest of
   // the weight goes to audio and pairing (whichever are available), else to the prior.
   const wArtist = artist.n / (artist.n + 2);
-  const wAudio = audio.n > 0 ? 1 : 0;
+  const soundScore = (p: string) => model.classifier?.score(track.id, p);
+  const hasSound = audio.n > 0 || model.playlistIds.some((p) => soundScore(p) !== undefined);
+  const audioScore = (p: string) => {
+    const s = soundScore(p);
+    return s === undefined ? (audio.counts.get(p) ?? 0) / (audio.n || 1) : Math.min(Math.max(s, 0), 1);
+  };
+  const wAudio = hasSound ? 1 : 0;
   const wPairing = picked.length > 0 ? 1 : 0;
   const others = wAudio + wPairing;
 
@@ -134,7 +143,7 @@ export function suggest(model: Model, track: Track, picked: string[] = [], neigh
       const parts = {
         rule: 0,
         artist: wArtist * artistScore(p),
-        audio: others ? (rest * wAudio * ((audio.counts.get(p) ?? 0) / (audio.n || 1))) / others : 0,
+        audio: others ? (rest * wAudio * audioScore(p)) / others : 0,
         pairing: others ? (rest * wPairing * pairingScore(p)) / others : 0,
         prior: others ? 0 : rest * (model.prior.get(p) ?? 0),
       };
@@ -144,11 +153,13 @@ export function suggest(model: Model, track: Track, picked: string[] = [], neigh
 }
 
 /**
- * Playlists to check automatically: artist-rule matches always; learned suggestions only for
- * artists you've sorted before (with audio as the only evidence, prechecks were right ~35% of
- * the time at any useful cutoff; see `pnpm eval`).
+ * Playlists to check automatically: artist-rule matches always; learned suggestions for artists
+ * you've sorted before; and for artists you haven't, the one playlist the sound classifier is
+ * confident about (only playlists that sound predicts reliably can be picked; see `pnpm eval`).
  */
 export function prechecked(model: Model, track: Track, suggestions: Suggestion[]): string[] {
   const known = knownArtistSongs(model, track).size > 0;
-  return suggestions.filter((s) => s.parts.rule > 0 || (known && s.score >= PRECHECK)).map((s) => s.playlistId);
+  return suggestions
+    .filter((s) => s.parts.rule > 0 || (known ? s.score >= PRECHECK : model.classifier?.confident(track.id, s.playlistId)))
+    .map((s) => s.playlistId);
 }
