@@ -31,8 +31,8 @@ export function CommandPalette({
   onClose: () => void;
   onEditRule: (playlistId: string) => void;
 }) {
-  const { lib, audio, picked, hidden, rules, order, removeFromLikes } = useApp();
-  const { togglePick, setHidden, createPlaylist, setOrder, setRemoveFromLikes } = useApp.getState();
+  const { lib, audio, picked, hidden, uncounted, rules, order, removeFromLikes } = useApp();
+  const { togglePick, setHidden, setUncounted, createPlaylist, setOrder, setRemoveFromLikes } = useApp.getState();
   const { enabled: playerOn, setEnabled: setPlayerOn, devices, deviceId, setDevice } = usePlayer();
   const [query, setQuery] = useState("");
   const [cursor, setCursor] = useState(0);
@@ -54,10 +54,11 @@ export function CommandPalette({
             key: p.id,
             label: p.name,
             color: colors.get(p.id),
-            hint: [picked.includes(p.id) && "checked", hidden.includes(p.id) && "hidden", rules[p.id] && "artist rule"].filter(Boolean).join(", "),
+            hint: [picked.includes(p.id) && "checked", hidden.includes(p.id) && "hidden", uncounted.includes(p.id) && "not counted", rules[p.id] && "artist rule"].filter(Boolean).join(", "),
             run: () => togglePick(p.id),
             extra: [
               { label: hidden.includes(p.id) ? "Unhide" : "Hide", run: () => setHidden(p.id, !hidden.includes(p.id)) },
+              { label: uncounted.includes(p.id) ? "Count as sorted" : "Don't count", run: () => setUncounted(p.id, !uncounted.includes(p.id)) },
               { label: "Artists…", run: () => onEditRule(p.id) },
             ],
           }))
@@ -84,7 +85,7 @@ export function CommandPalette({
       .map((id) => ({ key: `hidden-${id}`, label: `Unhide ${name(id)}`, color: colors.get(id), run: () => setHidden(id, false) }));
 
     return ([["Playlists", playlists], ["Settings", settings], ["Hidden", unhide]] as const).filter(([, items]) => items.length > 0);
-  }, [lib, audio, query, picked, hidden, rules, order, removeFromLikes, playerOn, setPlayerOn, devices, deviceId, colors, togglePick, setHidden, createPlaylist, setOrder, setRemoveFromLikes, setDevice, onEditRule]);
+  }, [lib, audio, query, picked, hidden, uncounted, rules, order, removeFromLikes, playerOn, setPlayerOn, devices, deviceId, colors, togglePick, setHidden, setUncounted, createPlaylist, setOrder, setRemoveFromLikes, setDevice, onEditRule]);
 
   const items = groups.flatMap(([, xs]) => xs);
   const choose = (item: Item | undefined) => {

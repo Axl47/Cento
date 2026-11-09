@@ -7,7 +7,7 @@ import { usePlayer } from "./player.ts";
 import { useApp } from "./store.ts";
 
 export function MapView({ colors, onSortSong }: { colors: Map<string, string>; onSortSong: (id: string) => void }) {
-  const { lib, audio, hidden } = useApp();
+  const { lib, audio, hidden, uncounted } = useApp();
   const play = usePlayer((s) => s.play);
   const [highlight, setHighlight] = useState<string[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -48,7 +48,7 @@ export function MapView({ colors, onSortSong }: { colors: Map<string, string>; o
     );
 
   const track = selected ? lib.tracks[selected] : undefined;
-  const inInbox = selected ? inbox(lib, hidden).some((l) => l.id === selected) : false;
+  const inInbox = selected ? inbox(lib, hidden, uncounted).some((l) => l.id === selected) : false;
 
   const playlistsOf = (id: string) => sortTargets(lib).filter((p) => p.trackIds.includes(id));
 

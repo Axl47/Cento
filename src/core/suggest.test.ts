@@ -88,6 +88,18 @@ test("hidden playlists are never suggested, and songs only in them still need so
   const onlyHidden: Library = { ...lib, liked: [{ id: "new", addedAt: "" }], playlists: [...lib.playlists, { id: "best", name: "Best of", imageUrl: null, trackIds: ["new"] }] };
   assert.deepEqual(inbox(onlyHidden).map((l) => l.id), []);
   assert.deepEqual(inbox(onlyHidden, ["best"]).map((l) => l.id), ["new"]);
+
+  // Uncounted: its songs come back even when no longer liked, once each, unless another playlist counts them.
+  const pass: Library = {
+    ...lib,
+    liked: [{ id: "new", addedAt: "2026" }],
+    playlists: [
+      { id: "artist", name: "Artist", imageUrl: null, trackIds: ["new", "s1", "s4"] },
+      { id: "chill", name: "Chill", imageUrl: null, trackIds: ["s1"] },
+    ],
+  };
+  assert.deepEqual(inbox(pass).map((l) => l.id), []);
+  assert.deepEqual(inbox(pass, [], ["artist"]).map((l) => l.id), ["new", "s4"]);
 });
 
 test("an empty rule is the same as no rule", () => {

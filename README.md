@@ -62,6 +62,11 @@ track-URI play request is accepted but loads nothing on this account.
   liked song that's only in hidden playlists still counts as unsorted. You can still pick one from `⌘K`,
   which also lists them to unhide. Saved in `data/hidden.json`.
 
+- **Not counted as sorted**: for doing a rough pass into a catch-all playlist (one per artist, say) and a proper
+  one later. In `⌘K`, search for a playlist and choose **Don't count**. It joins a row on the sort screen where a
+  click switches it on or off. While on, its songs are back in the queue even if they're no longer liked, unless
+  another playlist that counts already has them, and it isn't suggested. Nothing changes on Spotify, and the row is saved in this browser.
+
 - **Sound map**: every song placed by sound. Zoomed out, each playlist shows as a bubble where its songs
   are densest (up to three bubbles for a playlist split across tight groups; see `src/core/clusters.ts`);
   zoom in for songs. The focused song is always labeled, and its nearest neighbors' names show from a

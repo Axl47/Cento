@@ -119,11 +119,15 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
   if (!lib || !model) return null;
   if (!track)
     return (
-      <div className="grid h-96 place-items-center text-center">
-        <div>
-          <div className="text-3xl font-extrabold text-zinc-50">Inbox zero</div>
-          <div className="mt-1 text-sm text-zinc-400">Every liked song is sorted.</div>
+      <div>
+        <UncountedRow onAdd={() => setPalette(true)} />
+        <div className="grid h-96 place-items-center text-center">
+          <div>
+            <div className="text-3xl font-extrabold text-zinc-50">Inbox zero</div>
+            <div className="mt-1 text-sm text-zinc-400">Every liked song is sorted.</div>
+          </div>
         </div>
+        {palette && <CommandPalette colors={colors} onClose={() => setPalette(false)} onEditRule={setRuleFor} />}
       </div>
     );
 
@@ -151,6 +155,7 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
             Search, create, settings <kbd>⌘K</kbd>
           </button>
         </div>
+        <UncountedRow onAdd={() => setPalette(true)} />
 
         {/* The song */}
         <div className="grid grid-cols-[160px_minmax(0,1fr)] items-end gap-5 sm:grid-cols-[200px_minmax(0,1fr)]">
@@ -423,3 +428,31 @@ const PauseIcon = () => (
     <path d="M3.5 2.5h3v11h-3zM9.5 2.5h3v11h-3z" />
   </svg>
 );
+
+/** The on/off row for playlists that shouldn't count as sorted, for doing a rough pass and a proper one later. */
+function UncountedRow({ onAdd }: { onAdd: () => void }) {
+  const { lib, uncounted, shelf } = useApp();
+  const { setUncounted, dropFromShelf } = useApp.getState();
+  const name = (id: string) => lib?.playlists.find((p) => p.id === id)?.name ?? "Deleted playlist";
+  return (
+    <div className="-mt-2 mb-5 flex flex-wrap items-center gap-1.5 text-xs text-zinc-400">
+      <span>Not counted as sorted:</span>
+      {shelf.map((id) => {
+        const on = uncounted.includes(id);
+        return (
+          <span key={id} className={`inline-flex items-center rounded-full border ${on ? "border-white/40 bg-white/10 text-zinc-100" : "border-white/10 text-zinc-500"}`}>
+            <button aria-pressed={on} onClick={() => setUncounted(id, !on)} className="py-0.5 pl-2.5 pr-1 hover:text-zinc-50">
+              {name(id)}
+            </button>
+            <button aria-label={`Remove ${name(id)} from this row`} onClick={() => dropFromShelf(id)} className="py-0.5 pl-1 pr-2 text-zinc-500 hover:text-zinc-100">
+              ×
+            </button>
+          </span>
+        );
+      })}
+      <button onClick={onAdd} title="Search for a playlist, then choose Don't count" className="text-zinc-500 underline-offset-2 hover:text-zinc-200 hover:underline">
+        {shelf.length ? "Add…" : "Add a playlist…"}
+      </button>
+    </div>
+  );
+}

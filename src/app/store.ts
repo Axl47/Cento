@@ -35,6 +35,10 @@ type State = {
   rules: ArtistRules;
   /** Playlists hidden from suggestions (and ignored when deciding what's sorted). */
   hidden: string[];
+  /** Playlists currently not counting as sorted: their songs are back in the queue, and they aren't suggested. */
+  uncounted: string[];
+  /** Playlists kept in the sort screen's on/off row, whether or not they're uncounted right now. */
+  shelf: string[];
   /** Sorts made here that a resync hasn't confirmed yet. */
   ledger: LedgerEntry[];
   queue: string[];
@@ -51,6 +55,10 @@ type State = {
   setRule: (playlistId: string, artists: ArtistRules[string]) => void;
   /** Hides a playlist from suggestions (or shows it again), saves, and rebuilds the queue. */
   setHidden: (playlistId: string, hide: boolean) => void;
+  /** Switches whether a playlist counts as sorted, and keeps it in the on/off row. */
+  setUncounted: (playlistId: string, on: boolean) => void;
+  /** Takes a playlist out of the on/off row, so it counts as sorted again. */
+  dropFromShelf: (playlistId: string) => void;
   /** Creates a private Spotify playlist, adds it to the library, and checks it for the current song. */
   createPlaylist: (name: string) => Promise<void>;
   /** Takes freshly synced data, keeping sorts Spotify doesn't show yet. */
@@ -74,8 +82,8 @@ export function initialPicks(s: Pick<State, "lib" | "model" | "neighbors">, trac
 }
 
 /** Orders the inbox. "similar" chains each song to its nearest unsorted neighbor by sound. */
-function buildQueue(lib: Library, model: Model, neighbors: Neighbors | undefined, order: Order, hidden: string[]): string[] {
-  const items = inbox(lib, hidden);
+function buildQueue(lib: Library, model: Model, neighbors: Neighbors | undefined, order: Order, hidden: string[], uncounted: string[]): string[] {
+  const items = inbox(lib, hidden, uncounted);
   if (order === "newest") return items.toSorted((a, b) => b.addedAt.localeCompare(a.addedAt)).map((l) => l.id);
 
   const confidence = new Map(
@@ -93,6 +101,31 @@ function buildQueue(lib: Library, model: Model, neighbors: Neighbors | undefined
     cur = neighbors(cur).find((n) => remaining.has(n.id))?.id ?? remaining.values().next().value;
   }
   return chain;
+}
+
+/** The model never suggests or learns from hidden or uncounted playlists. */
+const modelOf = (lib: Library, rules: ArtistRules, hidden: string[], uncounted: string[]) =>
+  buildModel(lib, { rules, hidden: [...hidden, ...uncounted] });
+
+const PASS_KEY = "uncounted-playlists";
+
+/** The uncounted state is a view of the sorting queue, so it stays in this browser and never reaches Spotify. */
+function readPass(lib: Library): { uncounted: string[]; shelf: string[] } {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PASS_KEY) ?? "null") as { uncounted: string[]; shelf: string[] } | null;
+    const known = (ids: string[] | undefined) => (ids ?? []).filter((id) => lib.playlists.some((p) => p.id === id));
+    return { uncounted: known(saved?.uncounted), shelf: known(saved?.shelf) };
+  } catch {
+    return { uncounted: [], shelf: [] };
+  }
+}
+
+function savePass(uncounted: string[], shelf: string[]) {
+  try {
+    localStorage.setItem(PASS_KEY, JSON.stringify({ uncounted, shelf }));
+  } catch {
+    // Blocked storage only means the row resets on reload.
+  }
 }
 
 /** Saves the ledger to data/ledger.json; throws if the dev server didn't take it. */
@@ -145,11 +178,24 @@ export const useApp = create<State>()((set, get) => {
 
   const setLib = (lib: Library, keepQueue: boolean) => {
     const s = get();
-    const model = buildModel(lib, { rules: s.rules, hidden: s.hidden });
-    const stillInbox = new Set(inbox(lib, s.hidden).map((l) => l.id));
-    const queue = keepQueue ? s.queue.filter((id) => stillInbox.has(id)) : buildQueue(lib, model, s.neighbors, s.order, s.hidden);
+    const model = modelOf(lib, s.rules, s.hidden, s.uncounted);
+    const stillInbox = new Set(inbox(lib, s.hidden, s.uncounted).map((l) => l.id));
+    const queue = keepQueue ? s.queue.filter((id) => stillInbox.has(id)) : buildQueue(lib, model, s.neighbors, s.order, s.hidden, s.uncounted);
     set({ lib, model, queue });
     persist(lib);
+  };
+
+  /** Rebuilds the model and queue after playlists stop or start counting; `dropped` leaves the current picks. */
+  const applyExclusions = (hidden: string[], uncounted: string[], dropped?: string) => {
+    const s = get();
+    if (!s.lib) return set({ hidden, uncounted });
+    const model = modelOf(s.lib, s.rules, hidden, uncounted);
+    // The inbox can change (songs only in such a playlist count as unsorted); keep the current song up.
+    const current = s.queue[0];
+    const rebuilt = buildQueue(s.lib, model, s.neighbors, s.order, hidden, uncounted);
+    const queue = current && rebuilt.includes(current) ? [current, ...rebuilt.filter((id) => id !== current)] : rebuilt;
+    const picked = queue[0] === current ? s.picked.filter((p) => p !== dropped) : initialPicks({ ...s, model }, queue[0]);
+    set({ hidden, uncounted, model, queue, picked });
   };
 
   return {
@@ -160,6 +206,8 @@ export const useApp = create<State>()((set, get) => {
     vectors: null,
     rules: {},
     hidden: [],
+    uncounted: [],
+    shelf: [],
     ledger: [],
     queue: [],
     picked: [],
@@ -174,35 +222,47 @@ export const useApp = create<State>()((set, get) => {
     load: (synced, audio, rules, hidden, ledger) => {
       const lib = applyLedger(synced, ledger);
       const neighbors = audio ? neighborsFrom(audio) : undefined;
-      const model = buildModel(lib, { rules, hidden });
+      const { uncounted, shelf } = readPass(lib);
+      const model = modelOf(lib, rules, hidden, uncounted);
       const order: Order = audio ? "similar" : "confident";
-      const queue = buildQueue(lib, model, neighbors, order, hidden);
-      set({ lib, model, audio, neighbors, rules, hidden, ledger, order, queue, picked: initialPicks({ lib, model, neighbors }, queue[0]) });
+      const queue = buildQueue(lib, model, neighbors, order, hidden, uncounted);
+      set({ lib, model, audio, neighbors, rules, hidden, uncounted, shelf, ledger, order, queue, picked: initialPicks({ lib, model, neighbors }, queue[0]) });
     },
 
     setHidden: (playlistId, hide) => {
       const s = get();
       const hidden = hide ? [...new Set([...s.hidden, playlistId])] : s.hidden.filter((p) => p !== playlistId);
       void fetch("/api/hidden", { method: "PUT", body: JSON.stringify(hidden) });
-      if (!s.lib) return set({ hidden });
-      const model = buildModel(s.lib, { rules: s.rules, hidden });
-      // The inbox can change (songs only in a hidden playlist count as unsorted); keep the current song up.
-      const current = s.queue[0];
-      const rebuilt = buildQueue(s.lib, model, s.neighbors, s.order, hidden);
-      const queue = current && rebuilt.includes(current) ? [current, ...rebuilt.filter((id) => id !== current)] : rebuilt;
-      const picked = queue[0] === current ? s.picked.filter((p) => !(hide && p === playlistId)) : initialPicks({ ...s, model }, queue[0]);
-      set({ hidden, model, queue, picked });
+      applyExclusions(hidden, s.uncounted, hide ? playlistId : undefined);
+    },
+
+    setUncounted: (playlistId, on) => {
+      const s = get();
+      const uncounted = on ? [...new Set([...s.uncounted, playlistId])] : s.uncounted.filter((p) => p !== playlistId);
+      const shelf = [...new Set([...s.shelf, playlistId])];
+      savePass(uncounted, shelf);
+      set({ shelf });
+      applyExclusions(s.hidden, uncounted, on ? playlistId : undefined);
+    },
+
+    dropFromShelf: (playlistId) => {
+      const s = get();
+      const uncounted = s.uncounted.filter((p) => p !== playlistId);
+      const shelf = s.shelf.filter((p) => p !== playlistId);
+      savePass(uncounted, shelf);
+      set({ shelf });
+      applyExclusions(s.hidden, uncounted);
     },
 
     setRule: (playlistId, artists) => {
-      const { lib, queue, picked, neighbors, hidden } = get();
+      const { lib, queue, picked, neighbors, hidden, uncounted } = get();
       const rules = { ...get().rules };
       if (artists.length) rules[playlistId] = artists;
       else delete rules[playlistId];
       void fetch("/api/rules", { method: "PUT", body: JSON.stringify(rules) });
       if (!lib) return set({ rules });
 
-      const model = buildModel(lib, { rules, hidden });
+      const model = modelOf(lib, rules, hidden, uncounted);
       const track = queue[0] ? lib.tracks[queue[0]] : undefined;
       if (!track) return set({ rules, model });
       // Keep your picks except ones the rules now rule out, and check new rule matches.
@@ -237,9 +297,9 @@ export const useApp = create<State>()((set, get) => {
     },
 
     setOrder: (order) => {
-      const { lib, model, neighbors, hidden } = get();
+      const { lib, model, neighbors, hidden, uncounted } = get();
       if (!lib || !model) return;
-      const queue = buildQueue(lib, model, neighbors, order, hidden);
+      const queue = buildQueue(lib, model, neighbors, order, hidden, uncounted);
       set({ order, queue, picked: initialPicks(get(), queue[0]) });
     },
 

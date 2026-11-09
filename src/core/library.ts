@@ -37,11 +37,16 @@ export const sortTargets = (lib: Library, hidden: readonly string[] = []) =>
     (p) => p.id !== config.allPlaylistId && !config.ignoredPlaylistIds.includes(p.id) && !hidden.includes(p.id),
   );
 
-/** Liked songs that are in no sort target yet: the inbox. Hidden playlists don't count as sorted. */
-export function inbox(lib: Library, hidden: readonly string[] = []) {
-  const sorted = new Set(sortTargets(lib, hidden).flatMap((p) => p.trackIds));
-
-  return lib.liked.filter((l) => !sorted.has(l.id));
+/**
+ * The songs left to sort: liked songs plus every song in an uncounted playlist, minus anything
+ * already in a playlist that counts. Hidden and uncounted playlists don't count as sorted, but only
+ * uncounted ones bring their songs back, so a catch-all (say, one per artist) can be sorted properly in a later pass.
+ */
+export function inbox(lib: Library, hidden: readonly string[] = [], uncounted: readonly string[] = []) {
+  const sorted = new Set(sortTargets(lib, [...hidden, ...uncounted]).flatMap((p) => p.trackIds));
+  const liked = new Set(lib.liked.map((l) => l.id));
+  const brought = new Set(lib.playlists.filter((p) => uncounted.includes(p.id)).flatMap((p) => p.trackIds));
+  return [...lib.liked, ...[...brought].filter((id) => !liked.has(id)).map((id) => ({ id, addedAt: "" }))].filter((l) => !sorted.has(l.id));
 }
 
 type ApiImage = { url: string; width: number | null };
