@@ -6,6 +6,7 @@ import { useMemo } from "react";
 import { closestAmong } from "../core/audio.ts";
 import type { Track } from "../core/library.ts";
 import { knownArtistSongs } from "../core/suggest.ts";
+import { readPlaylist, sharedThemes, songThemes } from "../core/themes.ts";
 import { SoundMap } from "./SoundMap.tsx";
 import { usePlayer } from "./player.ts";
 import { useApp } from "./store.ts";
@@ -13,6 +14,9 @@ import { useApp } from "./store.ts";
 const NEAREST = 15;
 const ARTIST_COVERS = 14;
 const CLOSEST = 5;
+const THEMES_NAMED = 3;
+
+const listOf = (names: string[]) => new Intl.ListFormat("en").format(names);
 
 export function WhyPanel({
   track,
@@ -29,7 +33,7 @@ export function WhyPanel({
   onMark: (trackId: string | null) => void;
   onEditRule: () => void;
 }) {
-  const { lib, model, audio, neighbors, vectors, rules, hidden, setHidden, classifier } = useApp();
+  const { lib, model, audio, neighbors, vectors, rules, hidden, setHidden, classifier, themes } = useApp();
   const play = usePlayer((s) => s.play);
   const color = colors.get(playlistId) ?? "#a092ab";
   const playlist = lib?.playlists.find((p) => p.id === playlistId);
@@ -54,6 +58,18 @@ export function WhyPanel({
     const artistNames = track.artists.filter((a) => model.artistSongs.has(a.id)).map((a) => a.name).join(", ");
     return { artist, artistNames, nearest: nearest.map((n) => ({ id: n.id, inside: members.has(n.id) })), closest, hasAudio, floor, ceiling };
   }, [lib, model, audio, neighbors, vectors, playlist, track]);
+
+  const lyricNote = useMemo(() => {
+    if (!lib || !playlist || !themes) return null;
+    const reading = readPlaylist(themes, lib, playlist);
+    if (reading.clear.length === 0) return null;
+    const shared = sharedThemes(reading, themes, track);
+    const own = songThemes(themes, track);
+    return {
+      playlist: listOf(reading.clear.slice(0, THEMES_NAMED).map((t) => t.name)),
+      song: shared.length > 0 ? `This song shares ${listOf(shared.map((t) => t.name))}.` : own[0] ? `This song leans toward ${own[0].name} instead.` : null,
+    };
+  }, [lib, playlist, themes, track]);
 
   if (!lib || !playlist || !evidence) return null;
   const rule = rules[playlistId];
@@ -150,6 +166,12 @@ export function WhyPanel({
           Sound model: <b className="font-semibold text-zinc-200">{Math.round(Math.min(Math.max(soundScore, 0), 1) * 100)}%</b> fit
           {fit?.auc != null && ` · ${fit.auc.toFixed(2)} on new artists`}
           {fit && (fit.cutoff != null ? ` · auto-checks at ${Math.round(Math.min(Math.max(fit.cutoff, 0), 1) * 100)}%` : " · too unreliable to auto-check")}
+        </p>
+      )}
+
+      {lyricNote && (
+        <p className="text-xs text-zinc-400">
+          Lyrics here lean toward <b className="font-semibold text-zinc-200">{lyricNote.playlist}</b>. {lyricNote.song}
         </p>
       )}
 

@@ -2,8 +2,10 @@
 // prechecked), the run of upcoming songs that would get the same picks, actions, and this
 // session's sorts. The panel on the right explains the focused tile (hover or ↑↓).
 import { useEffect, useMemo, useState } from "react";
-import { sortTargets } from "../core/library.ts";
+import { sortTargets, type Track } from "../core/library.ts";
+import { LINE_BREAK } from "../core/lyrics.ts";
 import { knownArtistSongs, suggest, type Suggestion } from "../core/suggest.ts";
+import { readPlaylist, songThemes } from "../core/themes.ts";
 import { CommandPalette } from "./CommandPalette.tsx";
 import { RuleEditor } from "./RuleEditor.tsx";
 import { WhyPanel } from "./WhyPanel.tsx";
@@ -177,6 +179,7 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
             <h2 className="mb-2 text-4xl font-extrabold leading-[0.95] tracking-tight text-balance text-zinc-50 xl:text-5xl">{track.name}</h2>
             <p className="font-medium text-zinc-100">{track.artists.map((a) => a.name).join(", ")}</p>
             <p className="truncate text-xs text-zinc-400">{track.album.name}</p>
+            <SongThemes track={track} playlistIds={rows.map((r) => r.playlistId)} colors={colors} />
             {player.enabled && (
               <>
                 <div className="mt-4 flex items-center gap-3">
@@ -292,6 +295,39 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
 
       {palette && <CommandPalette colors={colors} onClose={() => setPalette(false)} onEditRule={setRuleFor} />}
       {ruleFor && byId.get(ruleFor) && <RuleEditor playlist={byId.get(ruleFor)!} track={track} onClose={() => setRuleFor(null)} />}
+    </div>
+  );
+}
+
+/** What the song's lyrics lean toward, the lines that show it, and which suggested playlists have that theme too. A hint: the ranking never sees it. */
+function SongThemes({ track, playlistIds, colors }: { track: Track; playlistIds: string[]; colors: Map<string, string> }) {
+  const { lib, themes } = useApp();
+  const note = useMemo(() => {
+    if (!lib || !themes) return null;
+    const leans = songThemes(themes, track);
+    const lead = leans[0];
+    if (!lead) return null;
+    const playlists = playlistIds.flatMap((id) => {
+      const playlist = lib.playlists.find((p) => p.id === id);
+      return playlist && readPlaylist(themes, lib, playlist).clear.some((t) => t.theme === lead.theme) ? [playlist] : [];
+    });
+    return { leans, lead, playlists };
+  }, [lib, themes, track, playlistIds]);
+  if (!note) return null;
+  return (
+    <div className="mt-2 text-xs text-zinc-400">
+      <p>
+        Lyrics lean toward <b className="font-semibold text-zinc-200">{note.leans.map((m) => m.name).join(" and ")}</b>
+        {note.playlists.map((p) => (
+          <span key={p.id} className="ml-2 inline-flex items-center gap-1 text-zinc-500">
+            <span className="size-1.5 rounded-full" style={{ background: colors.get(p.id) }} />
+            {p.name}
+          </span>
+        ))}
+      </p>
+      <p className="mt-0.5 line-clamp-2 text-zinc-500" title={note.lead.passage.split(LINE_BREAK).join("\n")}>
+        {note.lead.passage}
+      </p>
     </div>
   );
 }

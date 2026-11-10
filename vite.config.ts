@@ -17,6 +17,7 @@ import { join, resolve } from "node:path";
  *   GET     /api/vectors  -> data/vectors.bin (same; binary)
  *   GET     /api/classifier -> data/classifier.json (404 until `pnpm classify` has run)
  *   POST    /api/classifier -> retrains it, replying once it's done
+ *   GET     /api/themes   -> data/themes.json (what songs are about; 404 until `pnpm lyrics` has run)
  *   GET     /api/lyrics?q=  -> best lyric passage per song for the search (404 until `pnpm lyrics` has run)
  */
 /** Vite serves any file under the root (also via /@fs/); keep .cache/ and data/ private. */
@@ -59,6 +60,7 @@ function localData(): Plugin {
     "/api/audio": "data/audio.json",
     "/api/vectors": "data/vectors.bin",
     "/api/classifier": "data/classifier.json",
+    "/api/themes": "data/themes.json",
   };
   const writable = new Set(["data/library.json", "data/rules.json", "data/hidden.json", "data/ledger.json"]);
 

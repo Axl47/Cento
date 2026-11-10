@@ -7,6 +7,7 @@ import { inbox, type Library } from "../core/library.ts";
 import { neighborsFrom, type AudioIndex, type Vectors } from "../core/audio.ts";
 import { classifierFrom, type ClassifierData, type SoundClassifier } from "../core/classifier.ts";
 import { applyLedger, unconfirmed, type LedgerEntry } from "../core/ledger.ts";
+import { themeIndex, type ThemeData, type ThemeIndex } from "../core/themes.ts";
 import { buildModel, prechecked, suggest, type ArtistRules, type Model, type Neighbors } from "../core/suggest.ts";
 import { addToPlaylist, createPlaylist, removeFromPlaylist, setLiked } from "../core/spotify.ts";
 import { client } from "./auth.ts";
@@ -35,6 +36,8 @@ type State = {
   vectors: Vectors | null;
   /** Per-playlist sound classifiers (data/classifier.json); undefined until trained. */
   classifier: SoundClassifier | undefined;
+  /** What songs are about (data/themes.json), loaded in the background; null until then or if missing. */
+  themes: ThemeIndex | null;
   rules: ArtistRules;
   /** Playlists hidden from suggestions (and ignored when deciding what's sorted). */
   hidden: string[];
@@ -53,6 +56,7 @@ type State = {
   pendingWrites: number;
 
   setVectors: (vectors: Vectors) => void;
+  setThemes: (data: ThemeData) => void;
   /** Takes freshly trained classifiers and re-ranks the queue. */
   setClassifier: (data: ClassifierData) => void;
   load: (lib: Library, audio: AudioIndex | null, rules: ArtistRules, hidden: string[], ledger: LedgerEntry[], classifier: ClassifierData | null) => void;
@@ -210,6 +214,7 @@ export const useApp = create<State>()((set, get) => {
     neighbors: undefined,
     vectors: null,
     classifier: undefined,
+    themes: null,
     rules: {},
     hidden: [],
     uncounted: [],
@@ -224,6 +229,8 @@ export const useApp = create<State>()((set, get) => {
     pendingWrites: 0,
 
     setVectors: (vectors) => set({ vectors }),
+
+    setThemes: (data) => set({ themes: themeIndex(data) }),
 
     setClassifier: (data) => {
       set({ classifier: classifierFrom(data) });

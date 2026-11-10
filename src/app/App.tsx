@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { decodeVectors, type AudioIndex } from "../core/audio.ts";
 import type { ClassifierData } from "../core/classifier.ts";
+import type { ThemeData } from "../core/themes.ts";
 import type { ArtistRules } from "../core/suggest.ts";
 import type { LedgerEntry } from "../core/ledger.ts";
 import { sortTargets, syncLibrary, type Library } from "../core/library.ts";
@@ -11,12 +12,14 @@ import { LyricsView } from "./LyricsView.tsx";
 import { MapView } from "./MapView.tsx";
 import { usePlayer } from "./player.ts";
 import { SortView } from "./SortView.tsx";
+import { ThemesView } from "./ThemesView.tsx";
 import { useApp } from "./store.ts";
 
 const TABS = {
-  sort: { label: "Sort", hint: "Switch with M or L" },
+  sort: { label: "Sort", hint: "Switch with M, L or T" },
   map: { label: "Sound map", hint: "Switch with M" },
   lyrics: { label: "Lyrics", hint: "Switch with L" },
+  themes: { label: "Themes", hint: "Switch with T" },
 };
 
 type Phase = { kind: "starting" } | { kind: "login" } | { kind: "needs-sync" } | { kind: "ready" } | { kind: "error"; message: string };
@@ -77,10 +80,19 @@ export function App() {
       const key = e.key.toLowerCase();
       if (key === "m") setTab((t) => (t === "map" ? "sort" : "map"));
       if (key === "l") setTab((t) => (t === "lyrics" ? "sort" : "lyrics"));
+      if (key === "t") setTab((t) => (t === "themes" ? "sort" : "themes"));
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // Large and optional: the app works the same without it, minus what the lyrics are about.
+  useEffect(() => {
+    if (phase.kind !== "ready") return;
+    getJson<ThemeData>("/api/themes")
+      .then((data) => data && useApp.getState().setThemes(data))
+      .catch(console.error);
+  }, [phase.kind]);
 
   // Don't lose queued Spotify writes by closing the tab.
   useEffect(() => {
@@ -209,6 +221,7 @@ export function App() {
         />
       )}
       {tab === "lyrics" && <LyricsView colors={colors} onSortSong={() => setTab("sort")} />}
+      {tab === "themes" && <ThemesView colors={colors} />}
     </div>
   );
 }
