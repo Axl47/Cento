@@ -5,6 +5,7 @@ import basicSsl from "@vitejs/plugin-basic-ssl";
 import { spawn } from "node:child_process";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { config } from "./src/core/config.ts";
 
 /**
  * Serves the local data files to the app so the scripts and the app share them
@@ -121,6 +122,8 @@ export default defineConfig(({ mode }) => {
       host: lan ? true : redirect.hostname,
       port: Number(redirect.port),
       strictPort: true,
+      // Only without LAN mode: forwarded requests look local to the host, so they must really come from this Mac.
+      proxy: lan ? undefined : { "/host": `http://127.0.0.1:${config.hostPort}` },
     },
   };
 });

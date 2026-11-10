@@ -11,7 +11,7 @@ import { BridgesView } from "./BridgesView.tsx";
 import { usePlaylistColors } from "./colors.ts";
 import { LyricsView } from "./LyricsView.tsx";
 import { MapView } from "./MapView.tsx";
-import { NowView } from "./NowView.tsx";
+import { NowTab } from "./NowView.tsx";
 import { usePlayer } from "./player.ts";
 import { SortView } from "./SortView.tsx";
 import { ThemesView } from "./ThemesView.tsx";
@@ -25,9 +25,6 @@ const TABS = {
   bridges: { label: "Bridges", hint: "Switch with B" },
   now: { label: "Now playing", hint: "Switch with N" },
 };
-
-/** /now is the Now Playing screen by itself, for a TV or spare monitor. */
-const SCREEN = location.pathname === "/now";
 
 type Phase = { kind: "starting" } | { kind: "login" } | { kind: "needs-sync" } | { kind: "ready" } | { kind: "error"; message: string };
 
@@ -62,7 +59,7 @@ export function App() {
     void (async () => {
       try {
         if (!(await completeLogin())) return setPhase({ kind: "login" });
-        initPlayer(SCREEN);
+        initPlayer();
         const [library, audio, rules, hidden, ledger, classifier] = await Promise.all([
           getJson<Library>("/api/library"),
           getJson<AudioIndex>("/api/audio"),
@@ -82,7 +79,6 @@ export function App() {
   }, [initPlayer, load]);
 
   useEffect(() => {
-    if (SCREEN) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.metaKey || e.ctrlKey) return;
       const key = e.key.toLowerCase();
@@ -183,8 +179,6 @@ export function App() {
       </Center>
     );
 
-  if (SCREEN) return <NowView colors={colors} standalone />;
-
   return (
     <div className="mx-auto max-w-[1600px] px-4 py-4 sm:px-6">
       <header className="mb-5 flex flex-wrap items-center gap-4">
@@ -235,7 +229,7 @@ export function App() {
       {tab === "lyrics" && <LyricsView colors={colors} onSortSong={() => setTab("sort")} />}
       {tab === "themes" && <ThemesView colors={colors} />}
       {tab === "bridges" && <BridgesView />}
-      {tab === "now" && <NowView colors={colors} standalone={false} />}
+      {tab === "now" && <NowTab colors={colors} />}
     </div>
   );
 }

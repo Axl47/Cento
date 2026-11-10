@@ -7,6 +7,8 @@ export const config = {
   allPlaylistId: "1xVoRBtLYULxvva0k1OwMn",
   /** Copies of other people's playlists: never suggested, never backfilled. */
   ignoredPlaylistIds: ["3fKpVGfURs7G9L3WxrDhtr"] as string[],
+  /** Where `pnpm host` listens; the dev server forwards /host/ to it. */
+  hostPort: 3001,
   /** Spotify scopes the app and scripts request (one token covers both). */
   scopes: [
     "playlist-read-private",

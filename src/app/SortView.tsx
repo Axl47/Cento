@@ -21,7 +21,7 @@ const UP_NEXT = 4;
 const RECENT = 6;
 
 const isTyping = (e: KeyboardEvent) => e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement;
-const fmt = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, "0")}`;
+export const fmt = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, "0")}`;
 
 export function SortView({ colors }: { colors: Map<string, string> }) {
   const { lib, model, neighbors, queue, picked, history, rules, hidden, togglePick, sort, skip, undo } = useApp();
@@ -428,7 +428,7 @@ function PlayerStatus({ onRetry }: { onRetry: () => void }) {
 }
 
 /** Smooth progress bar; click to seek. */
-export function Progress({ playing, duration }: { playing: boolean; duration: number }) {
+function Progress({ playing, duration }: { playing: boolean; duration: number }) {
   const { position, updatedAt, paused, seekTo } = usePlayer();
   const [, tick] = useState(0);
   useEffect(() => {

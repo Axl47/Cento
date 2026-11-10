@@ -9,7 +9,6 @@ const CLIENT_ID = import.meta.env.SPOTIFY_CLIENT_ID as string;
 const REDIRECT_URI = new URL(new URL(import.meta.env.SPOTIFY_REDIRECT_URI as string).pathname, location.origin).href;
 const TOKEN_KEY = "spotify-token";
 const VERIFIER_KEY = "spotify-verifier";
-const RETURN_KEY = "spotify-return-to";
 
 type StoredToken = { accessToken: string; refreshToken: string; expiresAt: number };
 
@@ -45,7 +44,6 @@ export async function startLogin() {
   const verifier = base64url(crypto.getRandomValues(new Uint8Array(48)));
   const challenge = base64url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
   sessionStorage.setItem(VERIFIER_KEY, verifier);
-  sessionStorage.setItem(RETURN_KEY, location.pathname); // so logging in on /now comes back to /now
   const url = new URL("https://accounts.spotify.com/authorize");
   url.search = new URLSearchParams({
     client_id: CLIENT_ID,
@@ -64,21 +62,52 @@ export async function completeLogin(): Promise<boolean> {
   const code = params.get("code");
   const verifier = sessionStorage.getItem(VERIFIER_KEY);
   if (location.pathname === new URL(REDIRECT_URI).pathname) {
-    history.replaceState(null, "", sessionStorage.getItem(RETURN_KEY) ?? "/");
-    sessionStorage.removeItem(RETURN_KEY);
+    history.replaceState(null, "", "/");
     if (code && verifier) {
       sessionStorage.removeItem(VERIFIER_KEY);
       await tokenRequest({ grant_type: "authorization_code", code, redirect_uri: REDIRECT_URI, code_verifier: verifier });
     }
   }
-  return readToken() !== null;
+  await handOverToHost();
+  return readToken() !== null || (await tokenFromHost()) !== null;
+}
+
+// When `pnpm host` is running it owns the login, so it can keep going with no tab open. Spotify can replace
+// the refresh token on each use, so only one side may hold it. Without the host, this tab keeps its own as before.
+let fromHost: { accessToken: string; expiresAt: number } | null = null;
+
+async function tokenFromHost() {
+  try {
+    const res = await fetch("/host/token");
+    fromHost = res.ok ? ((await res.json()) as typeof fromHost) : null;
+  } catch {
+    fromHost = null; // no host, or LAN mode's page instead of an answer
+  }
+  return fromHost;
+}
+
+/** A token in this browser is always the newest one, so it replaces whatever the host had. */
+async function handOverToHost() {
+  const token = readToken();
+  if (!token) return;
+  try {
+    const res = await fetch("/host/token", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(token) });
+    if (res.ok) localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    // No host: stay logged in here.
+  }
 }
 
 let refreshing: Promise<StoredToken> | null = null;
 
 export async function accessToken(): Promise<string> {
+  if (fromHost && Date.now() < fromHost.expiresAt) return fromHost.accessToken;
   const token = readToken();
-  if (!token) throw new Error("Not logged in");
+  if (!token) {
+    const hosted = await tokenFromHost();
+    if (hosted) return hosted.accessToken;
+    throw new Error("Not logged in");
+  }
   if (Date.now() < token.expiresAt) return token.accessToken;
   refreshing ??= tokenRequest({ grant_type: "refresh_token", refresh_token: token.refreshToken }, token.refreshToken).finally(
     () => (refreshing = null),
@@ -91,5 +120,6 @@ export const client = createClient(accessToken);
 /** Forgets the stored token so the next login starts fresh (e.g. to pick up new scopes). */
 export function logout() {
   localStorage.removeItem(TOKEN_KEY);
+  void fetch("/host/token", { method: "DELETE", keepalive: true }).catch(() => {});
   location.assign("/");
 }

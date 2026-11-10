@@ -9,6 +9,7 @@ All notable changes to this project are documented here. The format follows
 ### Added
 
 - A Now Playing screen (`N`, or by itself at `/now` for a TV or spare monitor) shows the current song large with its place on the sound map, when you added it, what its lyrics are about and what it sounds like, with playback controls and per-screen settings for which panels show.
+- `pnpm host` keeps Now Playing running with no tab open and serves it to other devices on your network behind a password you set from the Mac, so a TV or spare monitor needs no Spotify login or certificate.
 - A Bridges tab (`B`) builds a list that travels gradually from one song to another by sound; listen to it in order, replace any song, and optionally save it as a private Spotify playlist that stays out of sorting.
 - A Themes tab (`T`) describes what each playlist's lyrics are about, compared with the rest of your library, with the passages that show each theme, and says so when no theme stands out.
 - The Themes tab lists songs that sound like a playlist but whose lyrics say something else, to help clean one up.

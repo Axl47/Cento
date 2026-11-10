@@ -12,6 +12,7 @@
     "audio": "tsx --env-file=.env src/cli/audio.ts",
     "classify": "tsx --env-file=.env src/cli/classify.ts",
     "lyrics": "tsx --env-file=.env src/cli/lyrics.ts",
+    "host": "vite build && tsx --env-file=.env src/host/server.ts",
     "test": "tsx --test src/**/*.test.ts"
   },
   "devDependencies": {

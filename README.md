@@ -106,7 +106,8 @@ Spotify shows them; entries older than a day are dropped too.
 - `pnpm lyrics` builds `data/lyrics-index.*` for the Lyrics tab from the engine's fetched lyrics (or `LYRICS_FILE`). It
   downloads the text model once, and later runs embed only new lyrics. Restart `pnpm dev` afterwards. It also scores
   every song against the list of `THEMES` in `src/core/themes.ts` for the Themes tab: edit the list and rerun to change them.
-- `/now` is the Now Playing screen on its own, for a TV or spare monitor. To open it on another device, run `pnpm dev:lan` and
-  go to `https://<this machine's LAN IP>:3000/now`; each device logs in to Spotify once. It checks Spotify far less often
-  than the main app, so it can be left on.
+- `pnpm host` builds the app and keeps Now Playing running with no tab open. It's on this Mac at `http://127.0.0.1:3001/now`
+  and on your network at the address it prints (also under Settings on that screen). Open the sorter once with the host
+  running and it takes over your Spotify login. Other devices need the password you set from Settings on the Mac, and can
+  reach only that screen and its player controls. It uses plain HTTP, so keep it to your home network.
 - `pnpm test` runs the suggestion-model tests.
