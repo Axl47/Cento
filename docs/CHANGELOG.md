@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- A Lyrics tab (`L`) finds songs by a remembered line or by theme in any language, shows the passage that matched, and can narrow to songs not sorted yet.
 - Suggestions now take a song's lyric language into account, which better places songs by artists you've never sorted.
 - Suggestions now use a sound classifier trained on your own sorted playlists, which is better at placing songs by artists you've never sorted, and it can check one playlist from sound alone when it's confident.
 - The sound map can be narrowed to songs added in a date range, and a resync now saves when each song was added to each playlist.

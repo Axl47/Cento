@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "audio": "tsx --env-file=.env src/cli/audio.ts",
     "classify": "tsx --env-file=.env src/cli/classify.ts",
+    "lyrics": "tsx --env-file=.env src/cli/lyrics.ts",
     "test": "tsx --test src/**/*.test.ts"
   },
   "devDependencies": {
@@ -27,6 +28,7 @@
     "vite": "^8.3.6"
   },
   "dependencies": {
+    "@huggingface/transformers": "^4.3.2",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "zustand": "^5.0.16"

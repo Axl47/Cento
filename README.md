@@ -103,4 +103,6 @@ Spotify shows them; entries older than a day are dropped too.
   playlist is reliably predictable (a held-out test on new artists: about two-thirds of those checks were already right).
   The classifier also uses each song's lyric language when `data/languages.jsonl` exists; refresh it with the engine's
   `audio-embed languages <lyrics.jsonl> --out data/languages.jsonl`. Songs without one use sound alone.
+- `pnpm lyrics` builds `data/lyrics-index.*` for the Lyrics tab from the engine's fetched lyrics (or `LYRICS_FILE`). It
+  downloads the text model once, and later runs embed only new lyrics. Restart `pnpm dev` afterwards.
 - `pnpm test` runs the suggestion-model tests.

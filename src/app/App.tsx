@@ -7,10 +7,17 @@ import type { LedgerEntry } from "../core/ledger.ts";
 import { sortTargets, syncLibrary, type Library } from "../core/library.ts";
 import { client, completeLogin, logout, startLogin } from "./auth.ts";
 import { usePlaylistColors } from "./colors.ts";
+import { LyricsView } from "./LyricsView.tsx";
 import { MapView } from "./MapView.tsx";
 import { usePlayer } from "./player.ts";
 import { SortView } from "./SortView.tsx";
 import { useApp } from "./store.ts";
+
+const TABS = {
+  sort: { label: "Sort", hint: "Switch with M or L" },
+  map: { label: "Sound map", hint: "Switch with M" },
+  lyrics: { label: "Lyrics", hint: "Switch with L" },
+};
 
 type Phase = { kind: "starting" } | { kind: "login" } | { kind: "needs-sync" } | { kind: "ready" } | { kind: "error"; message: string };
 
@@ -34,7 +41,7 @@ async function loadVectors(audio: AudioIndex) {
 
 export function App() {
   const [phase, setPhase] = useState<Phase>({ kind: "starting" });
-  const [tab, setTab] = useState<"sort" | "map">("sort");
+  const [tab, setTab] = useState<keyof typeof TABS>("sort");
   const [syncing, setSyncing] = useState<string | null>(null);
   /** Why the last resync from the main screen failed; earlier phases show errors full-screen instead. */
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -67,7 +74,9 @@ export function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.metaKey || e.ctrlKey) return;
-      if (e.key.toLowerCase() === "m") setTab((t) => (t === "map" ? "sort" : "map"));
+      const key = e.key.toLowerCase();
+      if (key === "m") setTab((t) => (t === "map" ? "sort" : "map"));
+      if (key === "l") setTab((t) => (t === "lyrics" ? "sort" : "lyrics"));
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -159,14 +168,14 @@ export function App() {
           playlist<span className="text-commit">/</span>sorter
         </h1>
         <nav className="flex rounded-lg border border-white/10 bg-zinc-900 p-0.5 text-sm">
-          {(["sort", "map"] as const).map((t) => (
+          {(Object.keys(TABS) as (keyof typeof TABS)[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
-              title="Switch with M"
+              title={TABS[t].hint}
               className={`rounded-md px-3 py-1 ${tab === t ? "bg-white/10 text-zinc-50" : "text-zinc-400 hover:text-zinc-200"}`}
             >
-              {t === "sort" ? "Sort" : "Sound map"}
+              {TABS[t].label}
             </button>
           ))}
         </nav>
@@ -189,9 +198,8 @@ export function App() {
         </div>
       </header>
 
-      {tab === "sort" ? (
-        <SortView colors={colors} />
-      ) : (
+      {tab === "sort" && <SortView colors={colors} />}
+      {tab === "map" && (
         <MapView
           colors={colors}
           onSortSong={(id) => {
@@ -200,6 +208,7 @@ export function App() {
           }}
         />
       )}
+      {tab === "lyrics" && <LyricsView colors={colors} onSortSong={() => setTab("sort")} />}
     </div>
   );
 }

@@ -17,6 +17,7 @@ import { join, resolve } from "node:path";
  *   GET     /api/vectors  -> data/vectors.bin (same; binary)
  *   GET     /api/classifier -> data/classifier.json (404 until `pnpm classify` has run)
  *   POST    /api/classifier -> retrains it, replying once it's done
+ *   GET     /api/lyrics?q=  -> best lyric passage per song for the search (404 until `pnpm lyrics` has run)
  */
 /** Vite serves any file under the root (also via /@fs/); keep .cache/ and data/ private. */
 function isPrivate(url: string): boolean {
@@ -27,6 +28,26 @@ function isPrivate(url: string): boolean {
   } catch {
     return true; // malformed encoding
   }
+}
+
+const SEARCH_RESULTS = 200;
+let lyricSearcher: ReturnType<typeof loadLyricSearcher> | undefined;
+
+/** Loaded on the first search and kept, so only that search waits for the model; null without an index. */
+async function loadLyricSearcher() {
+  const { loadEmbedder, loadIndex } = await import("./src/cli/lyricModel.ts");
+  const { searchLyrics } = await import("./src/core/lyrics.ts");
+  const index = await loadIndex();
+  if (!index) return null;
+  const embed = await loadEmbedder();
+  return async (query: string) => searchLyrics(index, await embed([query], "query"), query, SEARCH_RESULTS);
+}
+
+async function lyricSearch(query: string) {
+  lyricSearcher ??= loadLyricSearcher();
+  const search = await lyricSearcher;
+  if (!search) lyricSearcher = undefined; // look for the index again next time
+  return search ? search(query) : null;
 }
 
 function localData(): Plugin {
@@ -47,6 +68,19 @@ function localData(): Plugin {
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
         if (isPrivate(req.url ?? "")) return void res.writeHead(403).end();
+        if (req.method === "GET" && req.url?.startsWith("/api/lyrics?")) {
+          const query = new URL(req.url, "http://local").searchParams.get("q")?.trim();
+          if (!query) return void res.writeHead(400).end();
+          try {
+            const hits = await lyricSearch(query);
+            if (!hits) return void res.writeHead(404).end();
+            res.setHeader("Content-Type", "application/json");
+            return void res.end(JSON.stringify(hits));
+          } catch (e) {
+            console.error(e);
+            return void res.writeHead(500).end();
+          }
+        }
         const path = files[req.url ?? ""];
         if (!path) return next();
         if (req.method === "POST" && req.url === "/api/classifier") {
