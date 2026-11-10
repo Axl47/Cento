@@ -51,8 +51,8 @@ type PlayerState = {
   init: () => void;
   setEnabled: (on: boolean) => void;
   setDevice: (id: string) => void;
-  /** Explicit play (Space, Play button, clicking a song); also arms autoplay. */
-  play: (trackId: string, durationMs: number) => Promise<void>;
+  /** Explicit play (Space, Play button, clicking a song); also arms autoplay. `startAt` is a share of the track, a preview by default. */
+  play: (trackId: string, durationMs: number, startAt?: number) => Promise<void>;
   /** Plays only once armed: used when the next song comes up. */
   autoplay: (trackId: string, durationMs: number) => void;
   toggle: () => void;
@@ -195,7 +195,7 @@ export const usePlayer = create<PlayerState>()((set, get) => {
       set({ deviceId: id, error: null });
     },
 
-    play: async (trackId, durationMs) => {
+    play: async (trackId, durationMs, startAt = START_AT) => {
       if (!get().enabled) return openInSpotify(trackId);
       set({ armed: true });
       // Play the track as a position in its album. A plain `uris: [track]` request is accepted
@@ -210,7 +210,7 @@ export const usePlayer = create<PlayerState>()((set, get) => {
       await command("PUT", "/me/player/play", {
         context_uri: context,
         offset: { uri: `spotify:track:${trackId}` },
-        position_ms: Math.round(durationMs * START_AT),
+        position_ms: Math.round(durationMs * startAt),
       });
     },
 

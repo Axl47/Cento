@@ -46,26 +46,30 @@ export function decodeVectors(buf: ArrayBuffer): Vectors {
   return { dim, scale: new Float32Array(buf, 8, n), q: new Int8Array(buf, 8 + 4 * n, n * dim) };
 }
 
+/** Cosine similarity of the songs at two positions in the index. */
+export function similarity({ dim, scale, q }: Vectors, i: number, j: number) {
+  let dot = 0;
+  for (let d = 0, a = i * dim, b = j * dim; d < dim; d++) dot += q[a + d]! * q[b + d]!;
+  return dot * scale[i]! * scale[j]!;
+}
+
 /** Songs among `candidates` most similar to `trackId`, best first, keeping only those above the baseline. */
 export function closestAmong(index: AudioIndex, v: Vectors, trackId: string, candidates: Iterable<string>, limit: number) {
   const pos = positions(index);
   const i = pos.get(trackId);
   if (i === undefined) return [];
-  const { dim, scale, q } = v;
   const out: { id: string; sim: number }[] = [];
   for (const id of candidates) {
     const j = pos.get(id);
     if (j === undefined || j === i) continue;
-    let dot = 0;
-    for (let d = 0, a = i * dim, b = j * dim; d < dim; d++) dot += q[a + d]! * q[b + d]!;
-    const sim = dot * scale[i]! * scale[j]!;
+    const sim = similarity(v, i, j);
     if (sim > index.baseline) out.push({ id, sim });
   }
   return out.sort((a, b) => b.sim - a.sim).slice(0, limit);
 }
 
 const positionCache = new WeakMap<AudioIndex, Map<string, number>>();
-const positions = (index: AudioIndex) => {
+export const positions = (index: AudioIndex) => {
   let pos = positionCache.get(index);
   if (!pos) positionCache.set(index, (pos = new Map(index.ids.map((id, i) => [id, i]))));
   return pos;

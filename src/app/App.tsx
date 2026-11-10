@@ -7,6 +7,7 @@ import type { ArtistRules } from "../core/suggest.ts";
 import type { LedgerEntry } from "../core/ledger.ts";
 import { sortTargets, syncLibrary, type Library } from "../core/library.ts";
 import { client, completeLogin, logout, startLogin } from "./auth.ts";
+import { BridgesView } from "./BridgesView.tsx";
 import { usePlaylistColors } from "./colors.ts";
 import { LyricsView } from "./LyricsView.tsx";
 import { MapView } from "./MapView.tsx";
@@ -16,10 +17,11 @@ import { ThemesView } from "./ThemesView.tsx";
 import { useApp } from "./store.ts";
 
 const TABS = {
-  sort: { label: "Sort", hint: "Switch with M, L or T" },
+  sort: { label: "Sort", hint: "Switch with M, L, T or B" },
   map: { label: "Sound map", hint: "Switch with M" },
   lyrics: { label: "Lyrics", hint: "Switch with L" },
   themes: { label: "Themes", hint: "Switch with T" },
+  bridges: { label: "Bridges", hint: "Switch with B" },
 };
 
 type Phase = { kind: "starting" } | { kind: "login" } | { kind: "needs-sync" } | { kind: "ready" } | { kind: "error"; message: string };
@@ -81,6 +83,7 @@ export function App() {
       if (key === "m") setTab((t) => (t === "map" ? "sort" : "map"));
       if (key === "l") setTab((t) => (t === "lyrics" ? "sort" : "lyrics"));
       if (key === "t") setTab((t) => (t === "themes" ? "sort" : "themes"));
+      if (key === "b") setTab((t) => (t === "bridges" ? "sort" : "bridges"));
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -222,6 +225,7 @@ export function App() {
       )}
       {tab === "lyrics" && <LyricsView colors={colors} onSortSong={() => setTab("sort")} />}
       {tab === "themes" && <ThemesView colors={colors} />}
+      {tab === "bridges" && <BridgesView colors={colors} />}
     </div>
   );
 }

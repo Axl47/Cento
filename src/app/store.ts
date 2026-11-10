@@ -70,6 +70,8 @@ type State = {
   dropFromShelf: (playlistId: string) => void;
   /** Creates a private Spotify playlist, adds it to the library, and checks it for the current song. */
   createPlaylist: (name: string) => Promise<void>;
+  /** Saves these songs, in order, as a new private playlist that stays out of sorting. */
+  saveBridge: (name: string, trackIds: string[]) => void;
   /** Takes freshly synced data, keeping sorts Spotify doesn't show yet. */
   replaceLibrary: (lib: Library) => void;
   setOrder: (order: Order) => void;
@@ -313,6 +315,16 @@ export const useApp = create<State>()((set, get) => {
         set({ status: { kind: "error", message: `Creating "${name}": ${e instanceof Error ? e.message : String(e)}` } });
       }
     },
+
+    saveBridge: (name, trackIds) =>
+      write(`Saving "${name}"`, async () => {
+        const created = await createPlaylist(client, name);
+        await addToPlaylist(client, created.id, trackIds);
+        // Hidden so the next resync doesn't make a listening list into a sorting suggestion.
+        const hidden = [...new Set([...get().hidden, created.id])];
+        set({ hidden });
+        await fetch("/api/hidden", { method: "PUT", body: JSON.stringify(hidden) });
+      }),
 
     replaceLibrary: (fresh) => {
       const ledger = unconfirmed(fresh, get().ledger);
