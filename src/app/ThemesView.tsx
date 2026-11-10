@@ -1,19 +1,21 @@
 // What each playlist's lyrics are about: the themes that stand out from the rest of the library, each
-// with the passages that show it, so the claim can be checked by reading them.
+// with the passages that show it, so the claim can be checked by reading them. Also the songs that
+// sound like a playlist but say something else, for cleaning one up.
 import { useMemo, useState } from "react";
 import type { Track } from "../core/library.ts";
 import { sortTargets } from "../core/library.ts";
 import { LINE_BREAK } from "../core/lyrics.ts";
-import { readPlaylist, themeExamples } from "../core/themes.ts";
+import { readPlaylist, soundWithoutMeaning, themeExamples } from "../core/themes.ts";
 import { openInSpotify, usePlayer } from "./player.ts";
 import { useApp } from "./store.ts";
 
 const EXAMPLES = 3;
+const MISMATCHES = 8;
 /** A theme this strong fills its bar, on every playlist, so bars compare across playlists. */
 const FULL_BAR = 1.5;
 
 export function ThemesView({ colors }: { colors: Map<string, string> }) {
-  const { lib, themes } = useApp();
+  const { lib, themes, classifier } = useApp();
   const [selected, setSelected] = useState<string | null>(null);
   const readings = useMemo(
     () =>
@@ -31,6 +33,7 @@ export function ThemesView({ colors }: { colors: Map<string, string> }) {
 
   const { playlist, reading } = current;
   const color = colors.get(playlist.id) ?? "#a092ab";
+  const mismatches = soundWithoutMeaning(themes, reading, (t) => classifier?.score(t.id, playlist.id), MISMATCHES);
   return (
     <div className="grid gap-8 lg:grid-cols-[300px_minmax(0,1fr)]">
       <nav className="space-y-0.5 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:pr-2">
@@ -77,6 +80,18 @@ export function ThemesView({ colors }: { colors: Map<string, string> }) {
             </details>
           ))}
         </div>
+
+        {mismatches.length > 0 && (
+          <section className="mt-8 border-t border-white/10 pt-5">
+            <h3 className="text-sm font-bold text-zinc-50">Sounds right, says something else</h3>
+            <p className="mt-1 text-xs text-zinc-400">Songs here that sound like the playlist, but whose lyrics are far from its themes. Worth a listen when cleaning up.</p>
+            <div className="mt-2 space-y-1">
+              {mismatches.map((m) => (
+                <SongPassage key={m.track.id} track={m.track} passage={m.instead.passage} note={`Reads more like ${m.instead.name}`} />
+              ))}
+            </div>
+          </section>
+        )}
       </main>
     </div>
   );

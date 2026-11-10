@@ -210,3 +210,32 @@ export function sharedThemes(reading: PlaylistReading, index: ThemeIndex, track:
   const song = songOf(index, track);
   return song ? reading.clear.filter((t) => song.scores[t.theme]! >= SHARED_MIN_SCORE) : [];
 }
+
+/** Below this a playlist's themes are too faint for a song to go against them. */
+const MISMATCH_MIN_THEME = 0.3;
+/** The classifier's chance of belonging; lower isn't "sounds like it belongs" even in the playlist's top half. */
+const MISMATCH_MIN_SOUND = 0.15;
+/** How far below a typical song the song sits on the playlist's themes, weighted by how strong each is. */
+const MISMATCH_MAX_FIT = -0.5;
+
+/**
+ * Members that sound like the playlist but say something else: for cleaning up a playlist or seeing where it
+ * could split. `soundOf` is the classifier's score, which for a sorted song comes from models that never saw it.
+ */
+export function soundWithoutMeaning(index: ThemeIndex, reading: PlaylistReading, soundOf: (track: Track) => number | undefined, limit: number) {
+  const { clear, members } = reading;
+  if (!clear[0] || clear[0].strength < MISMATCH_MIN_THEME) return [];
+  const weight = clear.reduce((sum, t) => sum + t.strength, 0);
+  const scored = members.flatMap((m) => {
+    const sound = soundOf(m.track);
+    if (sound === undefined) return [];
+    const fit = clear.reduce((sum, t) => sum + t.strength * m.song.scores[t.theme]!, 0) / weight;
+    return [{ track: m.track, sound, fit, instead: matchOf(index, m.song, m.song.scores.indexOf(Math.max(...m.song.scores))) }];
+  });
+  const median = scored.map((m) => m.sound).sort((a, b) => a - b)[Math.floor(scored.length / 2)]!;
+  return scored
+    .filter((m) => m.sound >= Math.max(median, MISMATCH_MIN_SOUND) && m.fit <= MISMATCH_MAX_FIT)
+    .filter((m) => m.instead.score >= SHARED_MIN_SCORE && !clear.some((t) => t.theme === m.instead.theme))
+    .sort((a, b) => a.fit - b.fit)
+    .slice(0, limit);
+}

@@ -9,6 +9,7 @@ All notable changes to this project are documented here. The format follows
 ### Added
 
 - A Themes tab (`T`) describes what each playlist's lyrics are about, compared with the rest of your library, with the passages that show each theme, and says so when no theme stands out.
+- The Themes tab lists songs that sound like a playlist but whose lyrics say something else, to help clean one up.
 - The sort screen shows what the current song's lyrics lean toward, with the lines behind it and which suggested playlists share that theme.
 - The evidence panel says what the focused playlist's lyrics lean toward and whether the current song shares it.
 - A Lyrics tab (`L`) finds songs by a remembered line or by theme in any language, shows the passage that matched, and can narrow to songs not sorted yet.

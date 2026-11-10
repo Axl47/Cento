@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Library, Track } from "./library.ts";
-import { readPlaylist, scoreThemes, sharedThemes, songThemes, themeExamples, themeIndex, type ThemeSong } from "./themes.ts";
+import { readPlaylist, scoreThemes, sharedThemes, songThemes, soundWithoutMeaning, themeExamples, themeIndex, type ThemeSong } from "./themes.ts";
 
 const track = (id: string, artist = "a"): Track => ({
   id,
@@ -70,4 +70,25 @@ test("only a clearly standing-out theme labels a song, and sharing needs less", 
   assert.deepEqual(songThemes(data, track("mild")), []);
   assert.deepEqual(songThemes(data, track("unknown")), []);
   assert.deepEqual(sharedThemes(reading, data, track("mild")).map((t) => t.name), ["love"]);
+});
+
+test("a mismatch sounds like the playlist, misses its themes, and reads as something else", () => {
+  const belongs = Array.from({ length: 13 }, (_, i) => track(`b${i}`));
+  const off = [track("says-else"), track("quiet-sound"), track("says-nothing")];
+  const data = themeIndex({
+    themes: THEMES,
+    songs: [
+      ...belongs.map((t) => song(t.id, [1.5, 0])),
+      song("says-else", [-1, 2]),
+      song("quiet-sound", [-1, 2]),
+      song("says-nothing", [-1, 0]),
+    ],
+  });
+  const all = [...belongs, ...off];
+  const got = readPlaylist(data, libraryOf(all), { trackIds: all.map((t) => t.id) });
+  const sound = (t: Track) => (t.id === "quiet-sound" ? 0.01 : 0.5);
+
+  const found = soundWithoutMeaning(data, got, sound, 5);
+
+  assert.deepEqual(found.map((m) => [m.track.id, m.instead.name]), [["says-else", "war"]]);
 });
