@@ -1,5 +1,5 @@
 // The precomputed "sounds like" index (data/audio.json, built by `pnpm audio` from
-// audio-embed-engine vectors): a 2D layout for the map and top-K neighbors per track.
+// Stemma vectors): a 2D layout for the map and top-K neighbors per track.
 // data/vectors.bin holds the vectors themselves (8-bit), for exact similarity to any song.
 import type { Neighbors } from "./suggest.ts";
 

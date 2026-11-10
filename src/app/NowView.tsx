@@ -1,4 +1,4 @@
-// What's playing right now: the song, where it sits in your library, and what it's about. The sorter shows
+// What's playing right now: the song, where it sits in your library, and what it's about. The app shows
 // it as a tab, and Screen.tsx shows it alone at /now, fed by the host instead of this tab's own Spotify login.
 import { useEffect, useMemo, useState } from "react";
 import type { AudioIndex } from "../core/audio.ts";
@@ -25,7 +25,7 @@ function readHidden(): Panel[] {
   }
 }
 
-/** The sorter's tab: the same screen, built from this tab's own playback state and library. */
+/** The app's tab: the same screen, built from this tab's own playback state and library. */
 export function NowTab({ colors }: { colors: Map<string, string> }) {
   const { lib, audio, neighbors, themes } = useApp();
   const { trackId, paused, position, duration, current, updatedAt, error, toggle, next, previous, seekTo } = usePlayer();

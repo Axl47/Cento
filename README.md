@@ -1,4 +1,4 @@
-# playlist-sorter
+# Cento
 
 Suggests which of my Spotify playlists a liked song belongs in, learned from how I've already sorted my music.
 
@@ -15,13 +15,13 @@ Playlist choices (the all-songs playlist, ignored copies) live in `src/core/conf
 The scripts' Spotify token is cached in `~/.cache/playlist-sorter/token.json` (outside the project so the
 dev server can't serve it); the app keeps its own token in the browser.
 
-For the sound map and "sounds like" suggestions, point `pnpm audio` at audio-embed-engine in `.env`
+For the sound map and "sounds like" suggestions, point `pnpm audio` at Stemma in `.env`
 (run with cwd `ENGINE_DIR`; `{input}`/`{output}` are filled in):
 
 ```
-ENGINE_DIR=/Users/axel/.t3/projects/audio-embed-engine
-ENGINE_EMBED="uv run --project /Users/axel/.t3/projects/audio-embed-engine audio-embed embed {input}"
-ENGINE_EXPORT="uv run --project /Users/axel/.t3/projects/audio-embed-engine audio-embed export {input} --out {output}"
+ENGINE_DIR=/Users/axel/Desktop/Code_Projects/Personal/Developer/Stemma
+ENGINE_EMBED="uv run --project /Users/axel/Desktop/Code_Projects/Personal/Developer/Stemma audio-embed embed {input}"
+ENGINE_EXPORT="uv run --project /Users/axel/Desktop/Code_Projects/Personal/Developer/Stemma audio-embed export {input} --out {output}"
 ENGINE_MODEL=discogs-effnet   # label only
 ```
 
@@ -113,7 +113,7 @@ Spotify shows them; entries older than a day are dropped too.
   downloads the text model once, and later runs embed only new lyrics. Restart `pnpm dev` afterwards. It also scores
   every song against the list of `THEMES` in `src/core/themes.ts` for the Themes tab: edit the list and rerun to change them.
 - `pnpm host` builds the app and keeps Now Playing running with no tab open. It's on this Mac at `http://127.0.0.1:3001/now`
-  and on your network at the address it prints (also under Settings on that screen). Open the sorter once with the host
+  and on your network at the address it prints (also under Settings on that screen). Open Cento once with the host
   running and it takes over your Spotify login. Other devices need the password you set from Settings on the Mac, and can
   reach only that screen and its player controls. It uses plain HTTP, so keep it to your home network.
 - `pnpm test` runs the suggestion-model tests.

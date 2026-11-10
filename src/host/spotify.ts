@@ -1,4 +1,4 @@
-// The host's Spotify access. It owns the login: the sorter on this Mac logs in as usual and hands the
+// The host's Spotify access. It owns the login: the app on this Mac logs in as usual and hands the
 // token over, because Spotify can replace the refresh token on each use, so only one side may hold it.
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createClient } from "../core/spotify.ts";
@@ -32,7 +32,7 @@ async function refresh(current: HostToken): Promise<HostToken> {
   });
   if (res.status === 400) {
     await forgetToken(); // revoked or replaced; only a new login fixes it
-    throw new Error("The Spotify login expired. Open the sorter on the Mac and log in.");
+    throw new Error("The Spotify login expired. Open Cento on the Mac and log in.");
   }
   if (!res.ok) throw new Error(`Spotify token request failed (${res.status})`);
   const json = (await res.json()) as { access_token: string; refresh_token?: string; expires_in: number };
@@ -43,7 +43,7 @@ async function refresh(current: HostToken): Promise<HostToken> {
 
 /** A current access token, refreshed when needed. */
 export async function freshToken(): Promise<HostToken> {
-  if (!token) throw new Error("Not logged in to Spotify. Open the sorter on the Mac and log in.");
+  if (!token) throw new Error("Not logged in to Spotify. Open Cento on the Mac and log in.");
   if (Date.now() < token.expiresAt) return token;
   refreshing ??= refresh(token).finally(() => (refreshing = null));
   return refreshing;

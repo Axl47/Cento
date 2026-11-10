@@ -99,7 +99,7 @@ async function screenRoute(req: IncomingMessage, res: ServerResponse, path: stri
   json(res, 404, {});
 }
 
-/** The built app's files. Anything else, including the sorter's own pages, leads to the screen. */
+/** The built app's files. Anything else, including the main app's pages, leads to the screen. */
 async function staticRoute(res: ServerResponse, path: string) {
   if (path === "/now") {
     res.writeHead(200, { "Content-Type": "text/html", "Cache-Control": "no-cache" });

@@ -450,7 +450,7 @@ function PlayerStatus({ onRetry }: { onRetry: () => void }) {
         </button>
       </p>
     );
-  if (devices.length === 0) return <p className="mt-2 text-xs text-amber-300">Open Spotify on your Mac or phone: the sorter plays through it.</p>;
+  if (devices.length === 0) return <p className="mt-2 text-xs text-amber-300">Open Spotify on your Mac or phone: Cento plays through it.</p>;
   if (!armed) return <p className="mt-2 text-xs text-zinc-400">Press Space to start; songs then play as they come up.</p>;
   return null;
 }

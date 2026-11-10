@@ -1,5 +1,5 @@
 // Builds data/audio.json (neighbors + 2D map layout) and data/vectors.bin (the vectors, 8-bit)
-// from audio-embed-engine vectors.
+// from Stemma vectors.
 //
 //   pnpm audio                     run the engine on data/tracks.jsonl, then build the index
 //   pnpm audio --vectors <file>    build from an existing vectors JSONL, skipping the engine

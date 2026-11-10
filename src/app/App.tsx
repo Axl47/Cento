@@ -185,7 +185,7 @@ export function App() {
     <div className="mx-auto max-w-[1600px] px-4 py-4 sm:px-6">
       <header className="mb-5 flex flex-wrap items-center gap-4">
         <h1 className="text-lg font-black tracking-tight text-zinc-50">
-          playlist<span className="text-commit">/</span>sorter
+          cento
         </h1>
         <nav className="flex rounded-lg border border-white/10 bg-zinc-900 p-0.5 text-sm">
           {(Object.keys(TABS) as (keyof typeof TABS)[]).map((t) => (

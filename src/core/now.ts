@@ -1,4 +1,4 @@
-// What's playing and what the library knows about it. Shared by the sorter's Now Playing tab and by the
+// What's playing and what the library knows about it. Shared by the main app's Now Playing tab and by the
 // host, which builds the same picture for screens that have no Spotify login or library of their own.
 import type { AudioIndex } from "./audio.ts";
 import { firstAdded, sortTargets, type Library } from "./library.ts";

@@ -34,6 +34,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- The app is now called Cento.
 - With no playlist hovered, the sort screen's map shows the song's 15 nearest songs by name, each in its own playlist's color.
 - The sound map moves and zooms to keep every named song on screen, including a far-away song you hover to see how distant it is.
 - The Sound map tab and Now Playing use the same map and styling as the sort screen.

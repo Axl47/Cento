@@ -1,5 +1,5 @@
 // Refreshes data/library.json from Spotify and
-// writes audio-embed-engine input: data/tracks.jsonl (every track).
+// writes Stemma input: data/tracks.jsonl (every track).
 import { writeFile } from "node:fs/promises";
 import { client, LIBRARY_PATH, saveLibrary } from "./auth.ts";
 import { inbox, syncLibrary, sortTargets, type Track } from "../core/library.ts";
