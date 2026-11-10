@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { appendFile, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, test } from "node:test";
@@ -176,6 +176,39 @@ test("a row torn by a crash is recovered and doesn't damage the next one", async
   const lines = (await readFile(file, "utf8")).trim().split("\n");
   assert.equal(lines.length, 4, "the torn line stays, on its own");
   assert.deepEqual(lines.slice(2).map((line) => (JSON.parse(line) as ReturnType<typeof play>).track.id), ["track2", "track3"]);
+});
+
+test("a write that fails halfway is repaired before the play is written again", async () => {
+  let failNext = true;
+  const history = createRecorder(createClient(async () => "token"), {
+    file,
+    gapsFile,
+    backup: async () => {},
+    append: async (path, data) => {
+      if (failNext) {
+        failNext = false;
+        await appendFile(path, String(data).slice(0, 20));
+        throw new Error("ENOSPC: no space left on device");
+      }
+      await appendFile(path, data);
+    },
+  });
+  const log = console.error;
+  const warn = console.warn;
+  console.error = console.warn = () => {};
+  try {
+    serve([play(1)]);
+    await history.poll();
+    assert.match(history.status.error ?? "", /ENOSPC/);
+    await history.poll();
+  } finally {
+    console.error = log;
+    console.warn = warn;
+  }
+  assert.equal(history.status.error, null);
+  assert.equal(history.status.plays, 1);
+  const lines = (await readFile(file, "utf8")).trim().split("\n");
+  assert.deepEqual(JSON.parse(lines.at(-1)!), play(1));
 });
 
 test("backs up after new plays, and a failed backup is reported without stopping recording", async () => {

@@ -23,7 +23,7 @@ const MISSING_SCOPE = "Not recording: this Spotify login lacks the user-read-rec
 /** One item of Spotify's response. Rows keep every field Spotify sent, not only these. */
 export type Play = { played_at: string; track: { uri: string }; context?: unknown };
 
-export type RecorderOptions = { file: string; gapsFile: string; backup: () => Promise<unknown> };
+export type RecorderOptions = { file: string; gapsFile: string; backup: () => Promise<unknown>; append?: typeof appendFile };
 
 const isPlay = (value: unknown): value is Play => {
   const play = value as Partial<Play> | null;
@@ -44,29 +44,37 @@ function parseLine(line: string): Play | null {
   }
 }
 
-/** Rebuilds what's already recorded. Only a missing file counts as empty: any other read error must not look like one. */
-async function loadRecorded(file: string, gapsFile: string) {
-  const text = await readFile(file, "utf8").catch((e: NodeJS.ErrnoException) => {
+/**
+ * Reads a file, creating it if missing. Only a missing file counts as empty: any other read error must not look like one.
+ * A crash or full disk can leave half a row, so this ends that line to keep the next row from being glued to it.
+ */
+async function readRepaired(path: string) {
+  const text = await readFile(path, "utf8").catch((e: NodeJS.ErrnoException) => {
     if (e.code === "ENOENT") return "";
     throw e;
   });
-  // A crash can leave half a row. End that line so the next row isn't glued to it; the play itself comes back in the overlap.
-  await appendFile(file, text && !text.endsWith("\n") ? "\n" : "");
-  await appendFile(gapsFile, "");
+  await appendFile(path, text && !text.endsWith("\n") ? "\n" : "");
+  return text;
+}
+
+/** Rebuilds what's already recorded. A play lost to a half-written row isn't counted, so the overlap brings it back. */
+async function loadRecorded(file: string, gapsFile: string) {
+  const text = await readRepaired(file);
+  await readRepaired(gapsFile);
   const lines = text.split("\n").filter(Boolean);
   const plays = lines.map(parseLine).filter((play) => play !== null);
   if (plays.length < lines.length) console.warn(`History: ignoring ${lines.length - plays.length} unreadable row(s) in ${file}`);
   return { seen: new Set(plays.map(keyOf)), cursor: plays.length ? plays.reduce((latest, play) => Math.max(latest, playedAt(play)), 0) : null };
 }
 
-/** Copies both files to the backup. `--append-verify` only ever adds, so a damaged local file can't shrink the copy. */
-export const rsyncBackup = (destination: string) => () => promisify(execFile)("rsync", ["--append-verify", HISTORY_FILE, GAPS_FILE, destination], { timeout: 120_000 });
+/** Copies both files to the backup. `--append` sends only bytes past the copy's end, so a damaged local file can't rewrite it. */
+export const rsyncBackup = (destination: string) => () => promisify(execFile)("rsync", ["--append", HISTORY_FILE, GAPS_FILE, destination], { timeout: 120_000 });
 
 /**
  * The recorder behind `pnpm host`. Takes the client rather than importing the host's, so that the login stays
  * out of its tests. No failure here can reach the login: a poll only reads, and reports what went wrong.
  */
-export function createRecorder(client: SpotifyClient, { file, gapsFile, backup }: RecorderOptions) {
+export function createRecorder(client: SpotifyClient, { file, gapsFile, backup, append = appendFile }: RecorderOptions) {
   let recorded: Awaited<ReturnType<typeof loadRecorded>> | undefined;
   let polling = false;
   let unsaved = false;
@@ -80,6 +88,16 @@ export function createRecorder(client: SpotifyClient, { file, gapsFile, backup }
       else console.log("History: recording.");
     }
     status.error = error;
+  }
+
+  /** After a failed write the file may end mid-row, so the next poll reloads and repairs it before writing again. */
+  async function write(path: string, rows: unknown[]) {
+    try {
+      await append(path, toLines(rows));
+    } catch (e) {
+      recorded = undefined;
+      throw e;
+    }
   }
 
   async function record() {
@@ -98,7 +116,7 @@ export function createRecorder(client: SpotifyClient, { file, gapsFile, backup }
     if (cursor !== null && items.length === WINDOW && plays.every((play) => playedAt(play) > cursor)) {
       const gap = { detected_at: iso(Date.now()), last_recorded: iso(cursor), oldest_returned: iso(Math.min(...plays.map(playedAt))) };
       console.warn(`History: plays between ${gap.last_recorded} and ${gap.oldest_returned} may be missing.`);
-      await appendFile(gapsFile, toLines([gap]));
+      await write(gapsFile, [gap]);
       unsaved = true;
     }
 
@@ -106,7 +124,7 @@ export function createRecorder(client: SpotifyClient, { file, gapsFile, backup }
       .filter(([key]) => !seen.has(key))
       .sort(([, a], [, b]) => playedAt(a) - playedAt(b));
     if (fresh.length > 0) {
-      await appendFile(file, toLines(fresh.map(([, play]) => play)));
+      await write(file, fresh.map(([, play]) => play));
       for (const [key, play] of fresh) {
         seen.add(key);
         known.cursor = Math.max(known.cursor ?? 0, playedAt(play));
