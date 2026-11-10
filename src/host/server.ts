@@ -9,8 +9,9 @@ import { config } from "../core/config.ts";
 import { mapLibrary } from "../core/now.ts";
 import { sortTargets } from "../core/library.ts";
 import { hasSession, isLocal, newSecret, passwordMatches, readSecret, saveSecret, sessionCookie, type Secret } from "./access.ts";
+import { createRecorder, GAPS_FILE, HISTORY_FILE, rsyncBackup } from "./history.ts";
 import { addScreen, isPlayerCommand, libraryData, poll, runCommand, seek } from "./playback.ts";
-import { forgetToken, freshToken, setToken, type HostToken } from "./spotify.ts";
+import { forgetToken, freshToken, setToken, spotify, type HostToken } from "./spotify.ts";
 
 const BUILD = resolve("dist");
 const MAX_BODY = 64 * 1024;
@@ -20,6 +21,7 @@ const TYPES: Record<string, string> = { ".html": "text/html", ".js": "text/javas
 
 let secret: Secret | null = await readSecret();
 let nextLoginAt = 0;
+const history = createRecorder(spotify, { file: HISTORY_FILE, gapsFile: GAPS_FILE, backup: rsyncBackup(config.historyBackup) });
 
 const json = (res: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}) => {
   res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store", ...headers });
@@ -57,11 +59,12 @@ async function localRoute(req: IncomingMessage, res: ServerResponse, path: strin
       if (!isTokenBody(body)) return json(res, 400, {});
       await setToken(body);
       void poll();
+      void history.poll();
       return json(res, 200, {});
     }
     if (req.method === "DELETE") return forgetToken().then(() => json(res, 200, {}));
   }
-  if (path === "/host/status" && req.method === "GET") return json(res, 200, { addresses: lanAddresses(), passwordSet: !!secret });
+  if (path === "/host/status" && req.method === "GET") return json(res, 200, { addresses: lanAddresses(), passwordSet: !!secret, history: history.status });
   if (path === "/host/password" && req.method === "PUT") {
     const { password } = (await readBody(req)) as { password?: unknown };
     if (typeof password !== "string" || password.length < MIN_PASSWORD) return json(res, 400, {});
@@ -145,4 +148,5 @@ createServer((req, res) => {
   console.log(`Now Playing on this Mac: http://127.0.0.1:${config.hostPort}/now`);
   for (const address of lanAddresses()) console.log(`On your network: ${address}`);
   if (!secret) console.log("Set a password from Settings on the Now Playing screen to let other devices in.");
+  history.start();
 });

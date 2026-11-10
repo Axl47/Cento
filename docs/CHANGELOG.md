@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- `pnpm host` records every Spotify play to a file with no screen open, logs any stretch where plays may be missing, and backs the file up hourly, so listening history isn't lost while waiting for Spotify's export. It needs one new Spotify login.
 - A Now Playing screen (`N`, or by itself at `/now` for a TV or spare monitor) shows the current song large with its place on the sound map, when you added it, what its lyrics are about and what it sounds like, with playback controls and per-screen settings for which panels show.
 - `pnpm host` keeps Now Playing running with no tab open and serves it to other devices on your network behind a password you set from the Mac, so a TV or spare monitor needs no Spotify login or certificate.
 - Bridges build a list that travels gradually from one song to another by sound: on the Sound map choose **Bridge from here** (`B`) on a song, then click where it ends, and the route is drawn on the map with distinct ends. Listen to it in order, replace any song, and optionally save it as a private Spotify playlist that stays out of sorting.
@@ -49,6 +50,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Log out now also signs the host out, so you can log in again to grant new permissions instead of being signed straight back in.
+- The host keeps its Spotify login when Spotify refuses a token refresh, instead of deleting it during a background check.
 - Song names on the sound map show in full and stay inside its border, moving to the other side of a song near the edge.
 - When Spotify blocks playback control for hours, the player says so and until when, instead of waiting silently and never showing the current song; syncing and playlist changes keep working, since Spotify blocks the player separately.
 

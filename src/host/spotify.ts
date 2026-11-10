@@ -30,10 +30,8 @@ async function refresh(current: HostToken): Promise<HostToken> {
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ client_id: process.env.SPOTIFY_CLIENT_ID ?? "", grant_type: "refresh_token", refresh_token: current.refreshToken }),
   });
-  if (res.status === 400) {
-    await forgetToken(); // revoked or replaced; only a new login fixes it
-    throw new Error("The Spotify login expired. Open Cento on the Mac and log in.");
-  }
+  // Keep the token: a background poll must never be what erases the login. Only a new login or Log out replaces it.
+  if (res.status === 400) throw new Error("The Spotify login expired. Open Cento on the Mac and log in.");
   if (!res.ok) throw new Error(`Spotify token request failed (${res.status})`);
   const json = (await res.json()) as { access_token: string; refresh_token?: string; expires_in: number };
   const next = { accessToken: json.access_token, refreshToken: json.refresh_token ?? current.refreshToken, expiresAt: Date.now() + (json.expires_in - 60) * 1000 };
