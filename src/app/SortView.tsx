@@ -1,6 +1,7 @@
 // The sorting screen: the current song, its ranked playlists as tiles (confident ones
-// prechecked), the run of upcoming songs that would get the same picks, actions, and this
-// session's sorts. The panel on the right explains the focused tile (hover or ↑↓).
+// prechecked), the run of upcoming songs that would get the same picks, actions, what's known
+// about the focused playlist, and this session's sorts. The right side shows where the song
+// sits by sound: among its nearest songs, or against the tile being hovered (or chosen with ↑↓).
 import { useEffect, useMemo, useState } from "react";
 import { sortTargets, type Track } from "../core/library.ts";
 import { LINE_BREAK } from "../core/lyrics.ts";
@@ -8,9 +9,12 @@ import { knownArtistSongs, suggest, type Suggestion } from "../core/suggest.ts";
 import { readPlaylist, songThemes } from "../core/themes.ts";
 import { CommandPalette } from "./CommandPalette.tsx";
 import { RuleEditor } from "./RuleEditor.tsx";
-import { WhyPanel } from "./WhyPanel.tsx";
+import { PlaylistInfo } from "./PlaylistInfo.tsx";
+import { SongEvidence } from "./SongEvidence.tsx";
+import { SoundMap } from "./SoundMap.tsx";
 import { openInSpotify, usePlayer } from "./player.ts";
 import { initialPicks, useApp } from "./store.ts";
+import { useHoverIntent } from "./useHoverIntent.ts";
 
 /** Tiles with a number key. */
 const KEYED = 8;
@@ -24,12 +28,12 @@ const isTyping = (e: KeyboardEvent) => e.target instanceof HTMLInputElement || e
 export const fmt = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, "0")}`;
 
 export function SortView({ colors }: { colors: Map<string, string> }) {
-  const { lib, model, neighbors, queue, picked, history, rules, hidden, togglePick, sort, skip, undo } = useApp();
+  const { lib, model, audio, neighbors, queue, picked, history, rules, hidden, togglePick, sort, skip, undo } = useApp();
   const player = usePlayer();
   const [ruleFor, setRuleFor] = useState<string | null>(null); // playlist whose artist rule is being edited
   const [palette, setPalette] = useState(false);
-  // Both belong to one song; a new song starts with the top tile focused and the whole run in.
-  const [focus, setFocus] = useState<{ track: string; playlist: string } | null>(null);
+  // Both belong to one song; a new song starts with no tile focused and the whole run in.
+  const tile = useHoverIntent<{ track: string; playlist: string }>();
   const [excluded, setExcluded] = useState<{ track: string; ids: Set<string> } | null>(null);
   const [mark, setMark] = useState<string | null>(null); // song hovered anywhere, pointed out on the map
 
@@ -69,13 +73,16 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
     return out;
   }, [lib, model, neighbors, queue, trackId]);
 
-  const focused = rows.find((r) => focus && focus.track === trackId && r.playlistId === focus.playlist)?.playlistId ?? rows[0]?.playlistId;
+  const inRows = (focus: typeof tile.current) => (focus && focus.track === trackId ? rows.find((r) => r.playlistId === focus.playlist)?.playlistId : undefined);
+  const focused = inRows(tile.current);
+  // Stays on the last playlist looked at, so its buttons can be reached and the page doesn't jump.
+  const infoFor = focused ?? inRows(tile.last) ?? rows[0]?.playlistId;
   const left = excluded && excluded.track === trackId ? excluded.ids : new Set<string>();
   const runIn = run.filter((id) => !left.has(id));
 
   const focusAt = (i: number) => {
     const r = rows[(i + rows.length) % rows.length];
-    if (r && trackId) setFocus({ track: trackId, playlist: r.playlistId });
+    if (r && trackId) tile.set({ track: trackId, playlist: r.playlistId });
   };
   const toggleRun = (id: string) => {
     if (!trackId) return;
@@ -102,10 +109,11 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
       const index = rows.findIndex((r) => r.playlistId === focused);
       if (/^[1-9]$/.test(e.key) && Number(e.key) <= KEYED) {
         const row = rows[Number(e.key) - 1];
-        if (row) (togglePick(row.playlistId), focusAt(Number(e.key) - 1));
+        if (row) togglePick(row.playlistId);
       } else if (e.key === "Enter") (e.preventDefault(), e.shiftKey ? sortRun() : sortOne()); // also stops a focused button "clicking"
       else if (e.key === "ArrowDown") (e.preventDefault(), focusAt(index + 1));
-      else if (e.key === "ArrowUp") (e.preventDefault(), focusAt(index - 1));
+      else if (e.key === "ArrowUp") (e.preventDefault(), focusAt(index < 0 ? rows.length - 1 : index - 1));
+      else if (e.key === "Escape") tile.set(null);
       else if (e.key.toLowerCase() === "s") skip();
       else if (e.key === "/") (e.preventDefault(), setPalette(true));
       else if (e.key === " ") {
@@ -211,8 +219,8 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
               focused={s.playlistId === focused}
               muted={hidden.includes(s.playlistId)}
               ruled={!!rules[s.playlistId]}
-              onToggle={() => (togglePick(s.playlistId), focusAt(i))}
-              onFocus={() => focusAt(i)}
+              onToggle={() => togglePick(s.playlistId)}
+              onHover={(on) => tile.hover(on && trackId ? { track: trackId, playlist: s.playlistId } : null)}
             />
           ))}
         </div>
@@ -265,6 +273,8 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
           </button>
         </div>
 
+        {infoFor && <PlaylistInfo playlistId={infoFor} track={track} colors={colors} onEditRule={() => setRuleFor(infoFor)} />}
+
         {/* This session */}
         {recent.length > 0 && (
           <div className="mt-5 flex flex-wrap gap-1.5">
@@ -287,10 +297,27 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
         )}
       </main>
 
-      <aside className="min-w-0 lg:border-l lg:border-white/10 lg:pl-8">
-        {focused && (
-          <WhyPanel track={track} playlistId={focused} colors={colors} mark={mark} onMark={setMark} onEditRule={() => setRuleFor(focused)} />
+      <aside className="min-w-0 space-y-5 lg:border-l lg:border-white/10 lg:pl-8">
+        <h3 className="flex items-center gap-2 font-bold text-zinc-50">
+          {focused && <span className="size-2.5 shrink-0 rounded-full" style={{ background: colors.get(focused) }} />}
+          <span className="min-w-0 flex-1 truncate">{focused ? byId.get(focused)?.name : "Nearest by sound"}</span>
+        </h3>
+        {audio && (
+          <SoundMap
+            audio={audio}
+            lib={lib}
+            colors={colors}
+            height={400}
+            scene={{ kind: "song", id: track.id }}
+            highlight={focused ? [focused] : []}
+            mark={mark}
+            onSelect={(id) => {
+              const t = lib.tracks[id];
+              if (t) void player.play(t.id, t.durationMs);
+            }}
+          />
         )}
+        <SongEvidence track={track} playlistId={focused ?? null} colors={colors} mark={mark} onMark={setMark} />
       </aside>
 
       {palette && <CommandPalette colors={colors} onClose={() => setPalette(false)} onEditRule={setRuleFor} />}
@@ -344,13 +371,14 @@ function Tile(props: {
   muted: boolean;
   ruled: boolean;
   onToggle: () => void;
-  onFocus: () => void;
+  onHover: (on: boolean) => void;
 }) {
   const { index, name, color, score, checked, focused } = props;
   return (
     <button
       onClick={props.onToggle}
-      onMouseEnter={props.onFocus}
+      onMouseEnter={() => props.onHover(true)}
+      onMouseLeave={() => props.onHover(false)}
       title={props.ruled ? "Has an artist rule" : undefined}
       className={`relative rounded-lg border py-2.5 pl-10 pr-3 text-left transition-colors ${
         checked ? "" : focused ? "border-white/20 bg-zinc-900" : "border-transparent bg-zinc-900"
