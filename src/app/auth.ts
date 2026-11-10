@@ -120,6 +120,7 @@ export const client = createClient(accessToken);
 /** Forgets the stored token so the next login starts fresh (e.g. to pick up new scopes). */
 export function logout() {
   localStorage.removeItem(TOKEN_KEY);
-  void fetch("/host/token", { method: "DELETE", keepalive: true }).catch(() => {});
+  // The host refuses any write without this content type, even one with no body.
+  void fetch("/host/token", { method: "DELETE", headers: { "Content-Type": "application/json" }, keepalive: true }).catch(() => {});
   location.assign("/");
 }

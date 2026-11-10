@@ -50,6 +50,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Log out now also signs the host out, so you can log in again to grant new permissions instead of being signed straight back in.
 - The host keeps its Spotify login when Spotify refuses a token refresh, instead of deleting it during a background check.
 - Song names on the sound map show in full and stay inside its border, moving to the other side of a song near the edge.
 - When Spotify blocks playback control for hours, the player says so and until when, instead of waiting silently and never showing the current song; syncing and playlist changes keep working, since Spotify blocks the player separately.
