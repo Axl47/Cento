@@ -1,9 +1,8 @@
 // Sonic bridges: pick two songs and get a list that travels gradually from one to the other. It lives
 // here until you save it, so a bridge can be listened to and adjusted before it becomes a playlist.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { buildBridge, hops, type Candidate } from "../core/bridge.ts";
 import type { Track } from "../core/library.ts";
-import { SoundMap } from "./SoundMap.tsx";
 import { openInSpotify, usePlayer } from "./player.ts";
 import { useApp } from "./store.ts";
 
@@ -13,7 +12,7 @@ const MATCHES = 8;
 /** How long before a song ends the next one is started, to cover the round trip to Spotify. */
 const ADVANCE_EARLY_MS = 300;
 
-export function BridgesView({ colors }: { colors: Map<string, string> }) {
+export function BridgesView() {
   const { lib, audio, vectors, saveBridge } = useApp();
   const player = usePlayer();
   const [from, setFrom] = useState<string | null>(null);
@@ -22,7 +21,7 @@ export function BridgesView({ colors }: { colors: Map<string, string> }) {
   const [replaced, setReplaced] = useState<string[]>([]); // songs taken out of this bridge
   const [listening, setListening] = useState(false); // playing through the list, rather than one song
   const [savedAs, setSavedAs] = useState<string | null>(null);
-  const [mark, setMark] = useState<string | null>(null);
+  const advancedTo = useRef<string | null>(null); // Spotify can report the old song for a moment after the switch
 
   // One release per song, and only songs with sound vectors.
   const candidates = useMemo(() => {
@@ -44,7 +43,6 @@ export function BridgesView({ colors }: { colors: Map<string, string> }) {
     return buildBridge(audio, vectors, ends[0], ends[1], length, candidates.filter((c) => !replaced.includes(c.id)));
   }, [ends?.[0], ends?.[1], audio, vectors, length, candidates, replaced]); // eslint-disable-line react-hooks/exhaustive-deps
   const steps = useMemo(() => (audio && vectors ? hops(audio, vectors, ids) : []), [audio, vectors, ids]);
-  const shown = useMemo(() => new Set(ids), [ids]);
 
   useEffect(() => setSavedAs(null), [ids]);
 
@@ -52,9 +50,12 @@ export function BridgesView({ colors }: { colors: Map<string, string> }) {
   const nowAt = player.trackId ? ids.indexOf(player.trackId) : -1;
   const following = listening && nowAt >= 0 && !player.paused ? lib?.tracks[ids[nowAt + 1] ?? ""] : undefined;
   useEffect(() => {
-    if (!following) return;
+    if (!following || advancedTo.current === following.id) return;
     const left = player.duration - player.position - (performance.now() - player.updatedAt);
-    const timer = setTimeout(() => void player.play(following.id, following.durationMs, 0), Math.max(left - ADVANCE_EARLY_MS, 0));
+    const timer = setTimeout(() => {
+      advancedTo.current = following.id;
+      void player.play(following.id, following.durationMs, 0);
+    }, Math.max(left - ADVANCE_EARLY_MS, 0));
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [following?.id, player.position, player.updatedAt, player.duration]);
@@ -67,6 +68,7 @@ export function BridgesView({ colors }: { colors: Map<string, string> }) {
   const playAt = (track: Track) => {
     if (!player.enabled) return openInSpotify(track.id);
     setListening(true);
+    advancedTo.current = track.id;
     void player.play(track.id, track.durationMs, 0);
   };
 
@@ -76,8 +78,7 @@ export function BridgesView({ colors }: { colors: Map<string, string> }) {
   const last = lib.tracks[ids.at(-1) ?? ""];
   const name = first && last ? `${first.name} → ${last.name}` : "";
   return (
-    <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(380px,0.8fr)]">
-      <main className="min-w-0">
+    <main className="mx-auto max-w-3xl">
         <div className="grid gap-3 sm:grid-cols-2">
           <SongPicker label="From" chosen={from} candidates={candidates} onChoose={choose(setFrom)} />
           <SongPicker label="To" chosen={to} candidates={candidates} onChoose={choose(setTo)} />
@@ -124,10 +125,7 @@ export function BridgesView({ colors }: { colors: Map<string, string> }) {
                 return (
                   <li key={id}>
                     {i > 0 && <p className="ml-[3.25rem] py-0.5 text-[11px] text-zinc-500">{Math.round(steps[i - 1]! * 100)}% alike</p>}
-                    <div
-                      onMouseEnter={() => setMark(id)}
-                      onMouseLeave={() => setMark(null)}
-                      className={`flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-white/5 ${i === nowAt ? "bg-white/10" : ""}`}
+                    <div className={`flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-white/5 ${i === nowAt ? "bg-white/10" : ""}`}
                     >
                       <Cover track={track} />
                       <div className="min-w-0 flex-1">
@@ -149,16 +147,7 @@ export function BridgesView({ colors }: { colors: Map<string, string> }) {
             </ol>
           </>
         )}
-      </main>
-
-      <aside className="min-w-0">
-        {ids.length > 0 && (
-          <div className="sticky top-4 overflow-hidden rounded-lg bg-zinc-900">
-            <SoundMap audio={audio} lib={lib} colors={colors} height={560} only={shown} mark={mark} onSelect={(id) => lib.tracks[id] && playAt(lib.tracks[id])} />
-          </div>
-        )}
-      </aside>
-    </div>
+    </main>
   );
 }
 

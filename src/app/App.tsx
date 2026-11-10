@@ -225,7 +225,7 @@ export function App() {
       )}
       {tab === "lyrics" && <LyricsView colors={colors} onSortSong={() => setTab("sort")} />}
       {tab === "themes" && <ThemesView colors={colors} />}
-      {tab === "bridges" && <BridgesView colors={colors} />}
+      {tab === "bridges" && <BridgesView />}
     </div>
   );
 }
