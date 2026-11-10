@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Suggestions now take a song's lyric language into account, which better places songs by artists you've never sorted.
 - Suggestions now use a sound classifier trained on your own sorted playlists, which is better at placing songs by artists you've never sorted, and it can check one playlist from sound alone when it's confident.
 - The sound map can be narrowed to songs added in a date range, and a resync now saves when each song was added to each playlist.
 - A playlist can be marked as not counting as sorted, from `⌘K` or a new on/off row on the sort screen, which brings its songs back into the queue for a proper second pass without changing anything on Spotify.

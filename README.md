@@ -101,4 +101,6 @@ Spotify shows them; entries older than a day are dropped too.
   and writes `data/classifier.json`. Run it after `pnpm audio`; a resync in the app also runs it. Its scores replace
   the nearest-neighbor vote where available, and it can check one playlist from sound alone when it's confident and that
   playlist is reliably predictable (a held-out test on new artists: about two-thirds of those checks were already right).
+  The classifier also uses each song's lyric language when `data/languages.jsonl` exists; refresh it with the engine's
+  `audio-embed languages <lyrics.jsonl> --out data/languages.jsonl`. Songs without one use sound alone.
 - `pnpm test` runs the suggestion-model tests.

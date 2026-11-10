@@ -43,11 +43,30 @@ console.log(`Left out as single albums: ${sortTargets(lib, hidden).filter((p) =>
 const labels = new Map<string, string[]>();
 for (const p of targets) for (const id of new Set(p.trackIds)) labels.set(id, [...(labels.get(id) ?? []), p.id]);
 
+// From the engine's `audio-embed languages`, keyed by ISRC or, without one, track id. Songs missing here use sound alone.
+const languageRows = await readFile("data/languages.jsonl", "utf8").catch(() => "");
+const languages = new Map(
+  languageRows
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const { key, language } = JSON.parse(line) as { key: string; language: string };
+      return [key, language];
+    }),
+);
+
 const input = resolve("data/classifier-input.jsonl");
 await writeFile(
   input,
   Object.values(lib.tracks)
-    .map((t) => JSON.stringify({ key: t.id, artists: t.artists.map((a) => a.id), labels: labels.get(t.id) ?? [] }))
+    .map((t) =>
+      JSON.stringify({
+        key: t.id,
+        artists: t.artists.map((a) => a.id),
+        labels: labels.get(t.id) ?? [],
+        language: languages.get(t.isrc ?? t.id),
+      }),
+    )
     .join("\n"),
 );
 const cmd = command
