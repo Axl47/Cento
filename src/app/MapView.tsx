@@ -1,10 +1,15 @@
-// Full-size sound map with a playlist legend (click to highlight, several at once), song search, and a
-// card for the selected song.
+// Full-size sound map with a playlist legend (hover to preview, click to highlight several at once), song
+// search, a card for the selected song with how it compares to the library, and bridges: start one from the
+// selected song, and the next song chosen is where it ends.
 import { useEffect, useMemo, useState } from "react";
 import { firstAdded, inbox, sortTargets } from "../core/library.ts";
-import { SoundMap } from "./SoundMap.tsx";
+import { BridgePanel } from "./BridgePanel.tsx";
+import { SongEvidence } from "./SongEvidence.tsx";
+import { SoundMap, type MapScene } from "./SoundMap.tsx";
 import { usePlayer } from "./player.ts";
 import { useApp } from "./store.ts";
+import { useBridge } from "./useBridge.ts";
+import { useHoverIntent } from "./useHoverIntent.ts";
 
 export function MapView({ colors, onSortSong }: { colors: Map<string, string>; onSortSong: (id: string) => void }) {
   const { lib, audio, hidden, uncounted } = useApp();
@@ -15,12 +20,25 @@ export function MapView({ colors, onSortSong }: { colors: Map<string, string>; o
   const [from, setFrom] = useState(""); // yyyy-mm-dd; empty means no limit on that side
   const [to, setTo] = useState("");
   const [height, setHeight] = useState(() => Math.max(window.innerHeight - 140, 420));
+  const [mark, setMark] = useState<string | null>(null); // song hovered beside the map, pointed out on it
+  const legendHover = useHoverIntent<string>();
+  const bridge = useBridge();
 
   useEffect(() => {
     const onResize = () => setHeight(Math.max(window.innerHeight - 140, 420));
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.metaKey || e.ctrlKey) return;
+      if (e.key === "Escape") return bridge.from ? bridge.close() : setSelected(null);
+      if (e.key.toLowerCase() === "b" && selected && !bridge.from) bridge.start(selected);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   const legend = useMemo(() => {
     if (!lib || !audio) return [];
@@ -66,20 +84,35 @@ export function MapView({ colors, onSortSong }: { colors: Map<string, string>; o
 
   const playlistsOf = (id: string) => sortTargets(lib).filter((p) => p.trackIds.includes(id));
 
-  return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
-      <SoundMap
-        audio={audio}
-        lib={lib}
-        colors={colors}
-        height={height}
-        scene={selected ? { kind: "song", id: selected } : { kind: "overview" }}
-        highlight={highlight}
-        only={only}
-        onSelect={setSelected}
-      />
+  const scene: MapScene = bridge.from
+    ? { kind: "bridge", ids: bridge.ids.length > 0 ? bridge.ids : [bridge.from] }
+    : selected
+      ? { kind: "song", id: selected }
+      : { kind: "overview" };
+  // A click on the map or a search result: the end of a bridge being started, else the song to look at.
+  const choose = (id: string) => {
+    if (bridge.picking) bridge.finish(id);
+    else if (!bridge.from) setSelected(id);
+  };
+  const hoveredPlaylist = legendHover.current;
+  const shown = hoveredPlaylist && !highlight.includes(hoveredPlaylist) ? [...highlight, hoveredPlaylist] : highlight;
 
-      <aside className="space-y-4">
+  return (
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="relative min-w-0">
+        <SoundMap audio={audio} lib={lib} colors={colors} height={height} scene={scene} highlight={shown} only={only} mark={mark} onSelect={choose} />
+        {bridge.picking && (
+          <p className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-full bg-zinc-950/90 px-3 py-1.5 text-xs text-zinc-100 shadow-xl">
+            Click the song to bridge to · <kbd>Esc</kbd> cancels
+          </p>
+        )}
+      </div>
+
+      <aside className="space-y-4 lg:max-h-[max(calc(100vh-140px),420px)] lg:overflow-y-auto lg:pr-1">
+        {bridge.to ? (
+          <BridgePanel key={`${bridge.from}-${bridge.to}`} bridge={bridge} onMark={setMark} />
+        ) : (
+          <>
         <div className="relative">
           <input
             value={query}
@@ -93,7 +126,7 @@ export function MapView({ colors, onSortSong }: { colors: Map<string, string>; o
               {results.map((t) => (
                 <button
                   key={t!.id}
-                  onClick={() => (setSelected(t!.id), setQuery(""))}
+                  onClick={() => (choose(t!.id), setQuery(""))}
                   className="block w-full truncate px-3 py-2 text-left text-sm text-zinc-200 hover:bg-white/10"
                 >
                   {t!.name} <span className="text-zinc-500">· {t!.artists[0]?.name}</span>
@@ -103,8 +136,19 @@ export function MapView({ colors, onSortSong }: { colors: Map<string, string>; o
           )}
         </div>
 
-        {track && (
-          <div className="space-y-2 rounded-xl border border-white/10 bg-zinc-900/60 p-3">
+        {bridge.picking && (
+          <div className="flex items-center gap-2 rounded-lg bg-zinc-900 p-3 text-sm text-zinc-300">
+            <span className="min-w-0 flex-1">
+              Bridging from <b className="font-semibold text-zinc-50">{lib.tracks[bridge.from ?? ""]?.name}</b>. Choose where it ends on the map or by searching.
+            </span>
+            <button className="btn" onClick={bridge.close}>
+              Cancel
+            </button>
+          </div>
+        )}
+
+        {track && !bridge.from && (
+          <div className="space-y-2 rounded-lg bg-zinc-900 p-3">
             <div className="flex gap-3">
               {track.album.imageUrl && <img src={track.album.imageUrl} alt="" className="size-14 rounded-md object-cover" />}
               <div className="min-w-0">
@@ -120,18 +164,23 @@ export function MapView({ colors, onSortSong }: { colors: Map<string, string>; o
               ))}
               {playlistsOf(track.id).length === 0 && <span className="text-xs text-zinc-500">Not sorted yet</span>}
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <button className="btn flex-1" onClick={() => void play(track.id, track.durationMs)}>
                 Play
               </button>
+              <button className="btn flex-1 whitespace-nowrap" onClick={() => bridge.start(track.id)} title="Then choose the song it ends on (B)">
+                Bridge from here
+              </button>
               {inInbox && (
-                <button className="btn flex-1 bg-emerald-500 text-emerald-950 hover:bg-emerald-400" onClick={() => onSortSong(track.id)}>
+                <button className="btn flex-1 whitespace-nowrap bg-emerald-500 text-emerald-950 hover:bg-emerald-400" onClick={() => onSortSong(track.id)}>
                   Sort now
                 </button>
               )}
             </div>
           </div>
         )}
+
+        {track && !bridge.from && <SongEvidence track={track} playlistId={hoveredPlaylist ?? (highlight.length === 1 ? highlight[0]! : null)} colors={colors} mark={mark} onMark={setMark} />}
 
         <div>
           <div className="mb-1.5 flex items-center justify-between text-xs uppercase tracking-wider text-zinc-500">
@@ -171,11 +220,13 @@ export function MapView({ colors, onSortSong }: { colors: Map<string, string>; o
               </button>
             )}
           </div>
-          <div className="max-h-[calc(100vh-380px)] min-h-48 space-y-0.5 overflow-y-auto pr-1">
+          <div className="space-y-0.5">
             {legend.map(({ p, n }) => (
               <button
                 key={p.id}
                 onClick={() => setHighlight((h) => (h.includes(p.id) ? h.filter((x) => x !== p.id) : [...h, p.id]))}
+                onMouseEnter={() => legendHover.hover(p.id)}
+                onMouseLeave={() => legendHover.hover(null)}
                 className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm ${
                   highlight.includes(p.id) ? "bg-white/10 text-zinc-50" : "text-zinc-300 hover:bg-white/5"
                 }`}
@@ -190,7 +241,9 @@ export function MapView({ colors, onSortSong }: { colors: Map<string, string>; o
             </div>
           </div>
         </div>
-        <p className="text-[11px] text-zinc-500">Scroll to zoom, drag to pan. Zoomed out shows where each playlist's songs concentrate; zoom in for songs. Click playlists to compare them.</p>
+        <p className="text-[11px] text-zinc-500">Scroll to zoom, drag to pan. Zoomed out shows where each playlist's songs concentrate; zoom in for songs. Click playlists to compare them. Esc clears the selected song.</p>
+          </>
+        )}
       </aside>
     </div>
   );

@@ -10,7 +10,9 @@ All notable changes to this project are documented here. The format follows
 
 - A Now Playing screen (`N`, or by itself at `/now` for a TV or spare monitor) shows the current song large with its place on the sound map, when you added it, what its lyrics are about and what it sounds like, with playback controls and per-screen settings for which panels show.
 - `pnpm host` keeps Now Playing running with no tab open and serves it to other devices on your network behind a password you set from the Mac, so a TV or spare monitor needs no Spotify login or certificate.
-- A Bridges tab (`B`) builds a list that travels gradually from one song to another by sound; listen to it in order, replace any song, and optionally save it as a private Spotify playlist that stays out of sorting.
+- Bridges build a list that travels gradually from one song to another by sound: on the Sound map choose **Bridge from here** (`B`) on a song, then click where it ends, and the route is drawn on the map with distinct ends. Listen to it in order, replace any song, and optionally save it as a private Spotify playlist that stays out of sorting.
+- A playlist info section below the sort button shows the playlist's size, the languages of its songs, its lyric themes (highlighting the ones the current song shares) and how well sound predicts it.
+- Selecting a song on the Sound map shows how it compares to the library, and hovering a playlist previews it, as on the sort screen.
 - A Themes tab (`T`) describes what each playlist's lyrics are about, compared with the rest of your library, with the passages that show each theme, and says so when no theme stands out.
 - The Themes tab lists songs that sound like a playlist but whose lyrics say something else, to help clean one up.
 - The sort screen shows what the current song's lyrics lean toward, with the lines behind it and which suggested playlists share that theme.
@@ -32,6 +34,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- With no playlist hovered, the sort screen's map shows the song's 15 nearest songs by name, each in its own playlist's color.
+- The sound map moves and zooms to keep every named song on screen, including a far-away song you hover to see how distant it is.
+- The Sound map tab and Now Playing use the same map and styling as the sort screen.
+- Number keys check a playlist without changing what the map shows; hover or `↑`/`↓` compares against one, and `Esc` goes back.
 - Playlists show as tiles with a single confidence bar in the playlist's own color, replacing the multi-color score bar and its legend.
 - Hide and Artists… moved from each playlist row to the evidence panel and the palette.
 - The sort screen drops always-on hints and settings, so the song and its playlists are the focus.
@@ -42,6 +48,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Song names on the sound map show in full and stay inside its border, moving to the other side of a song near the edge.
 - When Spotify blocks playback control for hours, the player says so and until when, instead of waiting silently and never showing the current song; syncing and playlist changes keep working, since Spotify blocks the player separately.
 
 - Playlist bubbles on the sound map sit where the playlist's songs are concentrated instead of at their average position, which could land between groups or in empty space; a playlist split across tight groups gets a bubble per group.

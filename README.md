@@ -46,18 +46,21 @@ track-URI play request is accepted but loads nothing on this account.
   `←`/`→` seek 10s, `M` switches tabs.
   - **Runs**: when the next songs would be prechecked exactly like this one, they're outlined after it.
     Click one to leave it out; `⇧Enter` sorts the whole run with the current picks.
-  - **Why panel**: hover a tile (or `↑`/`↓`) to see its evidence: the sound map narrowed to it, which of the
-    artist's sorted songs are in it, how many of the 15 nearest sorted songs are, and its closest songs
-    (bars run from the random-pair baseline to this song's nearest neighbor anywhere). Hovering any song
-    there, or in the run / up-next strip, points it out on the map.
+  - **Sound panel** (right): with no tile hovered, the map shows the song's 15 nearest sorted songs by name, each in
+    its own playlist's color. Hover a tile (or `↑`/`↓`, `Esc` to go back) to compare against that playlist instead:
+    its closest songs, which of the artist's sorted songs are in it, how many of the 15 nearest are, and its closest
+    songs with bars (from the random-pair baseline to this song's nearest neighbor anywhere). Hovering any song
+    there, or in the run / up-next strip, points it out on the map, which zooms out if that's what it takes to show it.
+  - **Playlist info** (below the actions): the last playlist looked at, with its size, the languages of its songs,
+    its lyric themes (ones this song shares are outlined) and how well sound predicts it.
   - **Undo**: each sorted song stays in a row below the actions with its own Undo; `⌘Z` undoes the latest
     (re-liking loses the original liked date).
   - **`⌘K`** (or `/`): find a playlist and check it, create a private one named after the search (checked,
     no resync needed), hide/unhide, artist rules, queue order, "Remove from Liked Songs", playback device.
-- **Artist rules**: **Artists…** in the why panel (or on a `⌘K` result) says "this playlist is for these
+- **Artist rules**: **Artists…** in the playlist info (or on a `⌘K` result) says "this playlist is for these
   artists" (any of them matches; autocomplete from your library). Matching songs get the playlist on top and
   checked; it's never suggested for other songs. Saved in `data/rules.json`, which `pnpm eval` also reads.
-- **Hidden playlists**: for playlists like "Best of 2020", click **Hide** in the why panel (or on a `⌘K`
+- **Hidden playlists**: for playlists like "Best of 2020", click **Hide** in the playlist info (or on a `⌘K`
   result). They're never suggested, the model doesn't learn from them, they're left off the sound map, and a
   liked song that's only in hidden playlists still counts as unsorted. You can still pick one from `⌘K`,
   which also lists them to unhide. Saved in `data/hidden.json`.
@@ -69,10 +72,13 @@ track-URI play request is accepted but loads nothing on this account.
 
 - **Sound map**: every song placed by sound. Zoomed out, each playlist shows as a bubble where its songs
   are densest (up to three bubbles for a playlist split across tight groups; see `src/core/clusters.ts`);
-  zoom in for songs. The focused song is always labeled, and its nearest neighbors' names show from a
-  medium zoom in their playlist's color. Click a playlist to highlight it, click a song to select/play it.
+  zoom in for songs. It's the same map as the sort screen's: click a song to see it among its nearest songs, hover a
+  playlist to preview it and click to keep it highlighted.
   **Added between** narrows the map to songs first liked or added to a playlist in that date range (playlist dates
   arrive with the next resync).
+  **Bridges**: on a selected song, **Bridge from here** (`B`) and then click the song to end on builds a route that
+  travels gradually between them by sound, drawn on the map. Listen in order, replace any song, or save it as a private
+  Spotify playlist that stays out of sorting.
 
 Spotify writes run in order in the background; the header shows pending/failed writes. The app saves its
 view of the library to `data/library.json` (shared with the scripts) through the dev server. Each sort is
