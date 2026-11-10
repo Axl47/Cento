@@ -156,9 +156,7 @@ export function NowView({
           {info && trackId && (
             <aside className="min-w-0 space-y-[2.5vh] text-[clamp(0.85rem,1.1vw,1.35rem)]">
               {show("map") && map && info.mapped && (
-                <div className="overflow-hidden rounded-lg bg-black/30">
-                  <SoundMap audio={map.audio} lib={map.lib} colors={colors} height={Math.round(window.innerHeight * 0.38)} focusId={trackId} focusZoom={5} />
-                </div>
+                <SoundMap audio={map.audio} lib={map.lib} colors={colors} height={Math.round(window.innerHeight * 0.38)} scene={{ kind: "song", id: trackId }} />
               )}
               {show("history") && (info.added || info.playlists.length > 0) && (
                 <div>

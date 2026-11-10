@@ -68,18 +68,16 @@ export function MapView({ colors, onSortSong }: { colors: Map<string, string>; o
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
-      <div className="overflow-hidden rounded-xl border border-white/10 bg-zinc-950">
-        <SoundMap
-          audio={audio}
-          lib={lib}
-          colors={colors}
-          height={height}
-          focusId={selected}
-          highlight={highlight}
-          only={only}
-          onSelect={setSelected}
-        />
-      </div>
+      <SoundMap
+        audio={audio}
+        lib={lib}
+        colors={colors}
+        height={height}
+        scene={selected ? { kind: "song", id: selected } : { kind: "overview" }}
+        highlight={highlight}
+        only={only}
+        onSelect={setSelected}
+      />
 
       <aside className="space-y-4">
         <div className="relative">

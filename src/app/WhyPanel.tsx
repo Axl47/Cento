@@ -100,22 +100,19 @@ export function WhyPanel({
       </div>
 
       {audio && (
-        <div className="overflow-hidden rounded-lg bg-zinc-900">
-          <SoundMap
-            audio={audio}
-            lib={lib}
-            colors={colors}
-            height={400}
-            focusId={track.id}
-            focusZoom={5}
-            highlight={[playlistId]}
-            mark={mark}
-            onSelect={(id) => {
-              const t = lib.tracks[id];
-              if (t) void play(t.id, t.durationMs);
-            }}
-          />
-        </div>
+        <SoundMap
+          audio={audio}
+          lib={lib}
+          colors={colors}
+          height={400}
+          scene={{ kind: "song", id: track.id }}
+          highlight={[playlistId]}
+          mark={mark}
+          onSelect={(id) => {
+            const t = lib.tracks[id];
+            if (t) void play(t.id, t.durationMs);
+          }}
+        />
       )}
 
       {evidence.artist.length > 0 && (

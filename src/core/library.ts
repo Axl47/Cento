@@ -39,6 +39,14 @@ export const sortTargets = (lib: Library, hidden: readonly string[] = []) =>
     (p) => p.id !== config.allPlaylistId && !config.ignoredPlaylistIds.includes(p.id) && !hidden.includes(p.id),
   );
 
+/** trackId -> the smallest, so most specific, of `targets` it's in: what decides a song's color. Sorted songs only. */
+export function primaryPlaylists(targets: readonly Playlist[]): Map<string, string> {
+  const primary = new Map<string, string>();
+  for (const p of targets.toSorted((a, b) => a.trackIds.length - b.trackIds.length))
+    for (const id of p.trackIds) if (!primary.has(id)) primary.set(id, p.id);
+  return primary;
+}
+
 /**
  * The songs left to sort: liked songs plus every song in an uncounted playlist, minus anything
  * already in a playlist that counts. Hidden and uncounted playlists don't count as sorted, but only

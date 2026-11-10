@@ -68,6 +68,13 @@ export function closestAmong(index: AudioIndex, v: Vectors, trackId: string, can
   return out.sort((a, b) => b.sim - a.sim).slice(0, limit);
 }
 
+/** How many songs "the songs nearest by sound" means, here and on the map. */
+export const NEAREST = 15;
+
+/** A song's nearest sorted songs, most similar first: the ones with a playlist to compare it against. */
+export const nearestSorted = (neighbors: Neighbors, sorted: ReadonlyMap<string, string>, trackId: string) =>
+  neighbors(trackId).filter((n) => sorted.has(n.id)).slice(0, NEAREST);
+
 const positionCache = new WeakMap<AudioIndex, Map<string, number>>();
 export const positions = (index: AudioIndex) => {
   let pos = positionCache.get(index);
