@@ -19,5 +19,8 @@ export const config = {
     "user-library-modify",
     "user-read-playback-state",
     "user-modify-playback-state",
+    "user-read-recently-played",
   ],
+  /** Where `pnpm host` backs up the listening history (an ssh alias, as rsync takes it). */
+  historyBackup: "audio-box:data/",
 };

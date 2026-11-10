@@ -116,4 +116,9 @@ Spotify shows them; entries older than a day are dropped too.
   and on your network at the address it prints (also under Settings on that screen). Open Cento once with the host
   running and it takes over your Spotify login. Other devices need the password you set from Settings on the Mac, and can
   reach only that screen and its player controls. It uses plain HTTP, so keep it to your home network.
+  It also records every play, with or without a screen open: every 5 minutes it adds new plays from Spotify's last-50
+  list to `data/listening-history.jsonl`, one raw response item per line. If all 50 are newer than the last recorded
+  play, some may be missing, and `data/listening-gaps.jsonl` says between when. Both files can't be regenerated, so they
+  are copied hourly to `config.historyBackup`, only ever adding to the copy. `GET /host/status` on this Mac shows the
+  recorder's state, and it logs any problem, such as a login that lacks the `user-read-recently-played` permission.
 - `pnpm test` runs the suggestion-model tests.
