@@ -9,6 +9,7 @@ const CLIENT_ID = import.meta.env.SPOTIFY_CLIENT_ID as string;
 const REDIRECT_URI = new URL(new URL(import.meta.env.SPOTIFY_REDIRECT_URI as string).pathname, location.origin).href;
 const TOKEN_KEY = "spotify-token";
 const VERIFIER_KEY = "spotify-verifier";
+const RETURN_KEY = "spotify-return-to";
 
 type StoredToken = { accessToken: string; refreshToken: string; expiresAt: number };
 
@@ -44,6 +45,7 @@ export async function startLogin() {
   const verifier = base64url(crypto.getRandomValues(new Uint8Array(48)));
   const challenge = base64url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
   sessionStorage.setItem(VERIFIER_KEY, verifier);
+  sessionStorage.setItem(RETURN_KEY, location.pathname); // so logging in on /now comes back to /now
   const url = new URL("https://accounts.spotify.com/authorize");
   url.search = new URLSearchParams({
     client_id: CLIENT_ID,
@@ -62,7 +64,8 @@ export async function completeLogin(): Promise<boolean> {
   const code = params.get("code");
   const verifier = sessionStorage.getItem(VERIFIER_KEY);
   if (location.pathname === new URL(REDIRECT_URI).pathname) {
-    history.replaceState(null, "", "/");
+    history.replaceState(null, "", sessionStorage.getItem(RETURN_KEY) ?? "/");
+    sessionStorage.removeItem(RETURN_KEY);
     if (code && verifier) {
       sessionStorage.removeItem(VERIFIER_KEY);
       await tokenRequest({ grant_type: "authorization_code", code, redirect_uri: REDIRECT_URI, code_verifier: verifier });

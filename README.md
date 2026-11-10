@@ -106,4 +106,7 @@ Spotify shows them; entries older than a day are dropped too.
 - `pnpm lyrics` builds `data/lyrics-index.*` for the Lyrics tab from the engine's fetched lyrics (or `LYRICS_FILE`). It
   downloads the text model once, and later runs embed only new lyrics. Restart `pnpm dev` afterwards. It also scores
   every song against the list of `THEMES` in `src/core/themes.ts` for the Themes tab: edit the list and rerun to change them.
+- `/now` is the Now Playing screen on its own, for a TV or spare monitor. To open it on another device, run `pnpm dev:lan` and
+  go to `https://<this machine's LAN IP>:3000/now`; each device logs in to Spotify once. It checks Spotify far less often
+  than the main app, so it can be left on.
 - `pnpm test` runs the suggestion-model tests.

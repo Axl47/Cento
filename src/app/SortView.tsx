@@ -428,7 +428,7 @@ function PlayerStatus({ onRetry }: { onRetry: () => void }) {
 }
 
 /** Smooth progress bar; click to seek. */
-function Progress({ playing, duration }: { playing: boolean; duration: number }) {
+export function Progress({ playing, duration }: { playing: boolean; duration: number }) {
   const { position, updatedAt, paused, seekTo } = usePlayer();
   const [, tick] = useState(0);
   useEffect(() => {
@@ -455,12 +455,12 @@ function Progress({ playing, duration }: { playing: boolean; duration: number })
   );
 }
 
-const PlayIcon = () => (
+export const PlayIcon = () => (
   <svg viewBox="0 0 16 16" className="ml-0.5 size-3.5" fill="currentColor" aria-hidden>
     <path d="M4 2.5v11l9-5.5z" />
   </svg>
 );
-const PauseIcon = () => (
+export const PauseIcon = () => (
   <svg viewBox="0 0 16 16" className="size-3.5" fill="currentColor" aria-hidden>
     <path d="M3.5 2.5h3v11h-3zM9.5 2.5h3v11h-3z" />
   </svg>
