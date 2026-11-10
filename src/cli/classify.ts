@@ -7,6 +7,7 @@ import { execSync } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { loadLibrary } from "./auth.ts";
+import { parseLanguages } from "../core/languages.ts";
 import { sortTargets } from "../core/library.ts";
 import type { ArtistRules } from "../core/suggest.ts";
 
@@ -45,15 +46,7 @@ for (const p of targets) for (const id of new Set(p.trackIds)) labels.set(id, [.
 
 // From the engine's `audio-embed languages`, keyed by ISRC or, without one, track id. Songs missing here use sound alone.
 const languageRows = await readFile("data/languages.jsonl", "utf8").catch(() => "");
-const languages = new Map(
-  languageRows
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => {
-      const { key, language } = JSON.parse(line) as { key: string; language: string };
-      return [key, language];
-    }),
-);
+const languages = parseLanguages(languageRows);
 
 const input = resolve("data/classifier-input.jsonl");
 await writeFile(

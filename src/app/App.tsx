@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { decodeVectors, type AudioIndex } from "../core/audio.ts";
 import type { ClassifierData } from "../core/classifier.ts";
+import { parseLanguages } from "../core/languages.ts";
 import type { ThemeData } from "../core/themes.ts";
 import type { ArtistRules } from "../core/suggest.ts";
 import type { LedgerEntry } from "../core/ledger.ts";
@@ -92,11 +93,15 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // Large and optional: the app works the same without it, minus what the lyrics are about.
+  // Large and optional: the app works the same without them, minus what the lyrics are about.
   useEffect(() => {
     if (phase.kind !== "ready") return;
     getJson<ThemeData>("/api/themes")
       .then((data) => data && useApp.getState().setThemes(data))
+      .catch(console.error);
+    fetch("/api/languages")
+      .then((res) => (res.ok ? res.text() : null))
+      .then((text) => text && useApp.getState().setLanguages(parseLanguages(text)))
       .catch(console.error);
   }, [phase.kind]);
 

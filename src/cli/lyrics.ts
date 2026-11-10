@@ -5,6 +5,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { parseLanguages } from "../core/languages.ts";
 import { passagesOf } from "../core/lyrics.ts";
 import { THEMES, scoreThemes } from "../core/themes.ts";
 import { INDEX_TEXT, INDEX_VECTORS, MODEL, loadEmbedder, loadIndex, type IndexText } from "./lyricModel.ts";
@@ -58,15 +59,7 @@ console.log(`Wrote ${INDEX_TEXT} and ${INDEX_VECTORS}. Restart \`pnpm dev\` to s
 
 // From the engine's `audio-embed languages`. Without it, all songs are compared together.
 const languageRows = await readFile("data/languages.jsonl", "utf8").catch(() => "");
-const languages = new Map(
-  languageRows
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => {
-      const { key, language } = JSON.parse(line) as { key: string; language: string };
-      return [key, language];
-    }),
-);
+const languages = parseLanguages(languageRows);
 const themes = scoreThemes({ keys, passages, vectors, dim }, await embed(THEMES, "query"), THEMES, (key) => languages.get(key));
 await writeFile(THEMES_FILE, JSON.stringify(themes));
 console.log(`Wrote ${THEMES_FILE}: ${themes.songs.length} songs against ${THEMES.length} themes. Reload the app to see them.`);

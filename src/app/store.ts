@@ -7,6 +7,7 @@ import { inbox, type Library } from "../core/library.ts";
 import { neighborsFrom, type AudioIndex, type Vectors } from "../core/audio.ts";
 import { classifierFrom, type ClassifierData, type SoundClassifier } from "../core/classifier.ts";
 import { applyLedger, unconfirmed, type LedgerEntry } from "../core/ledger.ts";
+import type { Languages } from "../core/languages.ts";
 import { themeIndex, type ThemeData, type ThemeIndex } from "../core/themes.ts";
 import { buildModel, prechecked, suggest, type ArtistRules, type Model, type Neighbors } from "../core/suggest.ts";
 import { addToPlaylist, createPlaylist, removeFromPlaylist, setLiked } from "../core/spotify.ts";
@@ -38,6 +39,8 @@ type State = {
   classifier: SoundClassifier | undefined;
   /** What songs are about (data/themes.json), loaded in the background; null until then or if missing. */
   themes: ThemeIndex | null;
+  /** Each song's lyric language (data/languages.jsonl), loaded in the background; null until then or if missing. */
+  languages: Languages | null;
   rules: ArtistRules;
   /** Playlists hidden from suggestions (and ignored when deciding what's sorted). */
   hidden: string[];
@@ -57,6 +60,7 @@ type State = {
 
   setVectors: (vectors: Vectors) => void;
   setThemes: (data: ThemeData) => void;
+  setLanguages: (languages: Languages) => void;
   /** Takes freshly trained classifiers and re-ranks the queue. */
   setClassifier: (data: ClassifierData) => void;
   load: (lib: Library, audio: AudioIndex | null, rules: ArtistRules, hidden: string[], ledger: LedgerEntry[], classifier: ClassifierData | null) => void;
@@ -217,6 +221,7 @@ export const useApp = create<State>()((set, get) => {
     vectors: null,
     classifier: undefined,
     themes: null,
+    languages: null,
     rules: {},
     hidden: [],
     uncounted: [],
@@ -233,6 +238,8 @@ export const useApp = create<State>()((set, get) => {
     setVectors: (vectors) => set({ vectors }),
 
     setThemes: (data) => set({ themes: themeIndex(data) }),
+
+    setLanguages: (languages) => set({ languages }),
 
     setClassifier: (data) => {
       set({ classifier: classifierFrom(data) });
