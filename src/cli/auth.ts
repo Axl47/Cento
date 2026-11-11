@@ -1,6 +1,5 @@
 // Spotify login for Node scripts: PKCE via the loopback redirect, with the token cached
-// in ~/.cache/playlist-sorter/token.json and refreshed as needed. Exports a ready client, plus library
-// file helpers.
+// in ~/.cache/playlist-sorter/token.json and refreshed as needed. Exports a ready client.
 import { createHash, randomBytes } from "node:crypto";
 import { createServer } from "node:http";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -9,16 +8,11 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { config } from "../core/config.ts";
 import { createClient } from "../core/spotify.ts";
-import type { Merge } from "../core/dedupe.ts";
-import type { Library } from "../core/library.ts";
 
 const CLIENT_ID = requireEnv("SPOTIFY_CLIENT_ID");
 const REDIRECT_URI = requireEnv("SPOTIFY_REDIRECT_URI");
 // Outside the project so the app's dev server can never serve it.
 const TOKEN_PATH = join(homedir(), ".cache", "playlist-sorter", "token.json");
-export const LIBRARY_PATH = "data/library.json";
-/** Merges `pnpm merge-copies` made (see src/core/dedupe.ts). */
-export const MERGES_PATH = "data/merges.json";
 
 type StoredToken = { accessToken: string; refreshToken: string; expiresAt: number };
 type TokenResponse = { access_token: string; refresh_token?: string; expires_in: number };
@@ -27,16 +21,6 @@ function requireEnv(name: string): string {
   const value = process.env[name];
   if (!value) throw new Error(`Missing env var ${name} (see .env)`);
   return value;
-}
-
-export const loadLibrary = async (): Promise<Library> => JSON.parse(await readFile(LIBRARY_PATH, "utf8")) as Library;
-
-export const loadMerges = (): Promise<Merge[]> =>
-  readFile(MERGES_PATH, "utf8").then((s) => JSON.parse(s) as Merge[]).catch(() => []);
-
-export async function saveLibrary(lib: Library) {
-  await mkdir("data", { recursive: true });
-  await writeFile(LIBRARY_PATH, JSON.stringify(lib));
 }
 
 async function tokenRequest(body: Record<string, string>, previousRefresh?: string): Promise<StoredToken> {

@@ -4,7 +4,8 @@
 // pass --apply to write to Spotify, which backs up the library first and logs each merge in data/merges.json so
 // resyncs keep the original added dates. Run `pnpm export` before, so it works from what's on Spotify now.
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
-import { client, LIBRARY_PATH, loadLibrary, loadMerges, MERGES_PATH } from "./auth.ts";
+import { client } from "./auth.ts";
+import { LIBRARY_PATH, loadLibrary, loadMerges, MERGES_PATH } from "./libraryFiles.ts";
 import { config } from "../core/config.ts";
 import { planDedupe, type Release } from "../core/dedupe.ts";
 import { addToPlaylist, chunks, removeFromPlaylist, setLiked } from "../core/spotify.ts";

@@ -1,7 +1,8 @@
 // Adds every song in a sort-target playlist to the all-songs playlist if it's missing.
 // Dry run by default; pass --apply to write to Spotify. Backs up the library first.
 import { copyFile, mkdir } from "node:fs/promises";
-import { client, LIBRARY_PATH, loadLibrary } from "./auth.ts";
+import { client } from "./auth.ts";
+import { LIBRARY_PATH, loadLibrary } from "./libraryFiles.ts";
 import { config } from "../core/config.ts";
 import { sortTargets } from "../core/library.ts";
 import { addToPlaylist } from "../core/spotify.ts";

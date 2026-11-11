@@ -10,6 +10,7 @@ import { mapLibrary } from "../core/now.ts";
 import { sortTargets } from "../core/library.ts";
 import { hasSession, isLocal, newSecret, passwordMatches, readSecret, saveSecret, sessionCookie, type Secret } from "./access.ts";
 import { createRecorder, GAPS_FILE, HISTORY_FILE, rsyncBackup } from "./history.ts";
+import { refreshIfDue, refreshStatus, scheduleRefresh } from "./refresh.ts";
 import { addScreen, isPlayerCommand, libraryData, poll, runCommand, seek } from "./playback.ts";
 import { forgetToken, freshToken, setToken, spotify, type HostToken } from "./spotify.ts";
 
@@ -64,7 +65,7 @@ async function localRoute(req: IncomingMessage, res: ServerResponse, path: strin
     }
     if (req.method === "DELETE") return forgetToken().then(() => json(res, 200, {}));
   }
-  if (path === "/host/status" && req.method === "GET") return json(res, 200, { addresses: lanAddresses(), passwordSet: !!secret, history: history.status });
+  if (path === "/host/status" && req.method === "GET") return json(res, 200, { addresses: lanAddresses(), passwordSet: !!secret, history: history.status, refresh: refreshStatus() });
   if (path === "/host/password" && req.method === "PUT") {
     const { password } = (await readBody(req)) as { password?: unknown };
     if (typeof password !== "string" || password.length < MIN_PASSWORD) return json(res, 400, {});
@@ -137,6 +138,10 @@ async function route(req: IncomingMessage, res: ServerResponse) {
   if (req.method !== "GET") return json(res, 404, {});
   return staticRoute(res, path);
 }
+
+// A data refresh owed from a day the host wasn't running comes first, so the screen starts on fresh data.
+await refreshIfDue();
+scheduleRefresh();
 
 createServer((req, res) => {
   route(req, res).catch((e: unknown) => {

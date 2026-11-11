@@ -29,9 +29,11 @@ if (process.argv.includes("--stop")) {
 
 execFileSync("pnpm", ["exec", "vite", "build"], { stdio: "inherit" });
 
-// launchd starts with a bare PATH: give it this node (pnpm's shebang needs it), plus rsync and ssh for backups.
+// launchd starts with a bare PATH: give it this node (pnpm's shebang needs it), uv for the audio engine in the daily
+// data refresh, and rsync and ssh for backups.
 const pnpm = execFileSync("which", ["pnpm"], { encoding: "utf8" }).trim();
-const path = [dirname(process.execPath), "/opt/homebrew/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"].join(":");
+const uv = execFileSync("which", ["uv"], { encoding: "utf8" }).trim();
+const path = [dirname(process.execPath), dirname(uv), "/opt/homebrew/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"].join(":");
 const plist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">

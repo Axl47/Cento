@@ -6,7 +6,7 @@
 import { execSync } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { loadLibrary } from "./auth.ts";
+import { loadLibrary } from "./libraryFiles.ts";
 import { parseLanguages } from "../core/languages.ts";
 import { sortTargets } from "../core/library.ts";
 import type { ArtistRules } from "../core/suggest.ts";

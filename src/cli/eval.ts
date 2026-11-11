@@ -6,7 +6,7 @@
 //   cold        nothing picked yet: rank all playlists
 //   first pick  one true playlist is revealed (you picked it): rank the rest
 import { readFile } from "node:fs/promises";
-import { loadLibrary } from "./auth.ts";
+import { loadLibrary } from "./libraryFiles.ts";
 import { neighborsFrom, type AudioIndex } from "../core/audio.ts";
 import { classifierFrom, type ClassifierData } from "../core/classifier.ts";
 import { inbox, sortTargets } from "../core/library.ts";

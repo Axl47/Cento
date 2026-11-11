@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- The host refreshes your data every day from 12:01 AM: it resyncs the library, embeds new songs and rebuilds the sound map, and retrains the classifiers. A day it missed runs as soon as the host starts again.
 - `pnpm host` now runs the host in the background and returns right away, starts it again whenever you log in to the Mac, and restarts it if it crashes, so plays keep being recorded without a terminal held open. `pnpm host:stop` stops it.
 - `pnpm merge-copies` never merges a remix, live or other version with the original, even when their audio looks the same.
 - `pnpm merge-copies` cleans up songs saved from several releases (a single, an EP and the album): it keeps the explicit copy, then the album copy, then the newest release, puts it in every playlist any copy was in, including Liked Songs, and removes the other copies. Hidden playlists, such as yearly snapshots, are left as they are. It shows the plan first and only writes to Spotify with `--apply`.
