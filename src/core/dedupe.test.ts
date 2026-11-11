@@ -25,7 +25,8 @@ test("planDedupe puts the main copy wherever any copy was, and removes the rest"
       { id: "clean", name: "Clean", imageUrl: null, trackIds: ["album"] },
     ],
     liked: [{ id: "ep", addedAt: "2025-03-01" }],
-  } as Pick<Library, "playlists" | "liked"> as Library;
+    tracks: {},
+  } as Pick<Library, "playlists" | "liked" | "tracks"> as Library;
   const plan = planDedupe(lib, [["single", "ep", "album"], ["other"]], releases, ["theirs"]);
   assert.deepEqual(plan.merges, [{ main: "album", copies: ["single", "ep"], addedAt: { rock: "2024-12-01", liked: "2025-03-01" } }]);
   assert.deepEqual([...plan.playlists], [
@@ -46,4 +47,14 @@ test("restoreDates puts back the earliest logged date, wherever the main copy st
   const fixed = restoreDates(lib, [{ main: "album", copies: ["single"], addedAt: { rock: "2024-12-01", pop: "2024-12-01", liked: "2025-03-01" } }]);
   assert.deepEqual(fixed.playlists.map((p) => p.addedAt?.album), ["2024-12-01", "2020-01-01"]);
   assert.equal(fixed.liked[0]!.addedAt, "2025-03-01");
+});
+
+test("planDedupe leaves a remix and the original apart", () => {
+  const track = (id: string, name: string, album: string) => ({ id, name, artists: [], album: { name: album, imageUrl: null }, isrc: null, durationMs: 0 });
+  const lib = {
+    playlists: [{ id: "p", name: "P", imageUrl: null, trackIds: ["single", "album"] }],
+    liked: [],
+    tracks: { single: track("single", "Prohibido", "Prohibido (remix)"), album: track("album", "Prohibido (feat. Lary Over)", "Prohibido") },
+  } as Pick<Library, "playlists" | "liked" | "tracks"> as Library;
+  assert.deepEqual(planDedupe(lib, [["single", "album"]], releases).merges, []);
 });

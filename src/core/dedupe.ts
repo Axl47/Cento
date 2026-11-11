@@ -30,6 +30,13 @@ export function pickMain(copies: readonly string[], releases: ReadonlyMap<string
 /** One merge, as logged: `addedAt` maps a playlist id, or "liked", to when any copy first arrived there. */
 export type Merge = { main: string; copies: string[]; addedAt: Record<string, string>; at?: string };
 
+/** Words that mark a different version of a song, in its title or its release's. */
+const VERSION = /\b(remix|rmx|live|acoustic|instrumental|sped up|slowed|nightcore|reverb)\b/gi;
+const versionOf = (lib: Library, id: string) => {
+  const t = lib.tracks[id];
+  return [...new Set(`${t?.name} ${t?.album.name}`.toLowerCase().match(VERSION))].sort().join();
+};
+
 export type DedupePlan = {
   merges: Merge[];
   /** playlistId -> tracks to add (main copies), then remove (the other copies). */
@@ -40,14 +47,17 @@ export type DedupePlan = {
 
 /**
  * What it takes to keep only each group's main copy: wherever any copy is (a playlist not in `skip`, or Liked
- * Songs), the main one is added and the rest removed. `groups` are sets of tracks with identical audio.
+ * Songs), the main one is added and the rest removed. `groups` are sets of tracks with identical audio; a group whose
+ * titles disagree on the version (a remix next to the original) is left alone, as the vectors can't tell them apart
+ * when the engine found the same audio for both.
  */
 export function planDedupe(lib: Library, groups: readonly string[][], releases: ReadonlyMap<string, Release>, skip: readonly string[] = []): DedupePlan {
   const places = [
     ...lib.playlists.filter((p) => !skip.includes(p.id)).map((p) => [p.id, p.addedAt ?? {}] as const),
     ["liked", Object.fromEntries(lib.liked.map((l) => [l.id, l.addedAt]))] as const,
   ];
-  const merges = groups.filter((g) => g.length > 1).map((g): Merge => {
+  const sameVersion = (g: readonly string[]) => new Set(g.map((id) => versionOf(lib, id))).size === 1;
+  const merges = groups.filter((g) => g.length > 1 && sameVersion(g)).map((g): Merge => {
     const main = pickMain(g, releases);
     const addedAt: Record<string, string> = {};
     for (const [place, dates] of places) {
