@@ -16,7 +16,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { closestAmong, nearestSorted, NEAREST, neighborsFrom, type AudioIndex } from "../core/audio.ts";
 import { regions, tileKeyAt, tileUp } from "../core/hexTiles.ts";
 import { isArtistPlaylist, primaryPlaylists, sortTargets, type Library } from "../core/library.ts";
-import { fitCamera, MIN_ZOOM, overlaps, placeLabel, type Box, type Camera, type Point, type Size } from "../core/mapLayout.ts";
+import { fitCamera, MIN_ZOOM, overlaps, placeLabel, revealZooms, type Box, type Camera, type NameCandidate, type Point, type Size } from "../core/mapLayout.ts";
 import { useMapSettings } from "./mapSettings.ts";
 import { useApp } from "./store.ts";
 
@@ -46,8 +46,12 @@ const GLIDE_MS = 400;
 const REGION_FADE_END = 2.6; // zoom where area names have fully faded out
 const TILE = 0.04; // tile size (center to corner) in layout units, which span about [-1, 1]
 const MIN_REGION_SONGS = 12; // smaller areas go unnamed
-const LABEL_ZOOM = 7; // zoom where every song's name can show
-const MAX_LABELS = 70;
+/** Zoom each kind of background name can appear from: highlighted songs and each tile's lead song, then the rest. */
+const NAME_FLOOR = { lit: 7, lead: 7, rest: 11 };
+const NAME_ROOM = [16, 24] as const; // clear space after a background name, and the height it takes with spacing
+const CENTER_BIAS = 0.5; // how much later a name appears at the screen's edge than at its center (or the focused song)
+const NAME_FADE = 0.2; // share of its appear zoom over which a name fades in
+const EDGE_FADE = 28; // pixels from the canvas edge over which background names fade out
 const UNSORTED = "#71717a";
 const BACKGROUND = "#221a28"; // zinc-900; the halo that keeps names legible over dots and lines
 const NAME_HEIGHT = 14;
@@ -117,6 +121,8 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
   const neighbors = useMemo(() => neighborsFrom(audio), [audio]);
   const focusId = scene.kind === "song" ? scene.id : null;
   const released = focusId !== null && releasedFor === `${focusId}|${highlight.join()}`;
+  // A released song scene shows plainly until something interacts with it again.
+  const highlighting = lit.size > 0 && scene.kind !== "bridge" && !released;
   // Songs the focus lines go to; while highlighting, the closest highlighted ones (exact once vectors load).
   const focusNear = useMemo(() => {
     if (!focusId) return [];
@@ -162,6 +168,33 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
   const base = Math.min(width, height) / 2 * 0.9;
   /** A song's dot radius in pixels at the current zoom; a date range can leave few songs, so keep them visible. */
   const dotRadius = () => Math.min(Math.max(1.4 * Math.sqrt(view.current.k), only ? 3 : 1.6), 5);
+  // Background names, most important first, each with the zoom it appears at. Highlighted songs lead, then each
+  // tile's lead song (nearest its middle among the tile's leading playlist), then the rest of each tile from its
+  // middle out, taking turns between tiles so every tile fills at the same pace.
+  const backgroundNames = useMemo(() => {
+    const measure = document.createElement("canvas").getContext("2d")!;
+    measure.font = FONT.rest;
+    const ranked: { i: number; tier: number; turn: number }[] = [];
+    for (const tile of tiled.tiles.values()) {
+      const fromMiddle = (i: number) => Math.hypot(audio.xy[i]![0] - tile.x, audio.xy[i]![1] - tile.y);
+      const byMiddle = tile.songs.toSorted((a, b) => fromMiddle(a) - fromMiddle(b));
+      const lead = byMiddle.find((i) => tileData.primary.get(audio.ids[i]!) === tile.top) ?? byMiddle[0]!;
+      [lead, ...byMiddle.filter((i) => i !== lead)].forEach((i, turn) => {
+        const tier = highlighting && lit.has(audio.ids[i]!) ? 0 : turn === 0 ? 1 : 2;
+        ranked.push({ i, tier, turn });
+      });
+    }
+    ranked.sort((a, b) => a.tier - b.tier || a.turn - b.turn);
+    const floors = [NAME_FLOOR.lit, NAME_FLOOR.lead, NAME_FLOOR.rest];
+    const candidates = ranked.map(({ i, tier }): NameCandidate => ({
+      point: audio.xy[i]!,
+      width: measure.measureText(lib.tracks[audio.ids[i]!]?.name ?? "").width + 4,
+      floor: floors[tier]!,
+    }));
+    const zooms = revealZooms(candidates, base, NAME_ROOM);
+    return ranked.map(({ i }, n) => ({ i, zoom: zooms[n]!, width: candidates[n]!.width }));
+  }, [tiled, tileData, audio, lib, lit, highlighting, base]);
+
   const toScreen = (x: number, y: number): [number, number] => {
     const { k, cx, cy } = view.current;
     return [(x - cx) * base * k + width / 2, (y - cy) * base * k + height / 2];
@@ -193,10 +226,10 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
 
     const { k } = view.current;
     const overview = scene.kind === "overview";
-    const regionAlpha = overview ? Math.min(Math.max((REGION_FADE_END - k) / (REGION_FADE_END - 1), 0), 1) : 0;
+    /** 1 at overview zoom, easing to 0 by the zoom where songs take over. */
+    const zoomedOut = Math.min(Math.max((REGION_FADE_END - k) / (REGION_FADE_END - 1), 0), 1);
+    const regionAlpha = overview ? zoomedOut : 0;
     const r = dotRadius();
-    // A released song scene shows plainly until something interacts with it again.
-    const highlighting = lit.size > 0 && scene.kind !== "bridge" && !released;
     // Anything but a plain overview grays the songs the story isn't about.
     const dimming = highlighting || (!overview && !released);
     const colorOf = (i: number) => {
@@ -216,7 +249,8 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
       ctx.stroke();
     };
 
-    // Tiles, under everything: a tint as strong as the tile's lead is clear and its songs many. The hovered one is outlined.
+    // Tiles, under everything: a tint as strong as the tile's lead is clear and its songs many, and stronger zoomed out,
+    // where they summarize the most. The hovered one is outlined.
     const corner = TILE * base * k;
     const hex = (sx: number, sy: number, size: number) => {
       ctx.beginPath();
@@ -230,7 +264,7 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
       const [sx, sy] = toScreen(tile.x, tile.y);
       if (sx < -corner || sy < -corner || sx > width + corner || sy > height + corner) continue;
       const strength = tile.share * Math.min(tile.songs.length / 8, 1);
-      ctx.globalAlpha = (0.07 + 0.33 * strength) * (dimming ? 0.5 : 1);
+      ctx.globalAlpha = (0.07 + 0.33 * strength) * (1 + 0.6 * zoomedOut) * (dimming ? 0.5 : 1);
       ctx.fillStyle = tile.top ? (colors.get(tile.top) ?? UNSORTED) : UNSORTED;
       hex(sx, sy, corner * 0.94);
       ctx.fill();
@@ -440,24 +474,30 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
       label(i, FONT.near, colorOf(i), 1, true);
     }
     for (const i of route.slice(1, -1)) if (i !== marked) label(i, FONT.near, BRIDGE_COLORS.path, 1, true);
-    if (k >= LABEL_ZOOM) {
-      const alpha = Math.min((k - LABEL_ZOOM) / 3 + 0.45, 0.75);
-      const rest = (i: number) => {
-        if (taken.length >= MAX_LABELS + subjects.length || named.has(i)) return;
-        named.add(i);
-        label(i, FONT.rest, "#c2b6c9", alpha, false);
-      };
-      // Names that showed last frame claim room first, so zooming adds names rather than trading them.
-      const shownBefore = [...lastSpots.current.keys()].flatMap((key) => (key[0] === "n" ? [Number(key.slice(1))] : []));
-      const isLit = (i: number) => lit.has(audio.ids[i]!);
-      if (highlighting) {
-        for (const i of shownBefore) if (isLit(i)) rest(i);
-        for (let i = 0; i < audio.ids.length; i++) if (isLit(i)) rest(i);
-      }
-      for (const i of shownBefore) rest(i);
-      for (let i = 0; i < audio.ids.length; i++) rest(i);
-    }
     lastSpots.current = spots;
+
+    // Background names: each fades in past its appear zoom, later the farther it is from the center of attention,
+    // always to the right of its dot. Instead of moving away from the canvas edge or the scene's names, it fades out.
+    const [ox, oy] = fi !== undefined ? at(fi) : [width / 2, height / 2];
+    const reach = Math.hypot(width, height) / 2;
+    ctx.font = FONT.rest;
+    for (const { i, zoom, width: w } of backgroundNames) {
+      if (zoom > k || named.has(i)) continue;
+      const [sx, sy] = at(i);
+      const appear = zoom * (1 + (CENTER_BIAS * Math.hypot(sx - ox, sy - oy)) / reach);
+      const fade = Math.min((k - appear) / (appear * NAME_FADE), 1);
+      if (fade <= 0) continue;
+      const box: Box = [sx + r + 3, sy - NAME_HEIGHT / 2, w, NAME_HEIGHT];
+      const edge = Math.min(box[0], width - box[0] - w, box[1], height - box[1] - NAME_HEIGHT) / EDGE_FADE;
+      if (edge <= 0 || overlaps(taken, box)) continue;
+      ctx.globalAlpha = 0.75 * fade * Math.min(edge, 1);
+      const name = lib.tracks[audio.ids[i]!]?.name ?? "";
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = BACKGROUND;
+      ctx.strokeText(name, box[0] + 2, box[1] + 11);
+      ctx.fillStyle = "#c2b6c9";
+      ctx.fillText(name, box[0] + 2, box[1] + 11);
+    }
 
     // The marked song: a ring, and a dashed line from the focused song to show how far apart they are.
     if (marked !== undefined) {
