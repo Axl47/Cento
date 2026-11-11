@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { MAX_FIT_ZOOM, fitCamera, overlaps, placeLabel, type Box } from "./mapLayout.ts";
+import { MAX_FIT_ZOOM, fitCamera, overlaps, placeLabel, revealZooms, type Box, type NameCandidate } from "./mapLayout.ts";
 
 const CANVAS = [500, 400] as const;
 const BASE = 180;
@@ -49,4 +49,37 @@ test("a name keeps last frame's spot while it's free, instead of going back to t
   assert.equal(above.spot, "r-1");
   assert.ok(above.box[1] < 200 - 7);
   assert.equal(placeLabel([200, 200], [120, 14], 8, CANVAS, [above.box], false, "r-1")!.spot, "r0");
+});
+
+const box = ({ point: [x, y], width }: NameCandidate, s: number): Box => [x * s, y * s, width + 16, 24];
+
+test("names that have appeared never overlap each other, at any zoom", () => {
+  let seed = 7;
+  const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647) * 0.2;
+  const names: NameCandidate[] = Array.from({ length: 300 }, () => ({ point: [random(), random()], width: 40 + random() * 400, floor: 3 }));
+  const zooms = revealZooms(names, BASE, [16, 24]);
+  for (const k of [3, 5, 9, 17, 40, 80]) {
+    const shown: Box[] = [];
+    names.forEach((n, i) => {
+      if (zooms[i]! > k) return;
+      const b = box(n, BASE * k);
+      assert.equal(overlaps(shown, b), false, `zoom ${k}`);
+      shown.push(b);
+    });
+  }
+});
+
+test("a name waits for the zoom where it clears a more important one, and never before its floor", () => {
+  const [lead, beside, far] = revealZooms(
+    [
+      { point: [0, 0], width: 84, floor: 2 },
+      { point: [0.002, 0], width: 84, floor: 2 },
+      { point: [0.5, 0.5], width: 84, floor: 4 },
+    ],
+    BASE,
+    [16, 24],
+  );
+  assert.equal(lead, 2);
+  assert.ok(Math.abs(beside! - 100 / 0.002 / BASE) < 1e-9);
+  assert.equal(far, 4);
 });

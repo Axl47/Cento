@@ -7,7 +7,7 @@ export type Box = readonly [x: number, y: number, w: number, h: number];
 export type Camera = { k: number; cx: number; cy: number };
 
 export const MIN_ZOOM = 0.6;
-/** Tighter than this and a fit would stop showing what's around the songs, and every other name would appear. */
+/** Tighter than this and a fit would stop showing what's around the songs, and background names would crowd it. */
 export const MAX_FIT_ZOOM = 6.5;
 /** Room left around fitted songs: more at the sides, where the names run. */
 const FIT_PAD = [64, 40] as const;
@@ -65,4 +65,43 @@ export function placeLabel(
   const covered = (s: Spot) => taken.reduce((sum, t) => sum + overlapArea(t, s.box), 0);
   const chosen = found ?? (mustShow ? spots.reduce((best, s) => (covered(s) < covered(best) ? s : best)) : null);
   return chosen && { box: chosen.box, spot: chosen.spot };
+}
+
+/** A song to name in the background: where it is (layout units), how wide its name is and the zoom it may appear from. */
+export type NameCandidate = { point: Point; width: number; floor: number };
+
+/**
+ * The zoom each background name appears at, for candidates given most important first. Names sit to the right of
+ * their dots; `room` is the clear space kept after each name and the height each takes (spacing included), in
+ * pixels, and `base` is pixels per layout unit at zoom 1. A name appears at its floor, or once it's clear of every more important name that's showing by then.
+ * Names never give way to each other, so zooming in only adds names and zooming out removes them in reverse.
+ */
+export function revealZooms(candidates: readonly NameCandidate[], base: number, [padX, height]: Size): number[] {
+  if (candidates.length === 0) return [];
+  const minFloor = Math.max(Math.min(...candidates.map((c) => c.floor)), 0.1);
+  const widest = Math.max(...candidates.map((c) => c.width)) + padX;
+  // Two names can only clash past the lowest floor if they're within one cell of each other.
+  const [cw, ch] = [widest / (base * minFloor), height / (base * minFloor)];
+  const grid = new Map<string, number[]>();
+  const zooms: number[] = [];
+  candidates.forEach(({ point: [bx, by], width, floor }, b) => {
+    const [gx, gy] = [Math.floor(bx / cw), Math.floor(by / ch)];
+    let zoom = floor;
+    for (let x = gx - 1; x <= gx + 1; x++)
+      for (let y = gy - 1; y <= gy + 1; y++)
+        for (const a of grid.get(`${x},${y}`) ?? []) {
+          const [[ax, ay], aw] = [candidates[a]!.point, candidates[a]!.width];
+          const [dx, dy] = [bx - ax, by - ay];
+          // Pixels per unit past which the two stop overlapping for good: apart sideways, or apart vertically.
+          const sideways = dx >= 0 ? (aw + padX) / dx : (width + padX) / -dx;
+          const clear = Math.min(sideways, height / Math.abs(dy)) / base;
+          if (zooms[a]! < clear) zoom = Math.max(zoom, clear);
+        }
+    zooms.push(zoom);
+    const key = `${gx},${gy}`;
+    const cell = grid.get(key);
+    if (cell) cell.push(b);
+    else grid.set(key, [b]);
+  });
+  return zooms;
 }

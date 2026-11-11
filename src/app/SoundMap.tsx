@@ -46,8 +46,8 @@ const GLIDE_MS = 400;
 const REGION_FADE_END = 2.6; // zoom where area names have fully faded out
 const TILE = 0.04; // tile size (center to corner) in layout units, which span about [-1, 1]
 const MIN_REGION_SONGS = 12; // smaller areas go unnamed
-/** Zoom each kind of background name can appear from: highlighted songs and each tile's lead song, then the rest. */
-const NAME_FLOOR = { lit: 7, lead: 7, rest: 11 };
+const NAME_ZOOM = 6; // zoom highlighted songs and each tile's lead song can be named from
+const NAME_FILL = 0.5; // how fast the rest of a tile follows: its nth song can be named from NAME_ZOOM·√(1 + n·NAME_FILL)
 const NAME_ROOM = [16, 24] as const; // clear space after a background name, and the height it takes with spacing
 const CENTER_BIAS = 0.5; // how much later a name appears at the screen's edge than at its center (or the focused song)
 const NAME_FADE = 0.2; // share of its appear zoom over which a name fades in
@@ -178,22 +178,22 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
     for (const tile of tiled.tiles.values()) {
       const fromMiddle = (i: number) => Math.hypot(audio.xy[i]![0] - tile.x, audio.xy[i]![1] - tile.y);
       const byMiddle = tile.songs.toSorted((a, b) => fromMiddle(a) - fromMiddle(b));
-      const lead = byMiddle.find((i) => tileData.primary.get(audio.ids[i]!) === tile.top) ?? byMiddle[0]!;
+      const lead = byMiddle.find((i) => data.primary.get(audio.ids[i]!) === tile.top) ?? byMiddle[0]!;
       [lead, ...byMiddle.filter((i) => i !== lead)].forEach((i, turn) => {
         const tier = highlighting && lit.has(audio.ids[i]!) ? 0 : turn === 0 ? 1 : 2;
         ranked.push({ i, tier, turn });
       });
     }
     ranked.sort((a, b) => a.tier - b.tier || a.turn - b.turn);
-    const floors = [NAME_FLOOR.lit, NAME_FLOOR.lead, NAME_FLOOR.rest];
-    const candidates = ranked.map(({ i, tier }): NameCandidate => ({
+    // A tile's names grow with its area on screen, which grows with the square of zoom.
+    const candidates = ranked.map(({ i, tier, turn }): NameCandidate => ({
       point: audio.xy[i]!,
       width: measure.measureText(lib.tracks[audio.ids[i]!]?.name ?? "").width + 4,
-      floor: floors[tier]!,
+      floor: tier < 2 ? NAME_ZOOM : NAME_ZOOM * Math.sqrt(1 + turn * NAME_FILL),
     }));
     const zooms = revealZooms(candidates, base, NAME_ROOM);
     return ranked.map(({ i }, n) => ({ i, zoom: zooms[n]!, width: candidates[n]!.width }));
-  }, [tiled, tileData, audio, lib, lit, highlighting, base]);
+  }, [tiled, data, audio, lib, lit, highlighting, base]);
 
   const toScreen = (x: number, y: number): [number, number] => {
     const { k, cx, cy } = view.current;
@@ -490,7 +490,7 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
       const box: Box = [sx + r + 3, sy - NAME_HEIGHT / 2, w, NAME_HEIGHT];
       const edge = Math.min(box[0], width - box[0] - w, box[1], height - box[1] - NAME_HEIGHT) / EDGE_FADE;
       if (edge <= 0 || overlaps(taken, box)) continue;
-      ctx.globalAlpha = 0.75 * fade * Math.min(edge, 1);
+      ctx.globalAlpha = (dimming ? 0.5 : 0.75) * fade * Math.min(edge, 1);
       const name = lib.tracks[audio.ids[i]!]?.name ?? "";
       ctx.lineWidth = 3;
       ctx.strokeStyle = BACKGROUND;
