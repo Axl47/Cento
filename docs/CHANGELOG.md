@@ -36,7 +36,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
-- Song names on the sound map appear by importance as you zoom in: highlighted songs and one song per tile first, then each tile fills in as it grows on screen, starting near the center or the selected song. Names fade in and out instead of popping or jumping aside at the edges.
+- Song names on the sound map appear by importance as you zoom in: highlighted songs and one song per tile first, then each tile fills in as it grows on screen, starting near the center or the selected song. Names fade in and out instead of popping or jumping aside at the edges, and songs around the pointer are named early.
 - The app is now called Cento.
 - With no playlist hovered, the sort screen's map shows the song's 15 nearest songs by name, each in its own playlist's color.
 - The sound map moves and zooms to keep every named song on screen, including a far-away song you hover to see how distant it is.

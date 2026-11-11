@@ -52,6 +52,7 @@ const NAME_ROOM = [16, 24] as const; // clear space after a background name, and
 const CENTER_BIAS = 0.5; // how much later a name appears a screen's diagonal away from the center (or the focused song)
 const NAME_FADE = 0.2; // share of its appear zoom over which a name fades in
 const EDGE_FADE = 28; // pixels from the canvas edge over which background names fade out
+const SPOT_RADIUS = 110; // pixels around the pointer whose songs are named early, fully within half of it
 const UNSORTED = "#71717a";
 const BACKGROUND = "#221a28"; // zinc-900; the halo that keeps names legible over dots and lines
 const NAME_HEIGHT = 14;
@@ -71,6 +72,8 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
   const [area, setArea] = useState<{ key: string; corner: boolean } | null>(null);
   /** Where each name sat last frame ("n<i>" for names, "p<i>" for pills), so names hold still as the camera moves. */
   const lastSpots = useRef(new Map<string, string>());
+  /** The pointer on the canvas, in canvas pixels; songs around it are named early. */
+  const pointer = useRef<Point | null>(null);
   const redraw = useRef<() => void>(() => {});
   const frame = useRef(0);
   /** Redraws on the next animation frame, once however many pointer/wheel events arrive before it. */
@@ -485,15 +488,14 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
     const [ox, oy] = [Math.min(Math.max(anchor[0]!, 0), width), Math.min(Math.max(anchor[1]!, 0), height)];
     const reach = Math.hypot(width, height);
     ctx.font = FONT.rest;
-    for (const { i, zoom, width: w } of backgroundNames) {
-      if (zoom > k || named.has(i)) continue;
+    /** Draws a background name to the right of its dot at `fade`, unless the edge or a name already there hides it. */
+    const backgroundName = (i: number, w: number, fade: number) => {
       const [sx, sy] = at(i);
-      const appear = zoom * (1 + (CENTER_BIAS * Math.hypot(sx - ox, sy - oy)) / reach);
-      const fade = Math.min((k - appear) / (appear * NAME_FADE), 1);
-      if (fade <= 0) continue;
       const box: Box = [sx + r + 3, sy - NAME_HEIGHT / 2, w, NAME_HEIGHT];
       const edge = Math.min(box[0], width - box[0] - w, box[1], height - box[1] - NAME_HEIGHT) / EDGE_FADE;
-      if (edge <= 0 || overlaps(taken, box)) continue;
+      if (edge <= 0 || overlaps(taken, box)) return;
+      taken.push(box);
+      named.add(i);
       ctx.globalAlpha = (dimming ? 0.5 : 0.75) * fade * Math.min(edge, 1);
       const name = lib.tracks[audio.ids[i]!]?.name ?? "";
       ctx.lineWidth = 3;
@@ -501,6 +503,24 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
       ctx.strokeText(name, box[0] + 2, box[1] + 11);
       ctx.fillStyle = "#c2b6c9";
       ctx.fillText(name, box[0] + 2, box[1] + 11);
+    };
+    for (const { i, zoom, width: w } of backgroundNames) {
+      if (zoom > k || named.has(i)) continue;
+      const [sx, sy] = at(i);
+      const appear = zoom * (1 + (CENTER_BIAS * Math.hypot(sx - ox, sy - oy)) / reach);
+      const fade = Math.min((k - appear) / (appear * NAME_FADE), 1);
+      if (fade > 0) backgroundName(i, w, fade);
+    }
+    // Around the pointer, songs not named yet get named early, nearest first, fading out toward the radius's rim.
+    const near = pointer.current;
+    if (near && k >= REGION_FADE_END) {
+      const spot = backgroundNames.flatMap(({ i, width: w }) => {
+        if (named.has(i) || i === hover?.i) return [];
+        const [sx, sy] = at(i);
+        const d = Math.hypot(sx - near[0], sy - near[1]);
+        return d < SPOT_RADIUS ? [{ i, w, d }] : [];
+      });
+      for (const { i, w, d } of spot.sort((a, b) => a.d - b.d)) backgroundName(i, w, Math.min((SPOT_RADIUS - d) / (SPOT_RADIUS / 2), 1));
     }
 
     // The marked song: a ring, and a dashed line from the focused song to show how far apart they are.
@@ -616,6 +636,8 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
           e.currentTarget.setPointerCapture(e.pointerId);
         }}
         onPointerMove={(e) => {
+          pointer.current = local(e);
+          schedule();
           const d = drag.current;
           if (d) {
             const dx = e.clientX - d.x, dy = e.clientY - d.y;
@@ -623,10 +645,9 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
             [d.x, d.y] = [e.clientX, e.clientY];
             const { k } = view.current;
             view.current = { k, cx: view.current.cx - dx / (base * k), cy: view.current.cy - dy / (base * k) };
-            schedule();
             return;
           }
-          const [sx, sy] = local(e);
+          const [sx, sy] = pointer.current;
           // Re-render only when the hovered song or tile changes, not on every pixel of movement.
           const i = nearest(sx, sy);
           if (i !== (hover?.i ?? -1)) setHover(i >= 0 ? { i, x: sx, y: sy } : null);
@@ -650,7 +671,12 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
             else if (focusId) setReleasedFor(`${focusId}|${highlight.join()}`);
           }
         }}
-        onPointerLeave={() => (setHover(null), setArea(null))}
+        onPointerLeave={() => {
+          pointer.current = null;
+          schedule();
+          setHover(null);
+          setArea(null);
+        }}
       />
       {area && hoveredTile && (
         <div
