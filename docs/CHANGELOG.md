@@ -51,6 +51,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Song names on the sound map hold their place while zooming instead of hopping above and below their dots.
 - Log out now also signs the host out, so you can log in again to grant new permissions instead of being signed straight back in.
 - The host keeps its Spotify login when Spotify refuses a token refresh, instead of deleting it during a background check.
 - Song names on the sound map show in full and stay inside its border, moving to the other side of a song near the edge.

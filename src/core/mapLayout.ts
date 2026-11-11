@@ -31,20 +31,38 @@ export function fitCamera(points: readonly Point[], [width, height]: Size, base:
   return { k: clamp(k, MIN_ZOOM, MAX_FIT_ZOOM), cx: (minX + maxX) / 2, cy: (minY + maxY) / 2 };
 }
 
+/** A name's box, and which spot around its point it took so the next frame can prefer it again. */
+export type Placement = { box: Box; spot: string };
+
 /**
  * Where a name goes: beside its point on whichever side has room, else the closest free spot above or below,
- * always fully inside the canvas. `gap` is the distance from the point to the name. When every spot is taken, a
- * `mustShow` name takes the one it overlaps least; any other name is left out (null).
+ * always fully inside the canvas. `gap` is the distance from the point to the name. `prefer` is the spot the name
+ * took last frame: kept while it's free and fits, so names don't hop between spots as the camera moves. When every
+ * spot is taken, a `mustShow` name takes the one it overlaps least; any other name is left out (null).
  */
-export function placeLabel([x, y]: Point, [w, h]: Size, gap: number, [width, height]: Size, taken: readonly Box[], mustShow: boolean): Box | null {
-  const inside = (bx: number, by: number): Box => [clamp(bx, EDGE, width - w - EDGE), clamp(by, EDGE, height - h - EDGE), w, h];
-  const right = x + gap;
-  const left = x - gap - w;
-  const sides = right + w <= width - EDGE ? [right, left] : [left, right];
-  const spots = [0, -1, 1, -2, 2, -3, 3].flatMap((row) => sides.map((bx) => inside(bx, y - h / 2 + row * (h + 2))));
-  spots.push(inside(x - w / 2, y - gap - h), inside(x - w / 2, y + gap));
-  const free = spots.find((spot) => !overlaps(taken, spot));
-  if (free || !mustShow) return free ?? null;
-  const covered = (spot: Box) => taken.reduce((sum, t) => sum + overlapArea(t, spot), 0);
-  return spots.reduce((best, spot) => (covered(spot) < covered(best) ? spot : best));
+export function placeLabel(
+  [x, y]: Point,
+  [w, h]: Size,
+  gap: number,
+  [width, height]: Size,
+  taken: readonly Box[],
+  mustShow: boolean,
+  prefer?: string,
+): Placement | null {
+  const at = (spot: string, bx: number, by: number) => {
+    const box: Box = [clamp(bx, EDGE, width - w - EDGE), clamp(by, EDGE, height - h - EDGE), w, h];
+    return { box, spot, fits: box[0] === bx && box[1] === by };
+  };
+  type Spot = ReturnType<typeof at>;
+  const row = (r: number) => y - h / 2 + r * (h + 2);
+  const right = (r: number) => at(`r${r}`, x + gap, row(r));
+  const left = (r: number) => at(`l${r}`, x - gap - w, row(r));
+  const sides = x + gap + w <= width - EDGE ? [right, left] : [left, right];
+  const spots = [0, -1, 1, -2, 2, -3, 3].flatMap((r) => sides.map((side) => side(r)));
+  spots.push(at("above", x - w / 2, y - gap - h), at("below", x - w / 2, y + gap));
+  const free = (s: Spot) => !overlaps(taken, s.box);
+  const found = spots.find((s) => s.spot === prefer && s.fits && free(s)) ?? spots.find(free);
+  const covered = (s: Spot) => taken.reduce((sum, t) => sum + overlapArea(t, s.box), 0);
+  const chosen = found ?? (mustShow ? spots.reduce((best, s) => (covered(s) < covered(best) ? s : best)) : null);
+  return chosen && { box: chosen.box, spot: chosen.spot };
 }

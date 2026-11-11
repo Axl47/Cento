@@ -15,7 +15,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { closestAmong, nearestSorted, NEAREST, neighborsFrom, type AudioIndex } from "../core/audio.ts";
 import { regions, tileKeyAt, tileUp } from "../core/hexTiles.ts";
 import { isArtistPlaylist, primaryPlaylists, sortTargets, type Library } from "../core/library.ts";
-import { fitCamera, MIN_ZOOM, overlaps, placeLabel, type Box, type Camera, type Point } from "../core/mapLayout.ts";
+import { fitCamera, MIN_ZOOM, overlaps, placeLabel, type Box, type Camera, type Point, type Size } from "../core/mapLayout.ts";
 import { useApp } from "./store.ts";
 
 export type MapScene =
@@ -63,6 +63,8 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
   /** The song scene + highlight a click on empty map released; released only while both stay as they were. */
   const [releasedFor, setReleasedFor] = useState<string | null>(null);
   const [area, setArea] = useState<{ key: string; corner: boolean } | null>(null);
+  /** Where each name sat last frame ("n<i>" for names, "p<i>" for pills), so names hold still as the camera moves. */
+  const lastSpots = useRef(new Map<string, string>());
   const redraw = useRef<() => void>(() => {});
   const frame = useRef(0);
   /** Redraws on the next animation frame, once however many pointer/wheel events arrive before it. */
@@ -343,6 +345,15 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
     // Each one is placed to fit fully inside the canvas, and the scene's dots are kept clear of names.
     const marked = mark ? data.pos.get(mark) : undefined;
     const taken: Box[] = [];
+    const spots = new Map<string, string>();
+    /** Places a name, preferring the spot it had last frame, and remembers where it went. */
+    const place = (key: string, point: Point, size: Size, gap: number, mustShow: boolean) => {
+      const placed = placeLabel(point, size, gap, [width, height], taken, mustShow, lastSpots.current.get(key));
+      if (!placed) return null;
+      taken.push(placed.box);
+      spots.set(key, placed.spot);
+      return placed.box;
+    };
     for (const id of subjects) {
       const i = data.pos.get(id);
       if (i === undefined) continue;
@@ -376,9 +387,8 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
       if (point[0] < 0 || point[1] < 0 || point[0] > width || point[1] > height) return;
       ctx.font = font;
       const name = nameOf(i);
-      const box = placeLabel(point, [ctx.measureText(name).width + 4, NAME_HEIGHT], r + 3, [width, height], taken, mustShow);
+      const box = place(`n${i}`, point, [ctx.measureText(name).width + 4, NAME_HEIGHT], r + 3, mustShow);
       if (!box) return;
-      taken.push(box);
       leader(i, box, color);
       ctx.globalAlpha = alpha;
       ctx.lineWidth = 3;
@@ -391,8 +401,7 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
     const pill = (i: number, font: string, fill: string, text: string) => {
       ctx.font = font;
       const name = nameOf(i);
-      const box = placeLabel(at(i), [ctx.measureText(name).width + 14, PILL_HEIGHT], 14, [width, height], taken, true)!;
-      taken.push(box);
+      const box = place(`p${i}`, at(i), [ctx.measureText(name).width + 14, PILL_HEIGHT], 14, true)!;
       return () => {
         leader(i, box, fill.slice(0, 7));
         ctx.globalAlpha = 1;
@@ -425,11 +434,21 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
     if (k >= LABEL_ZOOM) {
       const alpha = Math.min((k - LABEL_ZOOM) / 3 + 0.45, 0.75);
       const rest = (i: number) => {
-        if (taken.length < MAX_LABELS + subjects.length && !named.has(i)) label(i, FONT.rest, "#c2b6c9", alpha, false);
+        if (taken.length >= MAX_LABELS + subjects.length || named.has(i)) return;
+        named.add(i);
+        label(i, FONT.rest, "#c2b6c9", alpha, false);
       };
-      if (highlighting) for (let i = 0; i < audio.ids.length; i++) if (lit.has(audio.ids[i]!)) rest(i);
+      // Names that showed last frame claim room first, so zooming adds names rather than trading them.
+      const shownBefore = [...lastSpots.current.keys()].flatMap((key) => (key[0] === "n" ? [Number(key.slice(1))] : []));
+      const isLit = (i: number) => lit.has(audio.ids[i]!);
+      if (highlighting) {
+        for (const i of shownBefore) if (isLit(i)) rest(i);
+        for (let i = 0; i < audio.ids.length; i++) if (isLit(i)) rest(i);
+      }
+      for (const i of shownBefore) rest(i);
       for (let i = 0; i < audio.ids.length; i++) rest(i);
     }
+    lastSpots.current = spots;
 
     // The marked song: a ring, and a dashed line from the focused song to show how far apart they are.
     if (marked !== undefined) {
