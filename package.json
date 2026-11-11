@@ -8,6 +8,7 @@
     "export": "tsx --env-file=.env src/cli/export.ts",
     "eval": "tsx --env-file=.env src/cli/eval.ts",
     "backfill": "tsx --env-file=.env src/cli/backfill.ts",
+    "merge-copies": "tsx --env-file=.env src/cli/dedupe.ts",
     "typecheck": "tsc --noEmit",
     "audio": "tsx --env-file=.env src/cli/audio.ts",
     "classify": "tsx --env-file=.env src/cli/classify.ts",
