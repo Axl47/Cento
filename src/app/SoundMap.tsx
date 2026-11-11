@@ -6,8 +6,8 @@
 //   song      one song and its nearest songs, in their playlists' colors, connected and named; the rest gray
 //   bridge    a route between two songs, in its own color with distinct ends; the rest gray
 // Highlighting playlists colors only their songs, and focus lines then go to their closest songs. Clicking empty map
-// in a song scene releases that: the song's nearest songs show, undimmed, until its highlight changes; hovering the
-// song itself brings the highlight's dimming back. A marked song
+// in a song scene releases that: the song's nearest songs show, undimmed. Any interaction with the song (hovering
+// its dot) or with the page around the map (the song's info, the lists below the map) brings the highlight back. A marked song
 // (hovered elsewhere on the page) gets a ring, a line from the focused song and its name, and joins the fit.
 // Under every scene, hex tiles tint each area by the playlist most of its songs are colored by; a corner panel says
 // which playlists the songs of the tile under the pointer are in, alongside any hovered song's own tooltip.
@@ -117,6 +117,19 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
     return only ? near.filter((n) => only.has(n.id)) : near;
   }, [focusId, lit, released, neighbors, vectors, audio, data, only]);
 
+  // A release ends when the pointer reaches anything but the map, or a song elsewhere on the page is marked.
+  useEffect(() => {
+    if (!released) return;
+    const onOver = (e: PointerEvent) => {
+      if (!(e.target instanceof Node && wrapRef.current?.contains(e.target))) setReleasedFor(null);
+    };
+    document.addEventListener("pointerover", onOver);
+    return () => document.removeEventListener("pointerover", onOver);
+  }, [released]);
+  useEffect(() => {
+    if (mark) setReleasedFor(null);
+  }, [mark]);
+
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
@@ -161,22 +174,13 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
     const overview = scene.kind === "overview";
     const regionAlpha = overview ? Math.min(Math.max((REGION_FADE_END - k) / (REGION_FADE_END - 1), 0), 1) : 0;
     const r = dotRadius();
-    // A released song scene shows plainly, until the pointer is on the song itself.
-    // By position, since another copy of the song (an album re-release) can sit right under its dot.
-    const focusAt = focusId ? data.pos.get(focusId) : undefined;
-    const peeking = (() => {
-      if (!released || !hover || focusAt === undefined) return false;
-      const [fx, fy] = toScreen(...audio.xy[focusAt]!);
-      const [hx, hy] = toScreen(...audio.xy[hover.i]!);
-      return Math.hypot(fx - hx, fy - hy) < 6;
-    })();
-    const shaded = !released || peeking;
-    const highlighting = lit.size > 0 && scene.kind !== "bridge" && shaded;
+    // A released song scene shows plainly until something interacts with it again.
+    const highlighting = lit.size > 0 && scene.kind !== "bridge" && !released;
     // Anything but a plain overview grays the songs the story isn't about.
-    const dimming = highlighting || (!overview && shaded);
-    const colorOf = (i: number, byHighlight = highlighting) => {
+    const dimming = highlighting || (!overview && !released);
+    const colorOf = (i: number) => {
       const id = audio.ids[i]!;
-      const p = byHighlight ? lit.get(id) : data.primary.get(id);
+      const p = highlighting ? lit.get(id) : data.primary.get(id);
       return p ? (colors.get(p) ?? UNSORTED) : UNSORTED;
     };
     const at = (i: number) => toScreen(...audio.xy[i]!);
@@ -279,13 +283,13 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
         if (ni === undefined) continue;
         const [nx, ny] = at(ni);
         ctx.globalAlpha = 0.25 + 0.6 * Math.max(n.sim, 0);
-        ctx.strokeStyle = colorOf(ni, highlighting && !released);
+        ctx.strokeStyle = colorOf(ni);
         ctx.lineWidth = 1.2;
         ctx.beginPath();
         ctx.moveTo(fx, fy);
         ctx.lineTo(nx, ny);
         ctx.stroke();
-        ctx.fillStyle = colorOf(ni, highlighting && !released);
+        ctx.fillStyle = colorOf(ni);
         dot(nx, ny, r + 1.5);
       }
       ctx.globalAlpha = 1;
@@ -405,7 +409,7 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
       const i = data.pos.get(n.id);
       if (i === undefined || named.has(i)) continue;
       named.add(i);
-      label(i, FONT.near, colorOf(i, highlighting && !released), 1, true);
+      label(i, FONT.near, colorOf(i), 1, true);
     }
     for (const i of route.slice(1, -1)) if (i !== marked) label(i, FONT.near, BRIDGE_COLORS.path, 1, true);
     if (k >= LABEL_ZOOM) {
@@ -544,6 +548,13 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
           // Re-render only when the hovered song or tile changes, not on every pixel of movement.
           const i = nearest(sx, sy);
           if (i !== (hover?.i ?? -1)) setHover(i >= 0 ? { i, x: sx, y: sy } : null);
+          // The song itself (or a copy right under its dot) brings the highlight back.
+          const fi = focusId ? data.pos.get(focusId) : undefined;
+          if (released && i >= 0 && fi !== undefined) {
+            const [fx, fy] = toScreen(...audio.xy[fi]!);
+            const [hx, hy] = toScreen(...audio.xy[i]!);
+            if (Math.hypot(fx - hx, fy - hy) < 6) setReleasedFor(null);
+          }
           const key = tileKeyAt(toData(sx, sy), TILE);
           const next = tiled.tiles.has(key) ? { key, corner: sx < 260 && sy < 180 } : null;
           if (next?.key !== area?.key || next?.corner !== area?.corner) setArea(next);
