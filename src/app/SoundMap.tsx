@@ -9,12 +9,12 @@
 // in a song scene releases that: the song's nearest songs show, undimmed. Any interaction with the song (hovering
 // its dot) or with the page around the map (the song's info, the lists below the map) brings the highlight back. A marked song
 // (hovered elsewhere on the page) gets a ring, a line from the focused song and its name, and joins the fit.
-// Under every scene, hex tiles tint each area by the playlist most of its songs are colored by; a corner panel says
+// Under every scene, hex tiles tint each area by the playlist most of its songs are in (not counting uncounted or artist playlists); a corner panel says
 // which playlists the songs of the tile under the pointer are in, alongside any hovered song's own tooltip.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { closestAmong, nearestSorted, NEAREST, neighborsFrom, type AudioIndex } from "../core/audio.ts";
 import { regions, tileKeyAt, tileUp } from "../core/hexTiles.ts";
-import { primaryPlaylists, sortTargets, type Library } from "../core/library.ts";
+import { isArtistPlaylist, primaryPlaylists, sortTargets, type Library } from "../core/library.ts";
 import { fitCamera, MIN_ZOOM, overlaps, placeLabel, type Box, type Camera, type Point } from "../core/mapLayout.ts";
 import { useApp } from "./store.ts";
 
@@ -74,8 +74,9 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
   };
 
   const hidden = useApp((s) => s.hidden);
+  const uncounted = useApp((s) => s.uncounted);
   const vectors = useApp((s) => s.vectors);
-  // Per-point data, parallel to audio.ids. Hidden playlists don't color songs or count in tiles.
+  // Per-point data, parallel to audio.ids. Hidden playlists don't color songs.
   const data = useMemo(() => {
     const targets = sortTargets(lib, hidden);
     const memberOf = new Map<string, string[]>();
@@ -88,11 +89,20 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
     };
   }, [audio, lib, hidden]);
 
-  // Tiles of the drawn songs, each led by the playlist most of its songs are colored by, and the areas they form.
+  // What tiles are made of: playlists that count as sorted and aren't one artist's catch-all, so a tile shows the
+  // sound its songs share rather than who made them.
+  const tileData = useMemo(() => {
+    const targets = sortTargets(lib, [...hidden, ...uncounted]).filter((p) => !isArtistPlaylist(lib, p));
+    const memberOf = new Map<string, string[]>();
+    for (const p of targets) for (const id of p.trackIds) memberOf.set(id, [...(memberOf.get(id) ?? []), p.id]);
+    return { playlistsOf: audio.ids.map((id) => memberOf.get(id) ?? []), primary: primaryPlaylists(targets) };
+  }, [audio, lib, hidden, uncounted]);
+
+  // Tiles of the drawn songs, each led by the playlist most of its songs are in, and the areas they form.
   const tiled = useMemo(() => {
-    const tiles = tileUp(audio.xy, TILE, (i) => data.primary.get(audio.ids[i]!) ?? null, only ? (i) => only.has(audio.ids[i]!) : undefined);
+    const tiles = tileUp(audio.xy, TILE, (i) => tileData.primary.get(audio.ids[i]!) ?? null, only ? (i) => only.has(audio.ids[i]!) : undefined);
     return { tiles, regions: regions(tiles, TILE).filter((r) => r.songs >= MIN_REGION_SONGS) };
-  }, [audio, data, only]);
+  }, [audio, tileData, only]);
 
   // Song -> the first highlighted playlist it's in. Built from all playlists, so a hidden one still lights up.
   const lit = useMemo(() => {
@@ -516,7 +526,7 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
   const tileShares = (() => {
     if (!hoveredTile) return [];
     const counts = new Map<string, number>();
-    for (const i of hoveredTile.songs) for (const p of data.playlistsOf[i]!) counts.set(p, (counts.get(p) ?? 0) + 1);
+    for (const i of hoveredTile.songs) for (const p of tileData.playlistsOf[i]!) counts.set(p, (counts.get(p) ?? 0) + 1);
     return [...counts].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([id, n]) => ({ id, share: n / hoveredTile.songs.length }));
   })();
 

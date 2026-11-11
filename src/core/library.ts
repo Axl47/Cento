@@ -39,6 +39,14 @@ export const sortTargets = (lib: Library, hidden: readonly string[] = []) =>
     (p) => p.id !== config.allPlaylistId && !config.ignoredPlaylistIds.includes(p.id) && !hidden.includes(p.id),
   );
 
+const plain = (name: string) => name.normalize("NFD").replace(/\p{M}/gu, "").trim().toLowerCase();
+
+/** A playlist named after one of its own songs' artists ("Bad Bunny" holding Bad Bunny songs): a catch-all, not a sound. */
+export const isArtistPlaylist = (lib: Library, playlist: Playlist) => {
+  const name = plain(playlist.name);
+  return playlist.trackIds.some((id) => lib.tracks[id]?.artists.some((a) => plain(a.name) === name));
+};
+
 /** trackId -> the smallest, so most specific, of `targets` it's in: what decides a song's color. Sorted songs only. */
 export function primaryPlaylists(targets: readonly Playlist[]): Map<string, string> {
   const primary = new Map<string, string>();

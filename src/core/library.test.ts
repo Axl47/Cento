@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { firstAdded, syncLibrary, type Library } from "./library.ts";
+import { firstAdded, isArtistPlaylist, syncLibrary, type Library } from "./library.ts";
 import type { SpotifyClient } from "./spotify.ts";
 
 const song = (id: string) => ({ id, name: id, type: "track", is_local: false, duration_ms: 1, artists: [] });
@@ -36,4 +36,13 @@ test("firstAdded takes the earliest of liked and playlist dates", () => {
     playlists: [{ id: "p", name: "P", imageUrl: null, trackIds: ["a", "b"], addedAt: { a: "2024-04-04", b: "2026-06-06" } }],
   };
   assert.deepEqual([...firstAdded(lib)].toSorted(), [["a", "2024-04-04"], ["b", "2026-06-06"], ["c", "2023-03-03"]]);
+});
+
+test("a playlist named after an artist on its songs is an artist playlist, ignoring case and accents", () => {
+  const track = (id: string, artist: string) => ({ id, name: id, artists: [{ id: artist, name: artist }], album: { name: "", imageUrl: null }, isrc: null, durationMs: 1 });
+  const lib = { tracks: { a: track("a", "The Marías"), b: track("b", "Other") } } as unknown as Library;
+  const playlist = (name: string, trackIds: string[]) => ({ id: name, name, imageUrl: null, trackIds });
+  assert.equal(isArtistPlaylist(lib, playlist("the marias", ["b", "a"])), true);
+  assert.equal(isArtistPlaylist(lib, playlist("The Marías", ["b"])), false);
+  assert.equal(isArtistPlaylist(lib, playlist("Chill", ["a"])), false);
 });
