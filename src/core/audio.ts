@@ -7,7 +7,7 @@ export type AudioIndex = {
   model: string;
   /** Spotify track ids; every other array is parallel to this one. */
   ids: string[];
-  /** 2D layout (UMAP), roughly in [-1, 1]. */
+  /** 2D layout (UMAP), roughly in [-1, 1]. Copies of one recording (identical vectors) share a point. */
   xy: [number, number][];
   /** Indices into `ids` of each track's nearest neighbors, most similar first. */
   nn: number[][];

@@ -52,6 +52,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- The same recording saved from different releases (a single, an EP and the album) now sits on one spot on the sound map instead of a few scattered dots. Run `pnpm audio` once to rebuild the map.
 - Song names on the sound map hold their place while zooming instead of hopping above and below their dots.
 - Log out now also signs the host out, so you can log in again to grant new permissions instead of being signed straight back in.
 - The host keeps its Spotify login when Spotify refuses a token refresh, instead of deleting it during a background check.

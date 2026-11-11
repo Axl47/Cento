@@ -21,7 +21,7 @@ const NEIGHBORS = 50; // stored per track (some will be unsorted songs, which do
 const LAYOUT_NEIGHBORS = 15; // used for the UMAP layout
 const OUT = "data/audio.json";
 const VECTORS_OUT = "data/vectors.bin";
-const FORMAT = 2; // bump when the outputs change shape, so the cache below rebuilds them
+const FORMAT = 3; // bump when the outputs change shape, so the cache below rebuilds them
 
 type VectorLine = { key: string; status: string; vector?: number[] };
 
@@ -125,7 +125,31 @@ if (previous?.sourceHash === hash) {
 const started = performance.now();
 const { nn, sim } = nearest(rows, NEIGHBORS);
 
-console.log("  layout (UMAP)…");
+// Copies of one recording (the same song on a single, an EP and an album) have identical vectors. Lay out each
+// recording once, so its copies share a point instead of UMAP scattering them, and don't spend each other's
+// layout neighbors on themselves.
+const songOf: number[] = [];
+const songs: number[] = []; // song -> its first track
+const seen = new Map<string, number>();
+rows.forEach((row, i) => {
+  const key = Buffer.from(row.buffer).toString("base64");
+  let song = seen.get(key);
+  if (song === undefined) seen.set(key, (song = songs.push(i) - 1));
+  songOf.push(song);
+});
+// Each song's layout neighbors: its first track's neighbors as songs, without itself or repeats.
+const songNn = songs.map((i, song) => {
+  const out: number[] = [];
+  const dist: number[] = [];
+  nn[i]!.forEach((j, k) => {
+    const s = songOf[j]!;
+    if (s === song || out.includes(s) || out.length === LAYOUT_NEIGHBORS) return;
+    out.push(s);
+    dist.push(1 - sim[i]![k]!);
+  });
+  return { out, dist };
+});
+console.log(`  layout (UMAP) of ${songs.length} recordings…`);
 let seed = 7;
 const umap = new UMAP({
   nComponents: 2,
@@ -134,20 +158,20 @@ const umap = new UMAP({
   random: () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646,
 });
 umap.setPrecomputedKNN(
-  nn.map((r) => r.slice(0, LAYOUT_NEIGHBORS)),
-  sim.map((r) => r.slice(0, LAYOUT_NEIGHBORS).map((s) => 1 - s)),
+  songNn.map((n) => n.out),
+  songNn.map((n) => n.dist),
 );
-const raw = umap.fit(rows.map((r) => Array.from(r)));
+const raw = umap.fit(songs.map((i) => Array.from(rows[i]!)));
 
 // Center and scale into [-1, 1].
 const mean = [0, 1].map((d) => raw.reduce((s, p) => s + p[d]!, 0) / raw.length);
 const scale = Math.max(...raw.flatMap((p) => [Math.abs(p[0]! - mean[0]!), Math.abs(p[1]! - mean[1]!)])) || 1;
-const xy = raw.map((p) => [0, 1].map((d) => Math.round(((p[d]! - mean[d]!) / scale) * 10000) / 10000) as [number, number]);
+const songXy = raw.map((p) => [0, 1].map((d) => Math.round(((p[d]! - mean[d]!) / scale) * 10000) / 10000) as [number, number]);
 
 const index: AudioIndex & { sourceHash: string } = {
   model: process.env.ENGINE_MODEL ?? "unknown",
   ids,
-  xy,
+  xy: songOf.map((song) => songXy[song]!),
   nn,
   sim,
   baseline: baselineSimilarity(rows),
