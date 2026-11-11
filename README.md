@@ -113,7 +113,9 @@ Spotify shows them; entries older than a day are dropped too.
 - `pnpm lyrics` builds `data/lyrics-index.*` for the Lyrics tab from the engine's fetched lyrics (or `LYRICS_FILE`). It
   downloads the text model once, and later runs embed only new lyrics. Restart `pnpm dev` afterwards. It also scores
   every song against the list of `THEMES` in `src/core/themes.ts` for the Themes tab: edit the list and rerun to change them.
-- `pnpm host` builds the app and keeps Now Playing running with no tab open. It's on this Mac at `http://127.0.0.1:3001/now`
+- `pnpm host` builds the app and runs the host in the background as a login agent: it returns right away, starts again
+  at every login and restarts if it crashes. Rerun it after changing the code; `pnpm host:stop` stops it until the next
+  login, and its output goes to `data/host.log`. The host keeps Now Playing running with no tab open. It's on this Mac at `http://127.0.0.1:3001/now`
   and on your network at the address it prints (also under Settings on that screen). Open Cento once with the host
   running and it takes over your Spotify login. Other devices need the password you set from Settings on the Mac, and can
   reach only that screen and its player controls. It uses plain HTTP, so keep it to your home network.

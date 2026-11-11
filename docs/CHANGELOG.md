@@ -8,6 +8,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- `pnpm host` now runs the host in the background and returns right away, starts it again whenever you log in to the Mac, and restarts it if it crashes, so plays keep being recorded without a terminal held open. `pnpm host:stop` stops it.
+- `pnpm merge-copies` never merges a remix, live or other version with the original, even when their audio looks the same.
 - `pnpm merge-copies` cleans up songs saved from several releases (a single, an EP and the album): it keeps the explicit copy, then the album copy, then the newest release, puts it in every playlist any copy was in, including Liked Songs, and removes the other copies. Hidden playlists, such as yearly snapshots, are left as they are. It shows the plan first and only writes to Spotify with `--apply`.
 - Songs merged by `pnpm merge-copies` keep the dates their copies were first added, in the app and after a resync, instead of showing as added on the day of the merge.
 - The sound map tints its background in hex tiles by the playlist that leads each area, and pointing anywhere on it shows which playlists that tile's songs are in, while songs stay visible and clickable on top. This replaces the playlist bubbles.
