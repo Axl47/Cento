@@ -49,7 +49,7 @@ const MIN_REGION_SONGS = 12; // smaller areas go unnamed
 const NAME_ZOOM = 6; // zoom highlighted songs and each tile's lead song can be named from
 const NAME_FILL = 0.5; // how fast the rest of a tile follows: its nth song can be named from NAME_ZOOM·√(1 + n·NAME_FILL)
 const NAME_ROOM = [16, 24] as const; // clear space after a background name, and the height it takes with spacing
-const CENTER_BIAS = 0.5; // how much later a name appears at the screen's edge than at its center (or the focused song)
+const CENTER_BIAS = 0.5; // how much later a name appears a screen's diagonal away from the center (or the focused song)
 const NAME_FADE = 0.2; // share of its appear zoom over which a name fades in
 const EDGE_FADE = 28; // pixels from the canvas edge over which background names fade out
 const UNSORTED = "#71717a";
@@ -413,11 +413,11 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
       return `${cut}…`;
     };
     /** A name displaced from its song gets a thin line back to it. */
-    const leader = (i: number, [bx, by, bw, bh]: Box, color: string) => {
+    const leader = (i: number, [bx, by, bw, bh]: Box, color: string, alpha = 1) => {
       const [sx, sy] = at(i);
       const [ex, ey] = [Math.max(bx, Math.min(sx, bx + bw)), Math.max(by, Math.min(sy, by + bh))];
       if (Math.hypot(ex - sx, ey - sy) < r + 14) return;
-      ctx.globalAlpha = 0.4;
+      ctx.globalAlpha = 0.4 * alpha;
       ctx.strokeStyle = color;
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -425,15 +425,17 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
       ctx.lineTo(ex, ey);
       ctx.stroke();
     };
+    /** A scene's song name, kept inside the canvas; it fades out as its dot nears the edge, gone once the dot leaves. */
     const label = (i: number, font: string, color: string, alpha: number, mustShow: boolean) => {
       const point = at(i);
-      if (point[0] < 0 || point[1] < 0 || point[0] > width || point[1] > height) return;
+      const edge = Math.min(Math.min(point[0], point[1], width - point[0], height - point[1]) / EDGE_FADE, 1);
+      if (edge <= 0) return;
       ctx.font = font;
       const name = nameOf(i);
       const box = place(`n${i}`, point, [ctx.measureText(name).width + 4, NAME_HEIGHT], r + 3, mustShow);
       if (!box) return;
-      leader(i, box, color);
-      ctx.globalAlpha = alpha;
+      leader(i, box, color, edge);
+      ctx.globalAlpha = alpha * edge;
       ctx.lineWidth = 3;
       ctx.strokeStyle = BACKGROUND;
       ctx.strokeText(name, box[0] + 2, box[1] + 11);
@@ -478,8 +480,10 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
 
     // Background names: each fades in past its appear zoom, later the farther it is from the center of attention,
     // always to the right of its dot. Instead of moving away from the canvas edge or the scene's names, it fades out.
-    const [ox, oy] = fi !== undefined ? at(fi) : [width / 2, height / 2];
-    const reach = Math.hypot(width, height) / 2;
+    // The focused song held to the canvas, so one panned off screen still leans names toward its side.
+    const anchor = fi !== undefined ? at(fi) : [width / 2, height / 2];
+    const [ox, oy] = [Math.min(Math.max(anchor[0]!, 0), width), Math.min(Math.max(anchor[1]!, 0), height)];
+    const reach = Math.hypot(width, height);
     ctx.font = FONT.rest;
     for (const { i, zoom, width: w } of backgroundNames) {
       if (zoom > k || named.has(i)) continue;
