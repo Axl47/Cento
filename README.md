@@ -70,9 +70,9 @@ track-URI play request is accepted but loads nothing on this account.
   click switches it on or off. While on, its songs are back in the queue even if they're no longer liked, unless
   another playlist that counts already has them, and it isn't suggested. Nothing changes on Spotify, and the row is saved in this browser.
 
-- **Sound map**: every song placed by sound. Zoomed out, each playlist shows as a bubble where its songs
-  are densest (up to three bubbles for a playlist split across tight groups; see `src/core/clusters.ts`);
-  zoom in for songs. It's the same map as the sort screen's: click a song to see it among its nearest songs, hover a
+- **Sound map**: every song placed by sound, over hex tiles tinted by the playlist most of each tile's songs are
+  colored by (stronger where that playlist clearly leads; see `src/core/hexTiles.ts`). Zoomed out, each playlist's
+  biggest area is named. Pointing anywhere shows, in a corner, which playlists that tile's songs are in. It's the same map as the sort screen's: click a song to see it among its nearest songs, hover a
   playlist to preview it and click to keep it highlighted.
   **Added between** narrows the map to songs first liked or added to a playlist in that date range (playlist dates
   arrive with the next resync).

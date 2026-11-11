@@ -2,14 +2,16 @@
 // embeddings). One component, so anything added here works wherever a map is shown; a view only says what to show.
 //
 // The `scene` says what to show, and the camera glides to keep all of it on screen:
-//   overview  everything; playlists are bubbles where their songs are densest, fading into songs as you zoom in
+//   overview  everything, with the names of the areas each playlist leads while zoomed out
 //   song      one song and its nearest songs, in their playlists' colors, connected and named; the rest gray
 //   bridge    a route between two songs, in its own color with distinct ends; the rest gray
 // Highlighting playlists colors only their songs, and focus lines then go to their closest songs. A marked song
 // (hovered elsewhere on the page) gets a ring, a line from the focused song and its name, and joins the fit.
+// Under every scene, hex tiles tint each area by the playlist most of its songs are colored by; a corner panel says
+// which playlists the songs of the tile under the pointer are in, alongside any hovered song's own tooltip.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { closestAmong, nearestSorted, NEAREST, neighborsFrom, type AudioIndex } from "../core/audio.ts";
-import { clusters } from "../core/clusters.ts";
+import { regions, tileKeyAt, tileUp } from "../core/hexTiles.ts";
 import { primaryPlaylists, sortTargets, type Library } from "../core/library.ts";
 import { fitCamera, MIN_ZOOM, overlaps, placeLabel, type Box, type Camera, type Point } from "../core/mapLayout.ts";
 import { useApp } from "./store.ts";
@@ -28,7 +30,7 @@ type Props = {
   scene: MapScene;
   /** Playlists to emphasize; every other song turns gray, and focus lines only go to their songs. */
   highlight?: readonly string[];
-  /** When set, only these songs are drawn and hoverable, and playlist bubbles (which summarize every song) are off. */
+  /** When set, only these songs are drawn, hoverable and counted in the tiles. */
   only?: ReadonlySet<string> | null;
   /** Song to point out, e.g. one hovered in a list next to the map. */
   mark?: string | null;
@@ -37,7 +39,9 @@ type Props = {
 
 const OVERVIEW: Camera = { k: 1, cx: 0, cy: 0 };
 const GLIDE_MS = 400;
-const GROUP_FADE_END = 2.6; // zoom where playlist bubbles have fully faded out
+const REGION_FADE_END = 2.6; // zoom where area names have fully faded out
+const TILE = 0.04; // tile size (center to corner) in layout units, which span about [-1, 1]
+const MIN_REGION_SONGS = 12; // smaller areas go unnamed
 const LABEL_ZOOM = 7; // zoom where every song's name can show
 const MAX_LABELS = 70;
 const UNSORTED = "#71717a";
@@ -53,6 +57,8 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
   const view = useRef<Camera>(OVERVIEW);
   const [width, setWidth] = useState(600);
   const [hover, setHover] = useState<{ i: number; x: number; y: number } | null>(null);
+  /** The tile under the pointer, and whether the pointer is in the corner its panel normally takes. */
+  const [area, setArea] = useState<{ key: string; corner: boolean } | null>(null);
   const redraw = useRef<() => void>(() => {});
   const frame = useRef(0);
   /** Redraws on the next animation frame, once however many pointer/wheel events arrive before it. */
@@ -65,27 +71,24 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
 
   const hidden = useApp((s) => s.hidden);
   const vectors = useApp((s) => s.vectors);
-  // Per-point data, parallel to audio.ids. Hidden playlists get no bubble and don't color songs.
+  // Per-point data, parallel to audio.ids. Hidden playlists don't color songs or count in tiles.
   const data = useMemo(() => {
     const targets = sortTargets(lib, hidden);
-
     const memberOf = new Map<string, string[]>();
     for (const p of targets) for (const id of p.trackIds) memberOf.set(id, [...(memberOf.get(id) ?? []), p.id]);
-    const names = new Map(targets.map((p) => [p.id, p.name]));
-    const playlistsOf = audio.ids.map((id) => memberOf.get(id) ?? []);
-
-    const pointsOf = new Map<string, [number, number][]>();
-    playlistsOf.forEach((ps, i) => {
-      for (const p of ps) pointsOf.set(p, [...(pointsOf.get(p) ?? []), audio.xy[i]!]);
-    });
-    // Bubbles at each playlist's dense spots, sized by the songs there. Main spots come first so
-    // their labels win collisions over secondary ones.
-    const groups = [...pointsOf]
-      .flatMap(([id, points]) => clusters(points).map((c, rank) => ({ id, name: names.get(id) ?? "", ...c, main: rank === 0 })))
-      .sort((a, b) => +b.main - +a.main || b.n - a.n);
-
-    return { playlistsOf, primary: primaryPlaylists(targets), groups, names, pos: new Map(audio.ids.map((id, i) => [id, i])) };
+    return {
+      playlistsOf: audio.ids.map((id) => memberOf.get(id) ?? []),
+      primary: primaryPlaylists(targets),
+      names: new Map(targets.map((p) => [p.id, p.name])),
+      pos: new Map(audio.ids.map((id, i) => [id, i])),
+    };
   }, [audio, lib, hidden]);
+
+  // Tiles of the drawn songs, each led by the playlist most of its songs are colored by, and the areas they form.
+  const tiled = useMemo(() => {
+    const tiles = tileUp(audio.xy, TILE, (i) => data.primary.get(audio.ids[i]!) ?? null, only ? (i) => only.has(audio.ids[i]!) : undefined);
+    return { tiles, regions: regions(tiles, TILE).filter((r) => r.songs >= MIN_REGION_SONGS) };
+  }, [audio, data, only]);
 
   // Song -> the first highlighted playlist it's in. Built from all playlists, so a hidden one still lights up.
   const lit = useMemo(() => {
@@ -118,6 +121,8 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
   }, []);
 
   const base = Math.min(width, height) / 2 * 0.9;
+  /** A song's dot radius in pixels at the current zoom; a date range can leave few songs, so keep them visible. */
+  const dotRadius = () => Math.min(Math.max(1.4 * Math.sqrt(view.current.k), only ? 3 : 1.6), 5);
   const toScreen = (x: number, y: number): [number, number] => {
     const { k, cx, cy } = view.current;
     return [(x - cx) * base * k + width / 2, (y - cy) * base * k + height / 2];
@@ -136,6 +141,8 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
   });
   const target = subjectPoints.length ? fitCamera(subjectPoints, [width, height], base) : OVERVIEW;
 
+  const hoveredTile = area ? tiled.tiles.get(area.key) : undefined;
+
   // ---- drawing ----
   redraw.current = () => {
     const canvas = canvasRef.current;
@@ -147,8 +154,8 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
 
     const { k } = view.current;
     const overview = scene.kind === "overview";
-    const groupAlpha = overview ? Math.min(Math.max((GROUP_FADE_END - k) / (GROUP_FADE_END - 1), 0), 1) : 0;
-    const r = Math.min(Math.max(1.4 * Math.sqrt(k), only ? 3 : 1.6), 5); // a date range can leave few songs: keep them visible
+    const regionAlpha = overview ? Math.min(Math.max((REGION_FADE_END - k) / (REGION_FADE_END - 1), 0), 1) : 0;
+    const r = dotRadius();
     const highlighting = lit.size > 0 && scene.kind !== "bridge";
     // Anything but a plain overview grays the songs the story isn't about.
     const dimming = highlighting || !overview;
@@ -169,9 +176,36 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
       ctx.stroke();
     };
 
+    // Tiles, under everything: a tint as strong as the tile's lead is clear and its songs many. The hovered one is outlined.
+    const corner = TILE * base * k;
+    const hex = (sx: number, sy: number, size: number) => {
+      ctx.beginPath();
+      for (let a = 0; a < 6; a++) {
+        const angle = (Math.PI / 3) * a - Math.PI / 6;
+        ctx[a ? "lineTo" : "moveTo"](sx + size * Math.cos(angle), sy + size * Math.sin(angle));
+      }
+      ctx.closePath();
+    };
+    for (const tile of tiled.tiles.values()) {
+      const [sx, sy] = toScreen(tile.x, tile.y);
+      if (sx < -corner || sy < -corner || sx > width + corner || sy > height + corner) continue;
+      const strength = tile.share * Math.min(tile.songs.length / 8, 1);
+      ctx.globalAlpha = (0.07 + 0.33 * strength) * (dimming ? 0.5 : 1);
+      ctx.fillStyle = tile.top ? (colors.get(tile.top) ?? UNSORTED) : UNSORTED;
+      hex(sx, sy, corner * 0.94);
+      ctx.fill();
+    }
+    if (hoveredTile) {
+      ctx.globalAlpha = 0.7;
+      ctx.strokeStyle = hoveredTile.top ? (colors.get(hoveredTile.top) ?? UNSORTED) : UNSORTED;
+      ctx.lineWidth = 1.5;
+      hex(...toScreen(hoveredTile.x, hoveredTile.y), corner * 0.94);
+      ctx.stroke();
+    }
+
     // Songs: gray ones first so bright songs draw on top. One path per color, so a frame
     // is a few dozen fills instead of one per song.
-    const dotAlpha = only ? 0.9 : 0.3 + 0.6 * (1 - groupAlpha);
+    const dotAlpha = only ? 0.9 : 0.7;
     for (const bright of dimming ? [false, true] : [true]) {
       const paths = new Map<string, Path2D>();
       const dr = highlighting && bright ? r + 1 : r;
@@ -194,38 +228,30 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
       }
     }
 
-    // Playlist bubbles (zoomed out)
-    if (groupAlpha > 0 && !only) {
+    // Names of the areas playlists lead (zoomed out), biggest first; highlighted playlists keep theirs through overlaps.
+    // Each playlist is named once, on its biggest area; its other areas are still tinted.
+    if (regionAlpha > 0) {
       const taken: Box[] = [];
+      const named = new Set<string>();
       ctx.font = "600 11px ui-sans-serif, system-ui";
-      for (const g of data.groups) {
-        if (highlighting && !highlight.includes(g.id)) continue;
-        const [sx, sy] = toScreen(g.x, g.y);
-        const radius = 3 + Math.sqrt(g.n) * 1.1;
-        const color = colors.get(g.id) ?? UNSORTED;
-        ctx.globalAlpha = (g.main ? 0.22 : 0.14) * groupAlpha;
-        ctx.fillStyle = color;
-        ctx.beginPath();
-        ctx.arc(sx, sy, radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.globalAlpha = 0.85 * groupAlpha;
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-
-        const w = ctx.measureText(g.name).width;
-        const box: Box = [sx - w / 2 - 3, sy - radius - 16, w + 6, 14];
-        // Highlighted playlists keep their label through overlaps.
-        if (overlaps(taken, box) && !highlight.includes(g.id)) continue;
+      ctx.textAlign = "center";
+      ctx.lineJoin = "round";
+      for (const region of tiled.regions) {
+        if (highlighting && !highlight.includes(region.group)) continue;
+        if (named.has(region.group)) continue;
+        named.add(region.group);
+        const name = data.names.get(region.group) ?? "";
+        const [sx, sy] = toScreen(region.x, region.y);
+        const w = ctx.measureText(name).width;
+        const box: Box = [sx - w / 2 - 3, sy - 8, w + 6, 14];
+        if (overlaps(taken, box) && !highlight.includes(region.group)) continue;
         taken.push(box);
-        ctx.globalAlpha = (g.main ? 1 : 0.6) * groupAlpha;
-        ctx.textAlign = "center";
-        ctx.lineJoin = "round";
+        ctx.globalAlpha = regionAlpha;
         ctx.lineWidth = 3;
         ctx.strokeStyle = BACKGROUND;
-        ctx.strokeText(g.name, sx, sy - radius - 5);
+        ctx.strokeText(name, sx, sy + 4);
         ctx.fillStyle = "#fafafa";
-        ctx.fillText(g.name, sx, sy - radius - 5);
+        ctx.fillText(name, sx, sy + 4);
       }
     }
 
@@ -433,8 +459,9 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
   const drag = useRef<{ x: number; y: number; moved: number } | null>(null);
 
   const nearest = (sx: number, sy: number) => {
+    // Zoomed out, songs are small and close together: a tighter reach leaves the tiles between them hoverable.
     let best = -1;
-    let bestD = 64; // 8px radius, squared
+    let bestD = Math.min(Math.max(dotRadius() + 3, 5), 8) ** 2;
     for (let i = 0; i < audio.ids.length; i++) {
       if (only && !only.has(audio.ids[i]!)) continue;
       const [px, py] = toScreen(...audio.xy[i]!);
@@ -465,8 +492,14 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
     return () => canvas.removeEventListener("wheel", onWheel);
   });
 
-  const hovered = hover ? audio.ids[hover.i] : undefined;
-  const hoveredTrack = hovered ? lib.tracks[hovered] : undefined;
+  const hoveredTrack = hover ? lib.tracks[audio.ids[hover.i]!] : undefined;
+  // The hovered tile's playlists, by the share of its songs in each (a song can be in several, so they overlap).
+  const tileShares = (() => {
+    if (!hoveredTile) return [];
+    const counts = new Map<string, number>();
+    for (const i of hoveredTile.songs) for (const p of data.playlistsOf[i]!) counts.set(p, (counts.get(p) ?? 0) + 1);
+    return [...counts].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([id, n]) => ({ id, share: n / hoveredTile.songs.length }));
+  })();
 
   return (
     <div ref={wrapRef} className="relative w-full select-none overflow-hidden rounded-lg bg-zinc-900" style={{ height }}>
@@ -493,9 +526,12 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
             return;
           }
           const [sx, sy] = local(e);
+          // Re-render only when the hovered song or tile changes, not on every pixel of movement.
           const i = nearest(sx, sy);
-          // Re-render only when the hovered song changes, not on every pixel of movement.
           if (i !== (hover?.i ?? -1)) setHover(i >= 0 ? { i, x: sx, y: sy } : null);
+          const key = tileKeyAt(toData(sx, sy), TILE);
+          const next = tiled.tiles.has(key) ? { key, corner: sx < 260 && sy < 180 } : null;
+          if (next?.key !== area?.key || next?.corner !== area?.corner) setArea(next);
         }}
         onPointerUp={(e) => {
           const d = drag.current;
@@ -505,8 +541,27 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
             if (i >= 0) onSelect?.(audio.ids[i]!);
           }
         }}
-        onPointerLeave={() => setHover(null)}
+        onPointerLeave={() => (setHover(null), setArea(null))}
       />
+      {area && hoveredTile && (
+        <div
+          className={`pointer-events-none absolute top-2 z-10 w-56 rounded-lg border border-white/10 bg-zinc-900/90 px-3 py-2 text-xs shadow-xl ${area.corner ? "right-2" : "left-2"}`}
+        >
+          <div className="mb-1.5 text-zinc-400">{hoveredTile.songs.length === 1 ? "1 song" : `${hoveredTile.songs.length} songs`}</div>
+          {tileShares.length === 0 && <div className="text-zinc-500">Unsorted</div>}
+          {tileShares.map(({ id, share }) => (
+            <div key={id} className="mt-1">
+              <div className="flex justify-between gap-2">
+                <span className="truncate text-zinc-200">{data.names.get(id)}</span>
+                <span className="tabular-nums text-zinc-400">{Math.round(share * 100)}%</span>
+              </div>
+              <div className="mt-0.5 h-1 rounded-full bg-white/5">
+                <div className="h-full rounded-full" style={{ width: `${share * 100}%`, background: colors.get(id) ?? UNSORTED }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
       {hover && hoveredTrack && (
         <div
           className="pointer-events-none absolute z-10 max-w-64 rounded-lg border border-white/10 bg-zinc-900/95 px-3 py-2 text-xs shadow-xl"

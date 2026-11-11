@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- The sound map tints its background in hex tiles by the playlist that leads each area, and pointing anywhere on it shows which playlists that tile's songs are in, while songs stay visible and clickable on top. This replaces the playlist bubbles.
 - `pnpm host` records every Spotify play to a file with no screen open, logs any stretch where plays may be missing, and backs the file up hourly, so listening history isn't lost while waiting for Spotify's export. It needs one new Spotify login.
 - A Now Playing screen (`N`, or by itself at `/now` for a TV or spare monitor) shows the current song large with its place on the sound map, when you added it, what its lyrics are about and what it sounds like, with playback controls and per-screen settings for which panels show.
 - `pnpm host` keeps Now Playing running with no tab open and serves it to other devices on your network behind a password you set from the Mac, so a TV or spare monitor needs no Spotify login or certificate.
