@@ -9,13 +9,15 @@
 // in a song scene releases that: the song's nearest songs show, undimmed. Any interaction with the song (hovering
 // its dot) or with the page around the map (the song's info, the lists below the map) brings the highlight back. A marked song
 // (hovered elsewhere on the page) gets a ring, a line from the focused song and its name, and joins the fit.
-// Under every scene, hex tiles tint each area by the playlist most of its songs are in (not counting uncounted or artist playlists); a corner panel says
+// Unless the Compilations setting is on, uncounted and artist playlists color no songs and tint no tiles.
+// Under every scene, hex tiles tint each area by the playlist most of its songs are colored by; a corner panel says
 // which playlists the songs of the tile under the pointer are in, alongside any hovered song's own tooltip.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { closestAmong, nearestSorted, NEAREST, neighborsFrom, type AudioIndex } from "../core/audio.ts";
 import { regions, tileKeyAt, tileUp } from "../core/hexTiles.ts";
 import { isArtistPlaylist, primaryPlaylists, sortTargets, type Library } from "../core/library.ts";
 import { fitCamera, MIN_ZOOM, overlaps, placeLabel, type Box, type Camera, type Point, type Size } from "../core/mapLayout.ts";
+import { useMapSettings } from "./mapSettings.ts";
 import { useApp } from "./store.ts";
 
 export type MapScene =
@@ -78,9 +80,16 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
   const hidden = useApp((s) => s.hidden);
   const uncounted = useApp((s) => s.uncounted);
   const vectors = useApp((s) => s.vectors);
-  // Per-point data, parallel to audio.ids. Hidden playlists don't color songs.
+  const compilations = useMapSettings((s) => s.compilations);
+  const setCompilations = useMapSettings((s) => s.setCompilations);
+  const [menu, setMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  // Per-point data, parallel to audio.ids. Hidden playlists never color songs; unless compilations are on, neither
+  // do uncounted ones or ones named after their own artist, so songs and tiles show a shared sound, not who made them.
   const data = useMemo(() => {
-    const targets = sortTargets(lib, hidden);
+    const targets = compilations
+      ? sortTargets(lib, hidden)
+      : sortTargets(lib, [...hidden, ...uncounted]).filter((p) => !isArtistPlaylist(lib, p));
     const memberOf = new Map<string, string[]>();
     for (const p of targets) for (const id of p.trackIds) memberOf.set(id, [...(memberOf.get(id) ?? []), p.id]);
     return {
@@ -89,22 +98,13 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
       names: new Map(targets.map((p) => [p.id, p.name])),
       pos: new Map(audio.ids.map((id, i) => [id, i])),
     };
-  }, [audio, lib, hidden]);
+  }, [audio, lib, hidden, uncounted, compilations]);
 
-  // What tiles are made of: playlists that count as sorted and aren't one artist's catch-all, so a tile shows the
-  // sound its songs share rather than who made them.
-  const tileData = useMemo(() => {
-    const targets = sortTargets(lib, [...hidden, ...uncounted]).filter((p) => !isArtistPlaylist(lib, p));
-    const memberOf = new Map<string, string[]>();
-    for (const p of targets) for (const id of p.trackIds) memberOf.set(id, [...(memberOf.get(id) ?? []), p.id]);
-    return { playlistsOf: audio.ids.map((id) => memberOf.get(id) ?? []), primary: primaryPlaylists(targets) };
-  }, [audio, lib, hidden, uncounted]);
-
-  // Tiles of the drawn songs, each led by the playlist most of its songs are in, and the areas they form.
+  // Tiles of the drawn songs, each led by the playlist most of its songs are colored by, and the areas they form.
   const tiled = useMemo(() => {
-    const tiles = tileUp(audio.xy, TILE, (i) => tileData.primary.get(audio.ids[i]!) ?? null, only ? (i) => only.has(audio.ids[i]!) : undefined);
+    const tiles = tileUp(audio.xy, TILE, (i) => data.primary.get(audio.ids[i]!) ?? null, only ? (i) => only.has(audio.ids[i]!) : undefined);
     return { tiles, regions: regions(tiles, TILE).filter((r) => r.songs >= MIN_REGION_SONGS) };
-  }, [audio, tileData, only]);
+  }, [audio, data, only]);
 
   // Song -> the first highlighted playlist it's in. Built from all playlists, so a hidden one still lights up.
   const lit = useMemo(() => {
@@ -128,6 +128,15 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
           : neighbors(focusId).filter((n) => lit.has(n.id)).slice(0, NEAREST);
     return only ? near.filter((n) => only.has(n.id)) : near;
   }, [focusId, lit, released, neighbors, vectors, audio, data, only]);
+
+  useEffect(() => {
+    if (!menu) return;
+    const close = (e: PointerEvent) => {
+      if (!(e.target instanceof Node && menuRef.current?.contains(e.target))) setMenu(false);
+    };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, [menu]);
 
   // A release ends when the pointer reaches anything but the map, or a song elsewhere on the page is marked.
   useEffect(() => {
@@ -545,7 +554,7 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
   const tileShares = (() => {
     if (!hoveredTile) return [];
     const counts = new Map<string, number>();
-    for (const i of hoveredTile.songs) for (const p of tileData.playlistsOf[i]!) counts.set(p, (counts.get(p) ?? 0) + 1);
+    for (const i of hoveredTile.songs) for (const p of data.playlistsOf[i]!) counts.set(p, (counts.get(p) ?? 0) + 1);
     return [...counts].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([id, n]) => ({ id, share: n / hoveredTile.songs.length }));
   })();
 
@@ -635,6 +644,31 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
           </div>
         </div>
       )}
+      <div ref={menuRef} className="absolute bottom-2 right-2 z-20 flex flex-col items-end gap-1.5">
+        {menu && (
+          <button
+            role="switch"
+            aria-checked={compilations}
+            onClick={() => setCompilations(!compilations)}
+            className="flex items-center gap-2.5 rounded-lg border border-white/10 bg-zinc-900/95 px-3 py-2 text-xs text-zinc-200 shadow-xl hover:bg-zinc-800"
+          >
+            Compilations
+            <span className={`relative h-4 w-7 rounded-full transition ${compilations ? "bg-emerald-400" : "bg-white/15"}`}>
+              <span className={`absolute top-0.5 size-3 rounded-full bg-zinc-50 transition-all ${compilations ? "left-3.5" : "left-0.5"}`} />
+            </span>
+          </button>
+        )}
+        <button
+          aria-label="Map settings"
+          aria-expanded={menu}
+          onClick={() => setMenu(!menu)}
+          className="grid size-8 place-items-center rounded-lg border border-white/10 bg-zinc-900/90 text-zinc-400 hover:text-zinc-100"
+        >
+          <svg viewBox="0 0 16 16" className="size-4" fill="currentColor" aria-hidden>
+            <path d="M6.9 1h2.2l.4 1.9c.4.1.8.3 1.1.6l1.8-.7 1.1 1.9-1.4 1.3c.1.4.1.8 0 1.2l1.4 1.3-1.1 1.9-1.8-.7c-.3.3-.7.5-1.1.6L9.1 15H6.9l-.4-1.9c-.4-.1-.8-.3-1.1-.6l-1.8.7-1.1-1.9 1.4-1.3a3.4 3.4 0 0 1 0-1.2L2.5 7.5l1.1-1.9 1.8.7c.3-.3.7-.5 1.1-.6L6.9 1ZM8 5.6a2.4 2.4 0 1 0 0 4.8 2.4 2.4 0 0 0 0-4.8Z" fillRule="evenodd" />
+          </svg>
+        </button>
+      </div>
     </div>
   );
 }

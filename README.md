@@ -71,7 +71,7 @@ track-URI play request is accepted but loads nothing on this account.
   another playlist that counts already has them, and it isn't suggested. Nothing changes on Spotify, and the row is saved in this browser.
 
 - **Sound map**: every song placed by sound, over hex tiles tinted by the playlist most of each tile's songs are
-  in, ignoring playlists not counted as sorted and playlists named after their own artist (stronger where that playlist clearly leads; see `src/core/hexTiles.ts`). Zoomed out, each playlist's
+  in. Playlists not counted as sorted and playlists named after their own artist color no songs and tint no tiles, unless **Compilations** is on (gear, bottom right of the map; saved in this browser). Tints are stronger where that playlist clearly leads (see `src/core/hexTiles.ts`). Zoomed out, each playlist's
   biggest area is named. Pointing anywhere shows, in a corner, which playlists that tile's songs are in. It's the same map as the sort screen's: click a song to see it among its nearest songs, hover a
   playlist to preview it and click to keep it highlighted.
   **Added between** narrows the map to songs first liked or added to a playlist in that date range (playlist dates
