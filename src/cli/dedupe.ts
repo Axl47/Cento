@@ -1,9 +1,10 @@
 // Merges copies of one recording (identical vectors in data/vectors.jsonl, e.g. a song saved from its single and
-// from the album): the album copy replaces the others in every playlist and in Liked Songs. Copies of other
-// people's playlists are left alone. Dry run by default; pass --apply to write to Spotify. Backs up the library
-// first. Run `pnpm export` before, so it works from what's on Spotify now.
-import { copyFile, mkdir, readFile } from "node:fs/promises";
-import { client, LIBRARY_PATH, loadLibrary } from "./auth.ts";
+// from the album): the album copy replaces the others in every playlist and in Liked Songs. Hidden playlists
+// (snapshots like "Top Tracks 2024") and copies of other people's playlists are left alone. Dry run by default;
+// pass --apply to write to Spotify, which backs up the library first and logs each merge in data/merges.json so
+// resyncs keep the original added dates. Run `pnpm export` before, so it works from what's on Spotify now.
+import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { client, LIBRARY_PATH, loadLibrary, loadMerges, MERGES_PATH } from "./auth.ts";
 import { config } from "../core/config.ts";
 import { planDedupe, type Release } from "../core/dedupe.ts";
 import { addToPlaylist, chunks, removeFromPlaylist, setLiked } from "../core/spotify.ts";
@@ -23,20 +24,23 @@ for (const line of (await readFile("data/vectors.jsonl", "utf8")).split("\n")) {
 const groups = [...byVector.values()].filter((g) => g.length > 1);
 
 const releases = new Map<string, Release>();
-type ApiAlbum = { album_type: string; release_date: string; total_tracks: number };
+type ApiTrack = { id: string; explicit: boolean; album: { album_type: string; release_date: string; total_tracks: number } };
 for (const batch of chunks(groups.flat(), 50)) {
-  const { tracks } = await client.get<{ tracks: ({ id: string; album: ApiAlbum } | null)[] }>(`/tracks?ids=${batch.join(",")}`);
+  const { tracks } = await client.get<{ tracks: (ApiTrack | null)[] }>(`/tracks?ids=${batch.join(",")}`);
   for (const t of tracks)
-    if (t) releases.set(t.id, { albumType: t.album.album_type, releaseDate: t.album.release_date, totalTracks: t.album.total_tracks });
+    if (t) releases.set(t.id, { albumType: t.album.album_type, releaseDate: t.album.release_date, totalTracks: t.album.total_tracks, explicit: t.explicit });
 }
 
-const plan = planDedupe(lib, groups, releases, config.ignoredPlaylistIds);
-const describe = (id: string) => {
-  const r = releases.get(id);
-  return `${lib.tracks[id]?.album.name} (${r?.albumType ?? "?"}, ${r?.releaseDate ?? "?"})`;
-};
+const hidden = await readFile("data/hidden.json", "utf8").then((s) => JSON.parse(s) as string[]).catch(() => []);
+const plan = planDedupe(lib, groups, releases, [...config.ignoredPlaylistIds, ...hidden]);
 for (const { main, copies } of plan.merges) {
   const t = lib.tracks[main]!;
+  // Says which copy is clean only where it differs.
+  const mixed = new Set([main, ...copies].map((id) => releases.get(id)?.explicit)).size > 1;
+  const describe = (id: string) => {
+    const r = releases.get(id);
+    return `${lib.tracks[id]?.album.name} (${r?.albumType ?? "?"}, ${r?.releaseDate ?? "?"}${mixed && !r?.explicit ? ", clean" : ""})`;
+  };
   console.log(`${t.name} — ${t.artists.map((a) => a.name).join(", ")}\n  keep ${describe(main)}\n  drop ${copies.map(describe).join("; ")}`);
 }
 console.log(`\n${plan.merges.length} songs with copies.`);
@@ -51,6 +55,9 @@ if (!apply) {
   const backup = `data/backups/library-${lib.fetchedAt.replace(/[:.]/g, "-")}.json`;
   await copyFile(LIBRARY_PATH, backup);
   console.log(`\nBacked up library to ${backup}`);
+  const at = new Date().toISOString();
+  await writeFile(MERGES_PATH, JSON.stringify([...(await loadMerges()), ...plan.merges.map((m) => ({ ...m, at }))], null, 1));
+  console.log(`Logged the merges in ${MERGES_PATH}`);
   // Add before removing, so an interrupted run never leaves a song out of a playlist.
   for (const [id, { add, remove }] of plan.playlists) {
     await addToPlaylist(client, id, add);

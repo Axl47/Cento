@@ -100,7 +100,7 @@ Spotify shows them; entries older than a day are dropped too.
   stale after edits, so it can't be used to skip unchanged playlists.
 - `pnpm eval` runs a 5-fold check of the suggestion model against existing playlist memberships.
 - `pnpm backfill [--apply]` adds sorted songs missing from the all-songs playlist (dry run by default).
-- `pnpm merge-copies [--apply]` keeps one copy of each song saved from several releases (same audio): the album copy, else the newest release, replaces the others in every playlist and Liked Songs (dry run by default; run `pnpm export` first).
+- `pnpm merge-copies [--apply]` keeps one copy of each song saved from several releases (same audio): the explicit one, then the album copy, then the newest release replaces the others in every playlist and Liked Songs, except hidden playlists (dry run by default; run `pnpm export` first). Each merge is logged in `data/merges.json`, and resyncs put back the dates the copies were first added.
 - `pnpm audio [--vectors <file>]` runs the engine (or reads its vectors) and writes `data/audio.json`:
   top-50 neighbors and a UMAP layout per track, plus `data/vectors.bin` (8-bit vectors, ~8 MB) so the app
   can rank any playlist's closest songs. Skipped when vectors and settings are unchanged.

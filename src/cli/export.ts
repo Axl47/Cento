@@ -1,10 +1,11 @@
 // Refreshes data/library.json from Spotify and
 // writes Stemma input: data/tracks.jsonl (every track).
 import { writeFile } from "node:fs/promises";
-import { client, LIBRARY_PATH, saveLibrary } from "./auth.ts";
+import { client, LIBRARY_PATH, loadMerges, saveLibrary } from "./auth.ts";
+import { restoreDates } from "../core/dedupe.ts";
 import { inbox, syncLibrary, sortTargets, type Track } from "../core/library.ts";
 
-const lib = await syncLibrary(client, (m) => console.log(`  ${m}`));
+const lib = restoreDates(await syncLibrary(client, (m) => console.log(`  ${m}`)), await loadMerges());
 await saveLibrary(lib);
 
 const toJsonl = (tracks: Track[]) =>

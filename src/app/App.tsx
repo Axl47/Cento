@@ -5,6 +5,7 @@ import type { ClassifierData } from "../core/classifier.ts";
 import { parseLanguages } from "../core/languages.ts";
 import type { ThemeData } from "../core/themes.ts";
 import type { ArtistRules } from "../core/suggest.ts";
+import { restoreDates, type Merge } from "../core/dedupe.ts";
 import type { LedgerEntry } from "../core/ledger.ts";
 import { sortTargets, syncLibrary, type Library } from "../core/library.ts";
 import { client, completeLogin, logout, startLogin } from "./auth.ts";
@@ -115,7 +116,7 @@ export function App() {
     setSyncing("Starting…");
     setSyncError(null);
     try {
-      const fresh = await syncLibrary(client, setSyncing);
+      const fresh = restoreDates(await syncLibrary(client, setSyncing), (await getJson<Merge[]>("/api/merges")) ?? []);
       await fetch("/api/library", { method: "PUT", body: JSON.stringify(fresh) });
       if (phase.kind === "ready") replaceLibrary(fresh);
       else {

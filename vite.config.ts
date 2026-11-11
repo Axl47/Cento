@@ -14,6 +14,7 @@ import { config } from "./src/core/config.ts";
  *   GET/PUT /api/rules    -> data/rules.json (artist rules; 404 until the first one is saved)
  *   GET/PUT /api/hidden   -> data/hidden.json (playlists hidden from suggestions; same)
  *   GET/PUT /api/ledger   -> data/ledger.json (sorts not yet confirmed by a resync; same)
+ *   GET     /api/merges   -> data/merges.json (`pnpm merge-copies` log; 404 until it has applied)
  *   GET     /api/audio    -> data/audio.json (404 until `pnpm audio` has run)
  *   GET     /api/vectors  -> data/vectors.bin (same; binary)
  *   GET     /api/classifier -> data/classifier.json (404 until `pnpm classify` has run)
@@ -59,6 +60,7 @@ function localData(): Plugin {
     "/api/rules": "data/rules.json",
     "/api/hidden": "data/hidden.json",
     "/api/ledger": "data/ledger.json",
+    "/api/merges": "data/merges.json",
     "/api/audio": "data/audio.json",
     "/api/vectors": "data/vectors.bin",
     "/api/classifier": "data/classifier.json",
