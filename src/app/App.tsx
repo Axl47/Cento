@@ -9,6 +9,7 @@ import { restoreDates, type Merge } from "../core/dedupe.ts";
 import type { LedgerEntry } from "../core/ledger.ts";
 import { sortTargets, syncLibrary, type Library } from "../core/library.ts";
 import { client, completeLogin, logout, startLogin } from "./auth.ts";
+import { BuildView } from "./BuildView.tsx";
 import { usePlaylistColors } from "./colors.ts";
 import { LyricsView } from "./LyricsView.tsx";
 import { MapView } from "./MapView.tsx";
@@ -19,8 +20,9 @@ import { ThemesView } from "./ThemesView.tsx";
 import { useApp } from "./store.ts";
 
 const TABS = {
-  sort: { label: "Sort", hint: "Switch with M, L, T or N" },
+  sort: { label: "Sort", hint: "Switch with M, B, L, T or N" },
   map: { label: "Sound map", hint: "Switch with M" },
+  build: { label: "Build", hint: "Switch with B (except on the map)" },
   lyrics: { label: "Lyrics", hint: "Switch with L" },
   themes: { label: "Themes", hint: "Switch with T" },
   now: { label: "Now playing", hint: "Switch with N" },
@@ -83,6 +85,8 @@ export function App() {
       if (e.target instanceof HTMLInputElement || e.metaKey || e.ctrlKey) return;
       const key = e.key.toLowerCase();
       if (key === "m") setTab((t) => (t === "map" ? "sort" : "map"));
+      // On the map, B is "Bridge from here".
+      if (key === "b") setTab((t) => (t === "map" ? t : t === "build" ? "sort" : "build"));
       if (key === "l") setTab((t) => (t === "lyrics" ? "sort" : "lyrics"));
       if (key === "t") setTab((t) => (t === "themes" ? "sort" : "themes"));
       if (key === "n") setTab((t) => (t === "now" ? "sort" : "now"));
@@ -229,6 +233,7 @@ export function App() {
           }}
         />
       )}
+      {tab === "build" && <BuildView colors={colors} />}
       {tab === "lyrics" && <LyricsView colors={colors} onSortSong={() => setTab("sort")} />}
       {tab === "themes" && <ThemesView colors={colors} />}
       {tab === "now" && <NowTab colors={colors} />}

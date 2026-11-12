@@ -80,6 +80,18 @@ track-URI play request is accepted but loads nothing on this account.
   travels gradually between them by sound, drawn on the map. Listen in order, replace any song, or save it as a private
   Spotify playlist that stays out of sorting.
 
+- **Build** (`B`, except on the Sound map where `B` starts a bridge): turns a handful of songs into a playlist. Paste
+  Spotify track, album or playlist links (several at once) or search by title or artist; an empty set also offers
+  your recent playlists to start from. Songs not in the library can join, but they get no handoff bars and keep their
+  place. The bar between two songs is the handoff: how well the end of one leads into the start of the next (green
+  ≥ 0.65, red under 0.55, scaled from the random-pair baseline). Click it to hear the last 15 s of one and the first
+  15 s of the next, or click a song to play it (`Space` play/pause). **Smooth** reorders for the best handoffs;
+  dragging a song pins it (●, click to toggle) and Smooth keeps pinned songs in their slots. `rough` on a handoff
+  offers songs that would bridge it. Songs that don't fit are marked with **Remove**; when more than a quarter
+  don't, **Two groups** offers to keep the first group or split the second into its own set. The right column
+  suggests songs to add, or shows the set as a route on the map. `⌘Z` undoes. Sets are kept in this browser;
+  **Save to Spotify** creates a private playlist in this order that stays out of sorting, and later updates it.
+
 Spotify writes run in order in the background; the header shows pending/failed writes. The app saves its
 view of the library to `data/library.json` (shared with the scripts) through the dev server. Each sort is
 also recorded right away in `data/ledger.json` and applied over whatever library loads or resyncs, so a

@@ -6,7 +6,7 @@ import type { Track } from "../core/library.ts";
 import { useApp } from "./store.ts";
 
 /** Different releases of one song share this. */
-const songKey = (t: Track) => `${t.name}|${t.artists[0]?.id}`;
+export const songKey = (t: Track) => `${t.name}|${t.artists[0]?.id}`;
 const candidateOf = (t: Track): Candidate => ({ id: t.id, artist: t.artists[0]?.id });
 
 export function useBridge() {
