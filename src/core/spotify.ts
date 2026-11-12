@@ -100,6 +100,22 @@ export async function removeFromPlaylist(client: SpotifyClient, playlistId: stri
   }
 }
 
+/** Replaces a playlist's songs with these, in order (Spotify's replace takes 100; the rest are added after). */
+export async function replacePlaylist(client: SpotifyClient, playlistId: string, trackIds: string[]) {
+  const [first = [], ...rest] = chunks(trackIds, 100);
+  await client.request("PUT", `/playlists/${playlistId}/tracks`, { uris: first.map((id) => `spotify:track:${id}`) });
+  for (const batch of rest) await addToPlaylist(client, playlistId, batch);
+}
+
+export type SpotifyLink = { kind: "track" | "album" | "playlist"; id: string };
+
+/** Every Spotify track, album and playlist link or URI in `text`, in order (open.spotify.com links, with or without a locale). */
+export const parseSpotifyLinks = (text: string): SpotifyLink[] =>
+  [...text.matchAll(/(?:open\.spotify\.com\/(?:intl-[\w-]+\/)?|spotify:)(track|album|playlist)[/:]([A-Za-z0-9]{22})/g)].map((m) => ({
+    kind: m[1] as SpotifyLink["kind"],
+    id: m[2]!,
+  }));
+
 /** Creates a private playlist for the current user. */
 export const createPlaylist = (client: SpotifyClient, name: string) =>
   client.request<{ id: string; name: string }>("POST", "/me/playlists", { name, public: false });

@@ -80,7 +80,7 @@ export function firstAdded(lib: Library): Map<string, string> {
 }
 
 type ApiImage = { url: string; width: number | null };
-type ApiTrack = {
+export type ApiTrack = {
   id: string | null;
   name: string;
   type: string;
@@ -97,7 +97,7 @@ type ApiPlaylist = {
   images: ApiImage[] | null;
 };
 
-const TRACK_FIELDS =
+export const TRACK_FIELDS =
   "id,name,type,is_local,duration_ms,external_ids(isrc),artists(id,name),album(name,images(url,width))";
 
 /** Smallest image at least 64px wide, or the first one. */
@@ -105,6 +105,19 @@ const pickImage = (images: ApiImage[] | null | undefined) =>
   images?.toSorted((a, b) => (a.width ?? 0) - (b.width ?? 0)).find((i) => (i.width ?? 640) >= 64)?.url ??
   images?.[0]?.url ??
   null;
+
+/** The library's picture of a track from the API, or null for local files, episodes and unavailable rows. */
+export function trackFrom(t: ApiTrack | null): Track | null {
+  if (!t?.id || t.is_local || t.type !== "track") return null;
+  return {
+    id: t.id,
+    name: t.name,
+    artists: t.artists.map(({ id, name }) => ({ id, name })),
+    album: { name: t.album?.name ?? "", imageUrl: pickImage(t.album?.images) },
+    isrc: t.external_ids?.isrc?.toUpperCase() ?? null,
+    durationMs: t.duration_ms,
+  };
+}
 
 /**
  * Fetches owned playlists and Liked Songs. Every playlist is refetched: Spotify's
@@ -116,16 +129,10 @@ export async function syncLibrary(
 ): Promise<Library> {
   const tracks: Record<string, Track> = {};
   const keep = (t: ApiTrack | null): string | null => {
-    if (!t?.id || t.is_local || t.type !== "track") return null;
-    tracks[t.id] ??= {
-      id: t.id,
-      name: t.name,
-      artists: t.artists.map(({ id, name }) => ({ id, name })),
-      album: { name: t.album?.name ?? "", imageUrl: pickImage(t.album?.images) },
-      isrc: t.external_ids?.isrc?.toUpperCase() ?? null,
-      durationMs: t.duration_ms,
-    };
-    return t.id;
+    const track = trackFrom(t);
+    if (!track) return null;
+    tracks[track.id] ??= track;
+    return track.id;
   };
 
   const me = await client.get<{ id: string }>("/me");

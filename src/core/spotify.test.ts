@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createClient, SpotifyBlockedError } from "./spotify.ts";
+import { createClient, parseSpotifyLinks, SpotifyBlockedError } from "./spotify.ts";
 
 test("a 429 pauses every request until Retry-After, then they go through", async () => {
   const calls: number[] = [];
@@ -52,4 +52,15 @@ test("a player block leaves the rest of the API working", async () => {
   assert.equal(client.limited("/me/player/devices"), true);
   assert.equal(client.limited("/me/playlists"), false);
   assert.deepEqual(await client.get("/me/playlists"), {});
+});
+
+test("pasted links and URIs are read in order, whatever surrounds them", () => {
+  const text = `https://open.spotify.com/intl-es/track/4uLU6hMCjMI75M1A2tKUQC?si=abc
+spotify:album:1DFixLWuPkv3KT3TnV35m3, https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M and https://example.com/track/x`;
+
+  assert.deepEqual(parseSpotifyLinks(text), [
+    { kind: "track", id: "4uLU6hMCjMI75M1A2tKUQC" },
+    { kind: "album", id: "1DFixLWuPkv3KT3TnV35m3" },
+    { kind: "playlist", id: "37i9dQZF1DXcBWIGoYBM5M" },
+  ]);
 });
