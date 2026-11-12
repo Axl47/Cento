@@ -12,7 +12,7 @@ export type TraitData = {
   tags: Tags | null;
 };
 
-const MAX_TRAITS = 5;
+const MAX_TRAITS = 6;
 /** A genre has to be this much more likely in the group than in the rest to describe it; a mood, which varies more, this much. */
 const GENRE_LIFT = 0.06;
 const MOOD_LIFT = 0.15;
@@ -25,6 +25,8 @@ const TEMPO_GAP = 0.1;
 const LOUDNESS_GAP = 1.5;
 /** A song with vocals in less than this share of it counts as instrumental. */
 const INSTRUMENTAL = 0.05;
+/** A group's typical release year is named when it's at least this many years from the songs around it. */
+const YEAR_GAP = 4;
 
 const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
 const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[xs.length >> 1];
@@ -55,7 +57,7 @@ function lifted(ids: string[], among: string[], least: number, tagsOf: (id: stri
 
 /**
  * Up to five short words for how the songs `ids` differ from the rest of `all` (which includes them):
- * genres first, then mood, tempo, loudness, vocals and language. Empty when nothing sets them apart.
+ * genres first, then mood, tempo, loudness, vocals, language and release year. Empty when nothing sets them apart.
  */
 export function traits({ lib, features, languages, tags }: TraitData, ids: string[], all: string[]): string[] {
   const inGroup = new Set(ids);
@@ -101,6 +103,9 @@ export function traits({ lib, features, languages, tags }: TraitData, ids: strin
     const top = [...shares(ids)].sort((a, b) => b[1] - a[1])[0];
     if (top && top[1] >= 0.6 && top[1] - (around.get(top[0]) ?? 0) >= 0.25) out.push(languageNames.of(top[0]) ?? top[0]);
   }
+  const year = (list: string[]) => median(list.flatMap((id) => lib.tracks[id]?.year ?? []));
+  const [released, around] = [year(ids), year(among)];
+  if (released && around && Math.abs(released - around) >= YEAR_GAP) out.push(String(released));
   return out.slice(0, MAX_TRAITS);
 }
 
@@ -111,7 +116,6 @@ export function topArtists(lib: Library, ids: string[], limit: number): string[]
   return [...counts].sort((a, b) => b[1] - a[1]).slice(0, limit).map(([name]) => name);
 }
 
-/** A single song's genre has to be at least this likely to be named, and a mood this likely. */
 /** A group is close to another playlist when that playlist holds this share of it, and this many times its share of the parent. */
 const CLOSE_SHARE = 0.2;
 const CLOSE_LIFT = 2;
@@ -140,6 +144,7 @@ export function closeTo(ids: string[], all: string[], others: Pick<Playlist, "id
     .map(({ id, count }) => ({ id, count }));
 }
 
+/** A single song's genre has to be at least this likely to be named, and a mood this likely. */
 const SONG_GENRE = 0.15;
 const SONG_MOOD = 0.75;
 

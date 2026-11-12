@@ -188,7 +188,7 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
             <h2 className="mb-2 text-4xl font-extrabold leading-[0.95] tracking-tight text-balance text-zinc-50 xl:text-5xl">{track.name}</h2>
             <p className="font-medium text-zinc-100">{track.artists.map((a) => a.name).join(", ")}</p>
             <p className="truncate text-xs text-zinc-400">{track.album.name}</p>
-            <SongSound trackId={track.id} />
+            <SongSound track={track} />
             <SongThemes track={track} playlistIds={rows.map((r) => r.playlistId)} colors={colors} />
             {player.enabled && (
               <>
@@ -328,14 +328,14 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
   );
 }
 
-/** The song in a few words (genres, mood, tempo, key), once the tags and features have loaded. */
-function SongSound({ trackId }: { trackId: string }) {
+/** The song in a few words (genres, mood, tempo, key, release year), once the tags and features have loaded. */
+function SongSound({ track }: { track: Track }) {
   const { tags, features } = useApp();
   useEffect(() => {
     useApp.getState().loadTags();
     useApp.getState().loadFeatures();
   }, []);
-  const words = songWords(tags?.get(trackId), features?.get(trackId));
+  const words = [...songWords(tags?.get(track.id), features?.get(track.id)), ...(track.year ? [String(track.year)] : [])];
   return words.length ? <p className="mt-1 truncate text-xs text-zinc-400">{words.join(" · ")}</p> : null;
 }
 

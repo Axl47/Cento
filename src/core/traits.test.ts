@@ -50,3 +50,12 @@ test("a group is close to the playlists that hold much of it and little of the r
 
   assert.deepEqual(closeTo(group, parent, others, 2), [{ id: "matches", count: 3 }]);
 });
+
+test("a group released years before the songs around it is named by its typical year", () => {
+  const years = { old1: 2006, old2: 2008, old3: 2009, new1: 2019, new2: 2021, new3: 2022, undated: undefined };
+  const dated = { tracks: Object.fromEntries(Object.entries(years).map(([id, year]) => [id, { id, isrc: null, artists: [], year }])) } as unknown as Library;
+  const data = { lib: dated, features: null, languages: null, tags: null };
+
+  assert.deepEqual(traits(data, ["old1", "old2", "old3", "undated"], Object.keys(years)), ["2008"]);
+  assert.deepEqual(traits(data, ["new1", "new2"], ["new1", "new2", "new3"]), []);
+});

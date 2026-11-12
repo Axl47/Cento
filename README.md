@@ -39,8 +39,8 @@ default) what to play and shows the position Spotify reports. Audio never plays 
 works. Needs Premium and Spotify open somewhere. Tracks are started as a position in their album: a plain
 track-URI play request is accepted but loads nothing on this account.
 
-- **Sort**: the current liked song plays from ~35% in, with its genres, mood, tempo and key under the album name
-  (see `pnpm tags`). Its playlists show as tiles; the bar on each is the
+- **Sort**: the current liked song plays from ~35% in, with its genres, mood, tempo, key and release year under the
+  album name (see `pnpm tags`; the year needs a resync made after it was added). Its playlists show as tiles; the bar on each is the
   model's confidence. Confident suggestions start checked. For artists you've never sorted, that's limited to the one
   playlist the sound classifier is confident about (see `pnpm classify`). `1`–`8` toggle, `Enter` sorts (adds to
   checked playlists + the all-songs playlist, removes from Liked Songs), `S` skips, `Space` play/pause,
@@ -93,7 +93,7 @@ track-URI play request is accepted but loads nothing on this account.
   BPM, and an **Energy** card plots each song's loudness in set order. Songs that don't fit are marked with **Remove**; when more than a quarter
   don't, **Two groups** offers to keep the first group or split the second into its own set. The right column
   suggests songs to add, or shows the set as a route on the map. The suggestions can be narrowed by mood, vocals,
-  tempo, genre and language; with an empty set the same filters pick 20 songs to start from. `⌘Z` undoes. Sets are kept in this browser;
+  tempo, genre, language and era; with an empty set the same filters pick 20 songs to start from. `⌘Z` undoes. Sets are kept in this browser;
   **Save to Spotify** creates a private playlist in this order that stays out of sorting, and later updates it.
 - **Playlists** (`P`): a workshop for one of your playlists, picked from the list on the left (biggest first).
   **Split** divides it into 2–6 groups by sound, each named after what sets it apart from the rest of the playlist,

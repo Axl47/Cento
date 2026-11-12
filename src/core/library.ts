@@ -10,6 +10,8 @@ export type Track = {
   album: { name: string; imageUrl: string | null };
   isrc: string | null;
   durationMs: number;
+  /** The year its album came out. Missing on snapshots from before this was recorded, until a resync. */
+  year?: number;
 };
 
 export type Playlist = {
@@ -88,7 +90,7 @@ export type ApiTrack = {
   duration_ms: number;
   external_ids?: { isrc?: string };
   artists: { id: string; name: string }[];
-  album?: { name: string; images: ApiImage[] };
+  album?: { name: string; images: ApiImage[]; release_date?: string };
 };
 type ApiPlaylist = {
   id: string;
@@ -98,7 +100,7 @@ type ApiPlaylist = {
 };
 
 export const TRACK_FIELDS =
-  "id,name,type,is_local,duration_ms,external_ids(isrc),artists(id,name),album(name,images(url,width))";
+  "id,name,type,is_local,duration_ms,external_ids(isrc),artists(id,name),album(name,release_date,images(url,width))";
 
 /** Smallest image at least 64px wide, or the first one. */
 const pickImage = (images: ApiImage[] | null | undefined) =>
@@ -109,6 +111,7 @@ const pickImage = (images: ApiImage[] | null | undefined) =>
 /** The library's picture of a track from the API, or null for local files, episodes and unavailable rows. */
 export function trackFrom(t: ApiTrack | null): Track | null {
   if (!t?.id || t.is_local || t.type !== "track") return null;
+  const year = Number(t.album?.release_date?.slice(0, 4));
   return {
     id: t.id,
     name: t.name,
@@ -116,6 +119,7 @@ export function trackFrom(t: ApiTrack | null): Track | null {
     album: { name: t.album?.name ?? "", imageUrl: pickImage(t.album?.images) },
     isrc: t.external_ids?.isrc?.toUpperCase() ?? null,
     durationMs: t.duration_ms,
+    ...(year ? { year } : {}),
   };
 }
 

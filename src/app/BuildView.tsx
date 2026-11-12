@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { sortTargets, primaryPlaylists, type Library, type Track } from "../core/library.ts";
 import { positions } from "../core/audio.ts";
-import { ANY_FEEL, feelMatch, hasFeel, likeness, TEMPOS, type Feel, type Tempo } from "../core/feel.ts";
+import { ANY_FEEL, ERAS, feelMatch, hasFeel, likeness, TEMPOS, type Era, type Feel, type Tempo } from "../core/feel.ts";
 import { energyArc, handoffReasons, loudnessSpan } from "../core/features.ts";
 import { MOODS } from "../core/tags.ts";
 import { additions, fillers, handoff, misfits, smoothestOrder, twoGroups, type Sound } from "../core/setlist.ts";
@@ -118,7 +118,7 @@ export function BuildView({ colors }: { colors: Map<string, string> }) {
     return [...pool.values()]
       .flatMap((t) => {
         if (inSet.has(songKey(t))) return [];
-        const match = feelMatch(feel, { features: features?.get(t.id), tags: tags?.get(t.id), language: languages?.get(t.isrc ?? t.id) });
+        const match = feelMatch(feel, { features: features?.get(t.id), tags: tags?.get(t.id), language: languages?.get(t.isrc ?? t.id), year: t.year });
         const row = pos.get(t.id);
         return match ? [{ t, score: like ? (row === undefined ? -1 : like(row)) : match }] : [];
       })
@@ -135,8 +135,10 @@ export function BuildView({ colors }: { colors: Map<string, string> }) {
     return {
       genres: count([...(tags?.values() ?? [])].flatMap((t) => t.genres[0]?.[0] ?? [])).slice(0, GENRE_CHOICES).sort(),
       languages: count(languages?.values() ?? []).slice(0, LANGUAGE_CHOICES),
+      // Release years arrive with a resync; until then there's no era to pick.
+      eras: [...pool.values()].some((t) => t.year),
     };
-  }, [tags, languages]);
+  }, [tags, languages, pool]);
   const gapFill = useMemo(() => {
     const at = gap ? ids.indexOf(gap) : -1;
     if (!sound || !lib || at < 0 || at === ids.length - 1) return [];
@@ -490,8 +492,8 @@ function EnergyArc({ ids, energy, nameOf, marked }: { ids: string[]; energy: (nu
 
 const languageNames = new Intl.DisplayNames(["en"], { type: "language" });
 
-/** The feel to narrow added songs by: moods, tempo and instrumental as chips, then a genre and a language to pick. */
-function FeelPicker({ feel, onChange, choices }: { feel: Feel; onChange: (feel: Feel) => void; choices: { genres: string[]; languages: string[] } }) {
+/** The feel to narrow added songs by: moods, tempo and instrumental as chips, then a genre, a language and an era to pick. */
+function FeelPicker({ feel, onChange, choices }: { feel: Feel; onChange: (feel: Feel) => void; choices: { genres: string[]; languages: string[]; eras: boolean } }) {
   const chip = (label: string, on: boolean, toggle: () => void) => (
     <button key={label} onClick={toggle} className={`rounded-full px-2.5 py-0.5 ${on ? "bg-zinc-100 text-zinc-900" : "bg-white/5 text-zinc-400 hover:text-zinc-200"}`}>
       {label}
@@ -520,6 +522,14 @@ function FeelPicker({ feel, onChange, choices }: { feel: Feel; onChange: (feel: 
             <option key={code} value={code}>
               {languageNames.of(code) ?? code}
             </option>
+          ))}
+        </select>
+      )}
+      {choices.eras && (
+        <select aria-label="Era" value={feel.era ?? ""} onChange={(e) => onChange({ ...feel, era: (e.target.value as Era) || null })} className={`${select} ${feel.era ? "!bg-zinc-100 !text-zinc-900" : ""}`}>
+          <option value="">Era</option>
+          {Object.keys(ERAS).map((era) => (
+            <option key={era}>{era}</option>
           ))}
         </select>
       )}
