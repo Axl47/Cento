@@ -99,6 +99,8 @@ track-URI play request is accepted but loads nothing on this account.
   **Split** divides it into 2–6 groups by sound, each named after what sets it apart from the rest of the playlist,
   or by **Lyrics**: the themes most of its songs are about, each holding the songs that carry that theme clearly
   (songs with no clear theme stay out of every group).
+  A group that mostly falls in a playlist you already have shows that playlist and the share of the group in it
+  (artist playlists and hidden ones don't count).
   Rename a group, drop songs from it (×), divide it in two again, or open it in Build. **Save as playlist** creates
   a private playlist from the group that counts for sorting like any other; the parent playlist is left as it is.
   Splits last until a reload. **Missing** lists songs in your library the playlist probably should have; **Add** puts

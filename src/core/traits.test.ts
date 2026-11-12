@@ -3,7 +3,7 @@ import { test } from "node:test";
 import type { SongFeatures } from "./features.ts";
 import type { Library } from "./library.ts";
 import type { SongTags } from "./tags.ts";
-import { songWords, topArtists, traits } from "./traits.ts";
+import { closeTo, songWords, topArtists, traits } from "./traits.ts";
 
 const song = (over: Partial<SongFeatures>): SongFeatures => ({
   bpm: 100, steady: true, key: "C major", camelot: "8B", keyStrength: 0.9, lufs: -9, intro: 0, outro: 0, vocals: 0.8, vocalsFirst: 1, vocalsLast: 100, ...over,
@@ -37,4 +37,16 @@ test("a song is put in words only where the data is sure", () => {
   assert.deepEqual(songWords(tags, song({ bpm: 140.2, key: "F minor" })), ["Trap", "party", "140 BPM", "F minor"]);
   assert.deepEqual(songWords({ genres: [["Trap", 0.1]], moods: { sad: 0.5 } }, song({ steady: false, keyStrength: 0.5 })), []);
   assert.deepEqual(songWords(undefined, undefined), []);
+});
+
+test("a group is close to the playlists that hold much of it and little of the rest of its parent", () => {
+  const parent = Array.from({ length: 20 }, (_, i) => `s${i}`);
+  const group = parent.slice(0, 6);
+  const others = [
+    { id: "matches", trackIds: ["s0", "s1", "s2", "s10", "elsewhere"] },
+    { id: "everywhere", trackIds: parent },
+    { id: "barely", trackIds: ["s4"] },
+  ];
+
+  assert.deepEqual(closeTo(group, parent, others, 2), [{ id: "matches", count: 3 }]);
 });

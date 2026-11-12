@@ -5,10 +5,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { doubted, missing, type Evidence, type Scored } from "../core/belong.ts";
 import { config } from "../core/config.ts";
-import { sortTargets, type Playlist, type Track } from "../core/library.ts";
+import { isArtistPlaylist, sortTargets, type Playlist, type Track } from "../core/library.ts";
 import { soundGroups, themeGroups } from "../core/split.ts";
 import type { ThemeIndex } from "../core/themes.ts";
-import { topArtists, traits, type TraitData } from "../core/traits.ts";
+import { closeTo, topArtists, traits, type TraitData } from "../core/traits.ts";
 import { usePlayer } from "./player.ts";
 import { useSets } from "./sets.ts";
 import { useApp } from "./store.ts";
@@ -25,6 +25,7 @@ const CARD_SONGS = 8;
 const PAGE = 40;
 const MISSING_LIMIT = 200;
 const CHIPS = 3;
+const CLOSE = 2;
 
 type Mode = "split" | "missing" | "doubted";
 const MODES: Record<Mode, string> = { split: "Split", missing: "Missing", doubted: "Doesn't fit" };
@@ -79,6 +80,12 @@ export function PlaylistsView({ colors, onOpenBuild }: { colors: Map<string, str
     return out;
   }, [playlists]);
 
+  // Playlists a split group can turn out to be close to: the ones about a sound, not artist compilations or hidden lists.
+  const soundPlaylists = useMemo(
+    () => (lib ? playlists.filter((p) => !hidden.includes(p.id) && !rules[p.id] && !isArtistPlaylist(lib, p)) : []),
+    [lib, playlists, hidden, rules],
+  );
+
   const playlist = playlists.find((p) => p.id === selected);
   const headerTraits = useMemo(() => (data && playlist ? traits(data, playlist.trackIds, all) : []), [data, playlist, all]);
 
@@ -119,7 +126,7 @@ export function PlaylistsView({ colors, onOpenBuild }: { colors: Map<string, str
             <Chips words={headerTraits} />
             <Segmented className="ml-auto" options={Object.keys(MODES) as Mode[]} value={mode} label={(m) => MODES[m]} onChange={setMode} />
           </header>
-          {mode === "split" && <SplitPane key={playlist.id} playlist={playlist} sound={sound} themes={themes} data={data} onOpenBuild={onOpenBuild} />}
+          {mode === "split" && <SplitPane key={playlist.id} playlist={playlist} sound={sound} themes={themes} data={data} others={soundPlaylists} colors={colors} onOpenBuild={onOpenBuild} />}
           {mode === "missing" && <MissingPane key={playlist.id} playlist={playlist} all={all} evidence={evidence} memberOf={memberOf} colors={colors} />}
           {mode === "doubted" && <DoubtedPane key={playlist.id} playlist={playlist} evidence={evidence} memberOf={memberOf} colors={colors} />}
         </main>
@@ -182,18 +189,34 @@ function SplitPane({
   sound,
   themes,
   data,
+  others,
+  colors,
   onOpenBuild,
 }: {
   playlist: Playlist;
   sound: Sound | undefined;
   themes: ThemeIndex | null;
   data: TraitData;
+  /** The playlists a group can be close to. */
+  others: Playlist[];
+  colors: Map<string, string>;
   onOpenBuild: () => void;
 }) {
   const split = useWorkshop((s) => s.splits[playlist.id]);
   const change = useWorkshop((s) => s.change);
   const big = playlist.trackIds.length >= MIN_SPLIT;
   const words = useMemo(() => split?.groups.map((g) => traits(data, g.ids, playlist.trackIds)) ?? [], [split?.groups, data, playlist.trackIds]);
+  const close = useMemo(() => {
+    const rest = others.filter((p) => p.id !== playlist.id);
+    return (
+      split?.groups.map((g) =>
+        closeTo(g.ids, playlist.trackIds, rest, CLOSE).flatMap(({ id, count }) => {
+          const p = rest.find((o) => o.id === id);
+          return p ? [{ name: p.name, color: colors.get(id), count }] : [];
+        }),
+      ) ?? []
+    );
+  }, [split?.groups, others, playlist, colors]);
   // Each group's default name takes its theme, or its first trait that no earlier group's took, or its number.
   const defaults = useMemo(() => {
     const used = new Set<string>();
@@ -244,6 +267,7 @@ function SplitPane({
             key={g.key}
             group={g}
             words={words[i] ?? []}
+            close={close[i] ?? []}
             fallback={defaults[i] ?? playlist.name}
             data={data}
             onEdit={(fn) => edit((s) => updateGroup(s, g.key, fn))}
@@ -266,6 +290,7 @@ function SplitPane({
 function GroupCard({
   group,
   words,
+  close,
   fallback,
   data,
   onEdit,
@@ -276,6 +301,8 @@ function GroupCard({
   group: Group;
   /** What sets the group apart from the rest of the playlist. */
   words: string[];
+  /** Playlists you already have that hold much of the group, with how many of its songs. */
+  close: { name: string; color: string | undefined; count: number }[];
   /** The name shown until one is typed. */
   fallback: string;
   data: TraitData;
@@ -303,6 +330,13 @@ function GroupCard({
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="text-sm text-zinc-400">{group.ids.length}</span>
         <Chips words={words} />
+        {close.map((p) => (
+          <span key={p.name} title={`${p.count} of ${group.ids.length} are in ${p.name}`} className="flex min-w-0 items-center gap-1 rounded-full bg-white/[0.06] px-2 py-0.5 text-xs text-zinc-300">
+            <span className="size-1.5 shrink-0 rounded-full" style={{ background: p.color }} />
+            <span className="truncate">{p.name}</span>
+            <span className="text-zinc-500">{Math.round((p.count / group.ids.length) * 100)}%</span>
+          </span>
+        ))}
       </div>
       {artists.length > 0 && <p className="truncate text-xs text-zinc-500">{artists.join(", ")}</p>}
       <ul className={expanded ? "max-h-80 overflow-y-auto" : ""}>

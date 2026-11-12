@@ -2,7 +2,7 @@
 // playlist within the playlist), as a few short words: its genres, mood, tempo, loudness, vocals and language.
 import { KEY_STRENGTH, type SongFeatures } from "./features.ts";
 import type { Languages } from "./languages.ts";
-import type { Library } from "./library.ts";
+import type { Library, Playlist } from "./library.ts";
 import type { SongTags, Tags } from "./tags.ts";
 
 export type TraitData = {
@@ -112,6 +112,34 @@ export function topArtists(lib: Library, ids: string[], limit: number): string[]
 }
 
 /** A single song's genre has to be at least this likely to be named, and a mood this likely. */
+/** A group is close to another playlist when that playlist holds this share of it, and this many times its share of the parent. */
+const CLOSE_SHARE = 0.2;
+const CLOSE_LIFT = 2;
+
+/**
+ * The playlists among `others` a group mostly falls in, strongest first: a group like that is close to a playlist
+ * you already have, so it may not need a new one. `all` is the playlist the group came from; a playlist that holds
+ * as much of all of it says nothing about the group. `count` is how many of the group's songs it holds.
+ */
+export function closeTo(ids: string[], all: string[], others: Pick<Playlist, "id" | "trackIds">[], limit: number): { id: string; count: number }[] {
+  const group = new Set(ids);
+  const parent = new Set(all);
+  return others
+    .map((p) => {
+      let count = 0;
+      let inParent = 0;
+      for (const id of new Set(p.trackIds)) {
+        if (group.has(id)) count++;
+        if (parent.has(id)) inParent++;
+      }
+      return { id: p.id, count, share: count / group.size, base: inParent / parent.size };
+    })
+    .filter((p) => p.share >= CLOSE_SHARE && p.share >= CLOSE_LIFT * p.base)
+    .sort((a, b) => b.share - a.share)
+    .slice(0, limit)
+    .map(({ id, count }) => ({ id, count }));
+}
+
 const SONG_GENRE = 0.15;
 const SONG_MOOD = 0.75;
 
