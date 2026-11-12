@@ -17,7 +17,8 @@
     "host": "tsx src/cli/host.ts",
     "host:stop": "tsx src/cli/host.ts --stop",
     "host:serve": "tsx --env-file=.env src/host/server.ts",
-    "test": "tsx --test src/**/*.test.ts"
+    "test": "tsx --test src/**/*.test.ts",
+    "features": "tsx --env-file=.env src/cli/features.ts"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.4",

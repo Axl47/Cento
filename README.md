@@ -119,6 +119,10 @@ Spotify shows them; entries older than a day are dropped too.
 - `pnpm edges` writes `data/edges.bin`: the sound of each song's first and last ~16 s, from the engine's per-moment
   vectors (`PATCHES_DIR`, default `~/.cache/audio-embed-engine/patches`). Run it after `pnpm audio`. A song with no
   full track yet uses its whole-song vector instead.
+- `pnpm features` writes `data/features.json`: each song's tempo, key, loudness (overall, and of its first and last 10 s)
+  and vocals, from Stemma's per-song features (`FEATURES_FILE`, default `~/.cache/audio-embed-engine/features/features.jsonl`).
+  New songs get features only after rerunning Stemma's `bench/extract_features.py`, which is resumable. Skipped when
+  that file doesn't exist.
 - `pnpm classify` trains one sound classifier per playlist from your sorted songs (seconds, on the engine's vectors)
   and writes `data/classifier.json`. Run it after `pnpm audio`; a resync in the app also runs it. Its scores replace
   the nearest-neighbor vote where available, and it can check one playlist from sound alone when it's confident and that
@@ -134,7 +138,7 @@ Spotify shows them; entries older than a day are dropped too.
 - `pnpm host` builds the app and runs the host in the background as a login agent: it returns right away, starts again
   at every login and restarts if it crashes. Rerun it after changing the code; `pnpm host:stop` stops it until the next
   login, and its output goes to `data/host.log`. The host keeps Now Playing running with no tab open.
-  Once a day from 12:01 AM it refreshes the data: a resync from Spotify, then `pnpm audio`, `pnpm edges` and `pnpm classify`. A day
+  Once a day from 12:01 AM it refreshes the data: a resync from Spotify, then `pnpm audio`, `pnpm edges`, `pnpm features` and `pnpm classify`. A day
   it missed (Mac asleep or off) runs as soon as the host is up, before it starts serving; a failed run is retried an
   hour later. `GET /host/status` shows the last run, kept in `data/refresh.json`. It's on this Mac at `http://127.0.0.1:3001/now`
   and on your network at the address it prints (also under Settings on that screen). Open Cento once with the host

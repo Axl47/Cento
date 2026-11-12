@@ -11,6 +11,7 @@ import type { Languages } from "../core/languages.ts";
 import { themeIndex, type ThemeData, type ThemeIndex } from "../core/themes.ts";
 import { buildModel, prechecked, suggest, type ArtistRules, type Model, type Neighbors } from "../core/suggest.ts";
 import type { Edges } from "../core/setlist.ts";
+import { decodeFeatures, type FeaturesFile, type SongFeatures } from "../core/features.ts";
 import { addToPlaylist, createPlaylist, removeFromPlaylist, replacePlaylist, setLiked } from "../core/spotify.ts";
 import { client } from "./auth.ts";
 
@@ -38,6 +39,8 @@ type State = {
   vectors: Vectors | null;
   /** How each song starts and ends (data/edges.bin), loaded by `loadEdges`; null until then or if missing. */
   edges: Edges | null;
+  /** Each song's tempo, key, loudness and vocals (data/features.json), loaded by `loadFeatures`; null until then or if missing. */
+  features: ReadonlyMap<string, SongFeatures> | null;
   /** Per-playlist sound classifiers (data/classifier.json); undefined until trained. */
   classifier: SoundClassifier | undefined;
   /** What songs are about (data/themes.json), loaded in the background; null until then or if missing. */
@@ -64,6 +67,8 @@ type State = {
   setVectors: (vectors: Vectors) => void;
   /** Fetches the edge vectors once, for the Build tab; without them, handoffs use whole songs. */
   loadEdges: () => void;
+  /** Fetches the song features once, for the Build tab. */
+  loadFeatures: () => void;
   setThemes: (data: ThemeData) => void;
   setLanguages: (languages: Languages) => void;
   /** Takes freshly trained classifiers and re-ranks the queue. */
@@ -159,6 +164,7 @@ async function saveLedger(ledger: LedgerEntry[]) {
 
 let writes: Promise<void> = Promise.resolve();
 let edgesRequested = false;
+let featuresRequested = false;
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 
 /** Persists the library to data/library.json (debounced). */
@@ -229,6 +235,7 @@ export const useApp = create<State>()((set, get) => {
     neighbors: undefined,
     vectors: null,
     edges: null,
+    features: null,
     classifier: undefined,
     themes: null,
     languages: null,
@@ -257,6 +264,15 @@ export const useApp = create<State>()((set, get) => {
           // Two rows per song of audio.json; a mismatch means one was rebuilt without the other.
           if (edges && edges.scale.length === 2 * (get().audio?.ids.length ?? -1)) set({ edges });
         })
+        .catch(console.error);
+    },
+
+    loadFeatures: () => {
+      if (featuresRequested) return;
+      featuresRequested = true;
+      fetch("/api/features")
+        .then((res) => (res.ok ? (res.json() as Promise<FeaturesFile>) : null))
+        .then((file) => file && set({ features: decodeFeatures(file) }))
         .catch(console.error);
     },
 
