@@ -67,7 +67,9 @@ export function PlaylistsView({ colors, onOpenBuild }: { colors: Map<string, str
   const playlists = useMemo(() => (lib ? sortTargets(lib).toSorted((a, b) => b.trackIds.length - a.trackIds.length) : []), [lib]);
   const all = useMemo(() => lib?.playlists.find((p) => p.id === config.allPlaylistId)?.trackIds ?? [], [lib]);
   const sound = useMemo((): Sound | undefined => (audio && vectors ? { index: audio, vectors } : undefined), [audio, vectors]);
-  const rule = selected ? rules[selected] : undefined;
+  // Until one is picked (or when the picked one is gone), the biggest playlist is open.
+  const playlist = playlists.find((p) => p.id === selected) ?? playlists[0];
+  const rule = playlist && rules[playlist.id];
   const evidence = useMemo((): Evidence => {
     const artists = rule && new Set(rule.map((a) => a.id));
     return { classifier, sound, byRule: artists && lib ? (id) => !!lib.tracks[id]?.artists.some((a) => artists.has(a.id)) : undefined };
@@ -86,7 +88,6 @@ export function PlaylistsView({ colors, onOpenBuild }: { colors: Map<string, str
     [lib, playlists, hidden, rules],
   );
 
-  const playlist = playlists.find((p) => p.id === selected);
   const headerTraits = useMemo(() => (data && playlist ? traits(data, playlist.trackIds, all) : []), [data, playlist, all]);
 
   if (!lib || !data) return null;
@@ -107,7 +108,7 @@ export function PlaylistsView({ colors, onOpenBuild }: { colors: Map<string, str
             <li key={p.id}>
               <button
                 onClick={() => setSelected(p.id)}
-                className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm ${p.id === selected ? "bg-white/10 text-zinc-50" : "text-zinc-300 hover:bg-white/5"} ${hidden.includes(p.id) ? "opacity-50" : ""}`}
+                className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm ${p.id === playlist?.id ? "bg-white/10 text-zinc-50" : "text-zinc-300 hover:bg-white/5"} ${hidden.includes(p.id) ? "opacity-50" : ""}`}
               >
                 <span className="size-2 shrink-0 rounded-full" style={{ background: colors.get(p.id) }} />
                 <span className="min-w-0 flex-1 truncate">{p.name}</span>
