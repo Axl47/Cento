@@ -34,3 +34,11 @@ test("a playlist with no classifier falls back to sound", () => {
   assert.deepEqual(missing(evidence, other, ["30"], 5).map((s) => s.id), ["30"]);
   assert.equal(doubted(evidence, other)[0]!.id, "150");
 });
+
+test("a playlist with an artist rule misses exactly its artists' songs and doubts the rest, whatever they sound like", () => {
+  const byRule = (id: string) => id.startsWith("theirs");
+  const rule = { classifier, sound: undefined, byRule };
+
+  assert.deepEqual(missing(rule, { id: "p", trackIds: ["theirs-in", "other-in"] }, ["theirs-out", "other-out", "theirs-in"], 5), [{ id: "theirs-out", score: 1 }]);
+  assert.deepEqual(doubted(rule, { id: "p", trackIds: ["theirs-in", "other-in"] }), [{ id: "other-in", score: 0 }]);
+});

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { groupsOf, replaceGroup, updateGroup, type Split } from "./workshop.ts";
 
-const split = (lists: string[][]): Split => ({ k: lists.length, groups: groupsOf(lists), unplaced: [] });
+const split = (lists: string[][]): Split => ({ by: "sound", k: lists.length, groups: groupsOf(lists), unplaced: [] });
 
 test("splitting a group puts its halves in its place and leaves the other groups as they were", () => {
   const s = split([["a", "b"], ["c", "d"], ["e"]]);

@@ -9,17 +9,22 @@ export type Group = {
   ids: string[];
   /** What the user typed; null shows the default name. */
   name: string | null;
+  /** What the group's lyrics are about, for a group made by lyrics. */
+  theme?: string;
   /** Set when Save is clicked; the button shows Saving… while writes are pending. */
   saving?: boolean;
   saved?: boolean;
 };
 
-export type Split = { k: number; groups: Group[]; unplaced: string[] };
+export type By = "sound" | "lyrics";
+
+/** `unplaced` are the songs in no group: no sound yet (by sound), or no clear theme (by lyrics). */
+export type Split = { by: By; k: number; groups: Group[]; unplaced: string[] };
 
 let nextKey = 0;
 
-/** Fresh groups (no name, not saved) for these song lists. */
-export const groupsOf = (lists: string[][]): Group[] => lists.map((ids) => ({ key: nextKey++, ids, name: null }));
+/** Fresh groups (no name, not saved) for these song lists; `themes` is parallel to `lists`. */
+export const groupsOf = (lists: string[][], themes?: string[]): Group[] => lists.map((ids, i) => ({ key: nextKey++, ids, name: null, theme: themes?.[i] }));
 
 /** `split` with group `key` changed by `fn`; a group left with no songs is dropped. */
 export const updateGroup = (split: Split, key: number, fn: (g: Group) => Partial<Group>): Split => ({

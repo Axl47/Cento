@@ -1,16 +1,18 @@
-// Playlists tab: a workshop for one of your playlists. Split divides it into groups by sound to save as smaller
-// playlists (the parent stays as it is), Missing finds sorted songs it probably should have, and Doesn't fit lists
-// its own songs least likely to belong.
+// Playlists tab: a workshop for one of your playlists. Split divides it into groups by sound or by what the lyrics
+// are about, to save as smaller playlists (the parent stays as it is), Missing finds songs in your library it
+// probably should have, and Doesn't fit lists its own songs least likely to belong. A playlist with an artist rule
+// is checked against the rule instead: Missing is its artists' other songs, Doesn't fit the songs by anyone else.
 import { useEffect, useMemo, useState } from "react";
-import { doubted, missing, type Scored } from "../core/belong.ts";
+import { doubted, missing, type Evidence, type Scored } from "../core/belong.ts";
 import { config } from "../core/config.ts";
 import { sortTargets, type Playlist, type Track } from "../core/library.ts";
-import { soundGroups } from "../core/split.ts";
+import { soundGroups, themeGroups } from "../core/split.ts";
+import type { ThemeIndex } from "../core/themes.ts";
 import { topArtists, traits, type TraitData } from "../core/traits.ts";
 import { usePlayer } from "./player.ts";
 import { useSets } from "./sets.ts";
 import { useApp } from "./store.ts";
-import { groupsOf, replaceGroup, updateGroup, useWorkshop, type Group, type Split } from "./workshop.ts";
+import { groupsOf, replaceGroup, updateGroup, useWorkshop, type By, type Group, type Split } from "./workshop.ts";
 
 const SELECTED_KEY = "playlists-tab-selected";
 const KS = [2, 3, 4, 5, 6] as const;
@@ -27,8 +29,9 @@ const CHIPS = 3;
 type Mode = "split" | "missing" | "doubted";
 const MODES: Record<Mode, string> = { split: "Split", missing: "Missing", doubted: "Doesn't fit" };
 
-type Sound = NonNullable<Parameters<typeof missing>[0]["sound"]>;
-type Evidence = Parameters<typeof missing>[0];
+const BYS: Record<By, string> = { sound: "Sound", lyrics: "Lyrics" };
+
+type Sound = NonNullable<Evidence["sound"]>;
 
 const artistNames = (t: Track) => t.artists.map((a) => a.name).join(", ");
 const play = (t: Track) => void usePlayer.getState().play(t.id, t.durationMs);
@@ -43,7 +46,7 @@ function readSelected() {
 
 /** The tab. `onOpenBuild` switches to the Build tab after a group was opened there as a new set. */
 export function PlaylistsView({ colors, onOpenBuild }: { colors: Map<string, string>; onOpenBuild: () => void }) {
-  const { lib, audio, vectors, classifier, features, languages, tags, hidden } = useApp();
+  const { lib, audio, vectors, classifier, features, languages, tags, themes, rules, hidden } = useApp();
   const [selected, setSelected] = useState(readSelected);
   const [filter, setFilter] = useState("");
   const [mode, setMode] = useState<Mode>("split");
@@ -63,7 +66,11 @@ export function PlaylistsView({ colors, onOpenBuild }: { colors: Map<string, str
   const playlists = useMemo(() => (lib ? sortTargets(lib).toSorted((a, b) => b.trackIds.length - a.trackIds.length) : []), [lib]);
   const all = useMemo(() => lib?.playlists.find((p) => p.id === config.allPlaylistId)?.trackIds ?? [], [lib]);
   const sound = useMemo((): Sound | undefined => (audio && vectors ? { index: audio, vectors } : undefined), [audio, vectors]);
-  const evidence = useMemo((): Evidence => ({ classifier, sound }), [classifier, sound]);
+  const rule = selected ? rules[selected] : undefined;
+  const evidence = useMemo((): Evidence => {
+    const artists = rule && new Set(rule.map((a) => a.id));
+    return { classifier, sound, byRule: artists && lib ? (id) => !!lib.tracks[id]?.artists.some((a) => artists.has(a.id)) : undefined };
+  }, [classifier, sound, rule, lib]);
   const data = useMemo((): TraitData | null => (lib ? { lib, features, languages, tags } : null), [lib, features, languages, tags]);
   // trackId -> the playlists it's in, smallest first: the chips on Missing and Doesn't fit rows.
   const memberOf = useMemo(() => {
@@ -112,7 +119,7 @@ export function PlaylistsView({ colors, onOpenBuild }: { colors: Map<string, str
             <Chips words={headerTraits} />
             <Segmented className="ml-auto" options={Object.keys(MODES) as Mode[]} value={mode} label={(m) => MODES[m]} onChange={setMode} />
           </header>
-          {mode === "split" && <SplitPane key={playlist.id} playlist={playlist} sound={sound} data={data} onOpenBuild={onOpenBuild} />}
+          {mode === "split" && <SplitPane key={playlist.id} playlist={playlist} sound={sound} themes={themes} data={data} onOpenBuild={onOpenBuild} />}
           {mode === "missing" && <MissingPane key={playlist.id} playlist={playlist} all={all} evidence={evidence} memberOf={memberOf} colors={colors} />}
           {mode === "doubted" && <DoubtedPane key={playlist.id} playlist={playlist} evidence={evidence} memberOf={memberOf} colors={colors} />}
         </main>
@@ -169,30 +176,47 @@ function SongButton({ track }: { track: Track }) {
   );
 }
 
-/** The playlist's groups by sound, as cards to rename, trim, split further, and save. */
-function SplitPane({ playlist, sound, data, onOpenBuild }: { playlist: Playlist; sound: Sound | undefined; data: TraitData; onOpenBuild: () => void }) {
+/** The playlist's groups, by sound or by lyrics, as cards to rename, trim, split further, and save. */
+function SplitPane({
+  playlist,
+  sound,
+  themes,
+  data,
+  onOpenBuild,
+}: {
+  playlist: Playlist;
+  sound: Sound | undefined;
+  themes: ThemeIndex | null;
+  data: TraitData;
+  onOpenBuild: () => void;
+}) {
   const split = useWorkshop((s) => s.splits[playlist.id]);
   const change = useWorkshop((s) => s.change);
   const big = playlist.trackIds.length >= MIN_SPLIT;
   const words = useMemo(() => split?.groups.map((g) => traits(data, g.ids, playlist.trackIds)) ?? [], [split?.groups, data, playlist.trackIds]);
-  // Each group's default name takes its first trait that no earlier group's took, or its number.
+  // Each group's default name takes its theme, or its first trait that no earlier group's took, or its number.
   const defaults = useMemo(() => {
     const used = new Set<string>();
     return words.map((w, i) => {
-      const pick = w.find((x) => !used.has(x));
+      const pick = split?.groups[i]?.theme ?? w.find((x) => !used.has(x));
       if (pick) used.add(pick);
       return `${playlist.name} · ${pick ?? i + 1}`;
     });
-  }, [words, playlist.name]);
+  }, [words, split?.groups, playlist.name]);
 
   /** Groups the whole playlist anew into `k`, discarding edits. */
-  const regroup = (k: number) => {
-    if (!sound) return;
-    const { groups, unplaced } = soundGroups(sound, playlist.trackIds, k);
-    change(playlist.id, () => ({ k, groups: groupsOf(groups), unplaced }));
+  const regroup = (by: By, k: number) => {
+    if (by === "lyrics") {
+      if (!themes) return;
+      const { groups, names, unplaced } = themeGroups(themes, data.lib, playlist.trackIds, k);
+      change(playlist.id, () => ({ by, k, groups: groupsOf(groups, names), unplaced }));
+    } else if (sound) {
+      const { groups, unplaced } = soundGroups(sound, playlist.trackIds, k);
+      change(playlist.id, () => ({ by, k, groups: groupsOf(groups), unplaced }));
+    }
   };
   useEffect(() => {
-    if (!split && sound && big) regroup(DEFAULT_K);
+    if (!split && sound && big) regroup("sound", DEFAULT_K);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [split, sound, big]);
 
@@ -210,8 +234,9 @@ function SplitPane({ playlist, sound, data, onOpenBuild }: { playlist: Playlist;
   const edit = (fn: (s: Split) => Split) => change(playlist.id, (s) => fn(s!));
   return (
     <div className="@container">
-      <div className="mb-3">
-        <Segmented options={KS} value={split.k} onChange={(k) => k !== split.k && regroup(k)} />
+      <div className="mb-3 flex flex-wrap gap-2">
+        {themes && <Segmented options={Object.keys(BYS) as By[]} value={split.by} label={(by) => BYS[by]} onChange={(by) => by !== split.by && regroup(by, split.k)} />}
+        <Segmented options={KS} value={split.k} onChange={(k) => k !== split.k && regroup(split.by, k)} />
       </div>
       <div className="grid gap-3 @2xl:grid-cols-2 @5xl:grid-cols-3">
         {split.groups.map((g, i) => (
@@ -228,7 +253,11 @@ function SplitPane({ playlist, sound, data, onOpenBuild }: { playlist: Playlist;
           />
         ))}
       </div>
-      {split.unplaced.length > 0 && <p className="mt-3 text-xs text-zinc-500">{split.unplaced.length === 1 ? "1 song has" : `${split.unplaced.length} songs have`} no sound yet</p>}
+      {split.unplaced.length > 0 && (
+        <p className="mt-3 text-xs text-zinc-500">
+          {split.unplaced.length === 1 ? "1 song has" : `${split.unplaced.length} songs have`} {split.by === "lyrics" ? "no clear theme" : "no sound yet"}
+        </p>
+      )}
     </div>
   );
 }
@@ -353,7 +382,7 @@ const ScoreBar = ({ score }: { score: number }) => (
 
 type RowsProps = { playlist: Playlist; evidence: Evidence; memberOf: Map<string, Playlist[]>; colors: Map<string, string> };
 
-/** Sorted songs the playlist probably should have; checked ones can be added to it. */
+/** Songs in your library the playlist probably should have; checked ones can be added to it. */
 function MissingPane({ playlist, all, evidence, memberOf, colors }: RowsProps & { all: string[] }) {
   const lib = useApp((s) => s.lib)!;
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
@@ -394,10 +423,11 @@ function MissingPane({ playlist, all, evidence, memberOf, colors }: RowsProps & 
             <input type="checkbox" aria-label={`Pick ${t.name}`} checked={checked.has(s.id)} onChange={() => toggle(s.id)} className="accent-zinc-300" />
             <SongButton track={t} />
             <PlaylistChips of={memberOf.get(s.id)} except={playlist.id} colors={colors} />
-            <ScoreBar score={s.score} />
+            {!evidence.byRule && <ScoreBar score={s.score} />}
           </>
         )}
       />
+      {found.length === 0 && <Empty>Nothing missing</Empty>}
       {found.length > limit && <ShowMore onClick={() => setLimit(limit + PAGE)} />}
     </div>
   );
@@ -431,7 +461,7 @@ function DoubtedPane({ playlist, evidence, memberOf, colors }: RowsProps) {
           <>
             <SongButton track={t} />
             <PlaylistChips of={memberOf.get(s.id)} except={playlist.id} colors={colors} />
-            <ScoreBar score={s.score} />
+            {!evidence.byRule && <ScoreBar score={s.score} />}
             {removed.has(s.id) ? (
               <button className="btn w-20 px-2 py-0.5 text-xs opacity-100" onClick={() => (addToPlaylist(playlist.id, [s.id]), mark(s.id, false))}>
                 Undo
@@ -444,6 +474,7 @@ function DoubtedPane({ playlist, evidence, memberOf, colors }: RowsProps) {
           </>
         )}
       />
+      {found.length === 0 && <Empty>Everything fits</Empty>}
       {found.length > limit && <ShowMore onClick={() => setLimit(limit + PAGE)} />}
     </div>
   );
@@ -474,6 +505,8 @@ function Rows({
     </ul>
   );
 }
+
+const Empty = ({ children }: { children: string }) => <p className="py-1 text-sm text-zinc-500">{children}</p>;
 
 const ShowMore = ({ onClick }: { onClick: () => void }) => (
   <button className="mt-1 text-xs text-zinc-400 hover:text-zinc-100" onClick={onClick}>

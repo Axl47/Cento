@@ -8,11 +8,16 @@ import { additions, fits } from "./setlist.ts";
 /** `score` runs from 0 (nothing like the playlist) to 1 (certainly belongs), for drawing a bar. */
 export type Scored = { id: string; score: number };
 
-type Evidence = {
+export type Evidence = {
   /** The playlist's classifier is used when it has one: it also knows lyrics and language, and scores each sorted song without having seen it. */
   classifier: SoundClassifier | undefined;
   /** The fallback for playlists too new or too small to have a classifier. */
   sound: { index: AudioIndex; vectors: Vectors } | undefined;
+  /**
+   * For a playlist with an artist rule: whether a song is by one of its artists. Such a playlist wants exactly
+   * those songs whatever they sound like, so the rule decides alone and every score is 1 (missing) or 0 (doubted).
+   */
+  byRule?: (id: string) => boolean;
 };
 
 const clamp = (x: number) => Math.min(Math.max(x, 0), 1);
@@ -21,8 +26,9 @@ const clamp = (x: number) => Math.min(Math.max(x, 0), 1);
  * Songs among `candidates` that aren't in the playlist but probably belong there, best first.
  * Without a classifier for the playlist they're the songs that sound closest to it.
  */
-export function missing({ classifier, sound }: Evidence, playlist: Pick<Playlist, "id" | "trackIds">, candidates: Iterable<string>, limit: number): Scored[] {
+export function missing({ classifier, sound, byRule }: Evidence, playlist: Pick<Playlist, "id" | "trackIds">, candidates: Iterable<string>, limit: number): Scored[] {
   const members = new Set(playlist.trackIds);
+  if (byRule) return [...new Set(candidates)].filter((id) => !members.has(id) && byRule(id)).slice(0, limit).map((id) => ({ id, score: 1 }));
   if (classifier?.fit(playlist.id)) {
     const out: Scored[] = [];
     for (const id of candidates) {
@@ -44,8 +50,9 @@ export function missing({ classifier, sound }: Evidence, playlist: Pick<Playlist
  * The playlist's own songs, the ones least likely to belong first. Without a classifier for the playlist
  * that's the songs least like the rest of it by sound.
  */
-export function doubted({ classifier, sound }: Evidence, playlist: Pick<Playlist, "id" | "trackIds">): Scored[] {
+export function doubted({ classifier, sound, byRule }: Evidence, playlist: Pick<Playlist, "id" | "trackIds">): Scored[] {
   const ids = [...new Set(playlist.trackIds)];
+  if (byRule) return ids.filter((id) => !byRule(id)).map((id) => ({ id, score: 0 }));
   let scored: Scored[] = [];
   if (classifier?.fit(playlist.id)) {
     scored = ids.flatMap((id) => {

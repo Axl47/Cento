@@ -39,7 +39,8 @@ default) what to play and shows the position Spotify reports. Audio never plays 
 works. Needs Premium and Spotify open somewhere. Tracks are started as a position in their album: a plain
 track-URI play request is accepted but loads nothing on this account.
 
-- **Sort**: the current liked song plays from ~35% in. Its playlists show as tiles; the bar on each is the
+- **Sort**: the current liked song plays from ~35% in, with its genres, mood, tempo and key under the album name
+  (see `pnpm tags`). Its playlists show as tiles; the bar on each is the
   model's confidence. Confident suggestions start checked. For artists you've never sorted, that's limited to the one
   playlist the sound classifier is confident about (see `pnpm classify`). `1`–`8` toggle, `Enter` sorts (adds to
   checked playlists + the all-songs playlist, removes from Liked Songs), `S` skips, `Space` play/pause,
@@ -91,15 +92,20 @@ track-URI play request is accepted but loads nothing on this account.
   song starting much louder or quieter than the last one ended, or clashing keys. Songs with a steady beat show their
   BPM, and an **Energy** card plots each song's loudness in set order. Songs that don't fit are marked with **Remove**; when more than a quarter
   don't, **Two groups** offers to keep the first group or split the second into its own set. The right column
-  suggests songs to add, or shows the set as a route on the map. `⌘Z` undoes. Sets are kept in this browser;
+  suggests songs to add, or shows the set as a route on the map. The suggestions can be narrowed by mood, vocals,
+  tempo, genre and language; with an empty set the same filters pick 20 songs to start from. `⌘Z` undoes. Sets are kept in this browser;
   **Save to Spotify** creates a private playlist in this order that stays out of sorting, and later updates it.
 - **Playlists** (`P`): a workshop for one of your playlists, picked from the list on the left (biggest first).
-  **Split** divides it into 2–6 groups by sound, each named after what sets it apart from the rest of the playlist.
+  **Split** divides it into 2–6 groups by sound, each named after what sets it apart from the rest of the playlist,
+  or by **Lyrics**: the themes most of its songs are about, each holding the songs that carry that theme clearly
+  (songs with no clear theme stay out of every group).
   Rename a group, drop songs from it (×), divide it in two again, or open it in Build. **Save as playlist** creates
   a private playlist from the group that counts for sorting like any other; the parent playlist is left as it is.
-  Splits last until a reload. **Missing** lists sorted songs the playlist probably should have; **Add** puts the
-  checked ones in it on Spotify. **Doesn't fit** lists its songs least likely to belong; **Remove** takes one out of
-  it on Spotify (it stays in your other playlists and in Everything), with **Undo** until you leave.
+  Splits last until a reload. **Missing** lists songs in your library the playlist probably should have; **Add** puts
+  the checked ones in it on Spotify. **Doesn't fit** lists its songs least likely to belong; **Remove** takes one out of
+  it on Spotify (it stays in your other playlists and in Everything), with **Undo** until you leave. A playlist with
+  an artist rule is checked against the rule, not its sound: Missing is its artists' songs that aren't in it, and
+  Doesn't fit is its songs by anyone else.
 
 Spotify writes run in order in the background; the header shows pending/failed writes. The app saves its
 view of the library to `data/library.json` (shared with the scripts) through the dev server. Each sort is
@@ -128,6 +134,10 @@ Spotify shows them; entries older than a day are dropped too.
 - `pnpm edges` writes `data/edges.bin`: the sound of each song's first and last ~16 s, from the engine's per-moment
   vectors (`PATCHES_DIR`, default `~/.cache/audio-embed-engine/patches`). Run it after `pnpm audio`. A song with no
   full track yet uses its whole-song vector instead.
+- `pnpm tags` writes `data/tags.json`: each song's likeliest genres and its moods (aggressive, relaxed, sad, party,
+  acoustic, electronic), from Stemma's per-song tags (`TAGS_FILE`, default `~/.cache/audio-embed-engine/tags/tags.jsonl`).
+  New songs get tags only after rerunning Stemma's `bench/tags.py run`, which takes seconds. Skipped when that file
+  doesn't exist. Genres and moods name the groups in Playlists, filter Build's suggestions, and show under the song in Sort.
 - `pnpm features` writes `data/features.json`: each song's tempo, key, loudness (overall, and of its first and last 10 s)
   and vocals, from Stemma's per-song features (`FEATURES_FILE`, default `~/.cache/audio-embed-engine/features/features.jsonl`).
   New songs get features only after rerunning Stemma's `bench/extract_features.py`, which is resumable. Skipped when
@@ -147,7 +157,7 @@ Spotify shows them; entries older than a day are dropped too.
 - `pnpm host` builds the app and runs the host in the background as a login agent: it returns right away, starts again
   at every login and restarts if it crashes. Rerun it after changing the code; `pnpm host:stop` stops it until the next
   login, and its output goes to `data/host.log`. The host keeps Now Playing running with no tab open.
-  Once a day from 12:01 AM it refreshes the data: a resync from Spotify, then `pnpm audio`, `pnpm edges`, `pnpm features` and `pnpm classify`. A day
+  Once a day from 12:01 AM it refreshes the data: a resync from Spotify, then `pnpm audio`, `pnpm edges`, `pnpm features`, `pnpm tags` and `pnpm classify`. A day
   it missed (Mac asleep or off) runs as soon as the host is up, before it starts serving; a failed run is retried an
   hour later. `GET /host/status` shows the last run, kept in `data/refresh.json`. It's on this Mac at `http://127.0.0.1:3001/now`
   and on your network at the address it prints (also under Settings on that screen). Open Cento once with the host
