@@ -1,5 +1,8 @@
-// Dividing a big playlist into groups of songs that sound alike, to make smaller playlists from it.
+// Dividing a big playlist into groups of songs that sound alike, or that are about the same thing, to make
+// smaller playlists from it.
 import { positions, type AudioIndex, type Vectors } from "./audio.ts";
+import type { Library } from "./library.ts";
+import type { ThemeIndex } from "./themes.ts";
 
 const RESTARTS = 6;
 const ROUNDS = 30;
@@ -116,4 +119,38 @@ export function soundGroups({ index, vectors }: { index: AudioIndex; vectors: Ve
     .filter((group) => group.length)
     .sort((a, b) => b.length - a.length);
   return { groups, unplaced };
+}
+
+/** A song belongs to a theme group from this score (standard deviations above songs in its language). */
+const THEME_MIN = 1;
+
+/**
+ * `ids` grouped by what their lyrics are about: the `k` themes that are the strongest theme of the most songs, each
+ * holding the songs that carry it more than the other chosen themes, the clearest first. Unlike a split by sound this
+ * leaves songs out: `unplaced` holds those with no lyrics or none of the chosen themes. `names` is parallel to `groups`.
+ */
+export function themeGroups(index: ThemeIndex, lib: Library, ids: string[], k: number): Split & { names: string[] } {
+  const scored = [...new Set(ids)].flatMap((id) => {
+    const track = lib.tracks[id];
+    const scores = track && index.songs.get(track.isrc ?? track.id)?.scores;
+    return scores ? [{ id, scores }] : [];
+  });
+  const strongest = new Map<number, number>();
+  for (const { scores } of scored) {
+    const top = scores.indexOf(Math.max(...scores));
+    strongest.set(top, (strongest.get(top) ?? 0) + 1);
+  }
+  const chosen = [...strongest].sort((a, b) => b[1] - a[1]).slice(0, k).map(([theme]) => theme);
+  const members = new Map<number, { id: string; score: number }[]>(chosen.map((theme) => [theme, []]));
+  for (const { id, scores } of scored) {
+    const theme = chosen.reduce((best, t) => (scores[t]! > scores[best]! ? t : best), chosen[0]!);
+    if (scores[theme]! >= THEME_MIN) members.get(theme)!.push({ id, score: scores[theme]! });
+  }
+  const groups = [...members].filter(([, songs]) => songs.length).sort((a, b) => b[1].length - a[1].length);
+  const placed = new Set(groups.flatMap(([, songs]) => songs.map((s) => s.id)));
+  return {
+    groups: groups.map(([, songs]) => songs.sort((a, b) => b.score - a.score).map((s) => s.id)),
+    names: groups.map(([theme]) => index.themes[theme]!),
+    unplaced: ids.filter((id) => !placed.has(id)),
+  };
 }

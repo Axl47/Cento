@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { decodeVectors, encodeVectors, type AudioIndex } from "./audio.ts";
-import { soundGroups } from "./split.ts";
+import type { Library } from "./library.ts";
+import { soundGroups, themeGroups } from "./split.ts";
+import { themeIndex } from "./themes.ts";
 
 const angle = (deg: number) => Float32Array.from([Math.cos((deg * Math.PI) / 180), Math.sin((deg * Math.PI) / 180), 0]);
 /** Songs named by their angle on a circle: songs at nearby angles sound alike. */
@@ -31,4 +33,16 @@ test("the same songs always split the same way", () => {
 
 test("songs without a sound vector are set aside, and too few songs stay as one group", () => {
   assert.deepEqual(soundGroups(sound([0, 90]), ["0", "x", "90"], 2), { groups: [["0", "90"]], unplaced: ["x"] });
+});
+
+test("songs group under the themes most of them are about, clearest first, and the rest are left out", () => {
+  const scores = { love1: [3, 0, 0], love2: [2, 1.5, 0], war1: [0, 2, 0], war2: [1.2, 4, 0], sea1: [0, 0, 5], vague: [0.5, 0.4, 0.2] };
+  const index = themeIndex({ themes: ["love", "war", "sea"], songs: Object.entries(scores).map(([key, s]) => ({ key, scores: s, passages: [], best: [] })) });
+  const lib = { tracks: Object.fromEntries([...Object.keys(scores), "silent"].map((id) => [id, { id, isrc: null }])) } as unknown as Library;
+
+  assert.deepEqual(themeGroups(index, lib, ["vague", "war1", "love2", "silent", "sea1", "love1", "war2"], 2), {
+    groups: [["love1", "love2"], ["war2", "war1"]],
+    names: ["love", "war"],
+    unplaced: ["vague", "silent", "sea1"],
+  });
 });
