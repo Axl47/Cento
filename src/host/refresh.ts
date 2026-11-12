@@ -1,5 +1,5 @@
 // The daily data refresh the host runs: resync the library from Spotify, then `pnpm audio` (embeds new songs, rebuilds
-// the map), then `pnpm classify` (retrains on the new sorts). Due once a day from 12:01 AM local time; the host checks
+// the map), `pnpm edges` (how songs start and end) and `pnpm classify` (retrains on the new sorts). Due once a day from 12:01 AM local time; the host checks
 // every minute and at startup, so a day the Mac slept through or was off for still gets its run as soon as it can.
 import { spawn } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
@@ -48,6 +48,7 @@ export async function refreshIfDue(now = new Date()) {
     await save({ ...state, lastAttempt });
     await exportLibrary(spotify);
     await pnpm("audio");
+    await pnpm("edges");
     await pnpm("classify");
     await save({ lastDay: localDay(now), lastAttempt });
     console.log("Data refresh: done");

@@ -17,6 +17,7 @@ import { config } from "./src/core/config.ts";
  *   GET     /api/merges   -> data/merges.json (`pnpm merge-copies` log; 404 until it has applied)
  *   GET     /api/audio    -> data/audio.json (404 until `pnpm audio` has run)
  *   GET     /api/vectors  -> data/vectors.bin (same; binary)
+ *   GET     /api/edges    -> data/edges.bin (how songs start and end; 404 until `pnpm edges` has run; binary)
  *   GET     /api/classifier -> data/classifier.json (404 until `pnpm classify` has run)
  *   POST    /api/classifier -> retrains it, replying once it's done
  *   GET     /api/themes   -> data/themes.json (what songs are about; 404 until `pnpm lyrics` has run)
@@ -63,6 +64,7 @@ function localData(): Plugin {
     "/api/merges": "data/merges.json",
     "/api/audio": "data/audio.json",
     "/api/vectors": "data/vectors.bin",
+    "/api/edges": "data/edges.bin",
     "/api/classifier": "data/classifier.json",
     "/api/themes": "data/themes.json",
     "/api/languages": "data/languages.jsonl",
