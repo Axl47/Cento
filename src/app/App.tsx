@@ -15,14 +15,16 @@ import { LyricsView } from "./LyricsView.tsx";
 import { MapView } from "./MapView.tsx";
 import { NowTab } from "./NowView.tsx";
 import { usePlayer } from "./player.ts";
+import { PlaylistsView } from "./PlaylistsView.tsx";
 import { SortView } from "./SortView.tsx";
 import { ThemesView } from "./ThemesView.tsx";
 import { useApp } from "./store.ts";
 
 const TABS = {
-  sort: { label: "Sort", hint: "Switch with M, B, L, T or N" },
+  sort: { label: "Sort", hint: "Switch with M, B, P, L, T or N" },
   map: { label: "Sound map", hint: "Switch with M" },
   build: { label: "Build", hint: "Switch with B (except on the map)" },
+  playlists: { label: "Playlists", hint: "Switch with P" },
   lyrics: { label: "Lyrics", hint: "Switch with L" },
   themes: { label: "Themes", hint: "Switch with T" },
   now: { label: "Now playing", hint: "Switch with N" },
@@ -88,6 +90,7 @@ export function App() {
       // On the map, B is "Bridge from here". Build opens with its input focused, which must not receive the key.
       if (key === "b") e.preventDefault();
       if (key === "b") setTab((t) => (t === "map" ? t : t === "build" ? "sort" : "build"));
+      if (key === "p") setTab((t) => (t === "playlists" ? "sort" : "playlists"));
       if (key === "l") setTab((t) => (t === "lyrics" ? "sort" : "lyrics"));
       if (key === "t") setTab((t) => (t === "themes" ? "sort" : "themes"));
       if (key === "n") setTab((t) => (t === "now" ? "sort" : "now"));
@@ -235,6 +238,7 @@ export function App() {
         />
       )}
       {tab === "build" && <BuildView colors={colors} />}
+      {tab === "playlists" && <PlaylistsView colors={colors} onOpenBuild={() => setTab("build")} />}
       {tab === "lyrics" && <LyricsView colors={colors} onSortSong={() => setTab("sort")} />}
       {tab === "themes" && <ThemesView colors={colors} />}
       {tab === "now" && <NowTab colors={colors} />}

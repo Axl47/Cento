@@ -93,6 +93,13 @@ track-URI play request is accepted but loads nothing on this account.
   don't, **Two groups** offers to keep the first group or split the second into its own set. The right column
   suggests songs to add, or shows the set as a route on the map. `⌘Z` undoes. Sets are kept in this browser;
   **Save to Spotify** creates a private playlist in this order that stays out of sorting, and later updates it.
+- **Playlists** (`P`): a workshop for one of your playlists, picked from the list on the left (biggest first).
+  **Split** divides it into 2–6 groups by sound, each named after what sets it apart from the rest of the playlist.
+  Rename a group, drop songs from it (×), divide it in two again, or open it in Build. **Save as playlist** creates
+  a private playlist from the group that counts for sorting like any other; the parent playlist is left as it is.
+  Splits last until a reload. **Missing** lists sorted songs the playlist probably should have; **Add** puts the
+  checked ones in it on Spotify. **Doesn't fit** lists its songs least likely to belong; **Remove** takes one out of
+  it on Spotify (it stays in your other playlists and in Everything), with **Undo** until you leave.
 
 Spotify writes run in order in the background; the header shows pending/failed writes. The app saves its
 view of the library to `data/library.json` (shared with the scripts) through the dev server. Each sort is
