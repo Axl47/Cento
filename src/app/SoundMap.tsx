@@ -5,6 +5,8 @@
 //   overview  everything, with the names of the areas each playlist leads while zoomed out
 //   song      one song and its nearest songs, in their playlists' colors, connected and named; the rest gray
 //   bridge    a route between two songs, in its own color with distinct ends; the rest gray
+//   set       a set being built (Build tab), drawn like a bridge: rough handoffs dashed red, songs that don't fit
+//             ringed red, and suggestions as dashed rings
 // Highlighting playlists colors only their songs, and focus lines then go to their closest songs. Clicking empty map
 // in a song scene releases that: the song's nearest songs show, undimmed. Any interaction with the song (hovering
 // its dot) or with the page around the map (the song's info, the lists below the map) brings the highlight back. A marked song
@@ -24,7 +26,16 @@ export type MapScene =
   | { kind: "overview" }
   | { kind: "song"; id: string }
   /** The songs of the route in order; one song means the route's end hasn't been chosen yet. */
-  | { kind: "bridge"; ids: readonly string[] };
+  | { kind: "bridge"; ids: readonly string[] }
+  | {
+      kind: "set";
+      /** The set's songs on the map, in order. */
+      ids: readonly string[];
+      /** Songs whose handoff to the next one is rough. */
+      rough: ReadonlySet<string>;
+      ringed: readonly string[];
+      dashed: readonly string[];
+    };
 
 type Props = {
   audio: AudioIndex;
@@ -59,6 +70,7 @@ const NAME_HEIGHT = 14;
 const PILL_HEIGHT = 22;
 const FONT = { pill: "700 13px ui-sans-serif, system-ui", near: "600 12px ui-sans-serif, system-ui", rest: "11px ui-sans-serif, system-ui" };
 export const BRIDGE_COLORS = { start: "#6ee7b7", end: "#f9a8d4", path: "#7dd3fc" };
+const BAD = "#ff8f7a";
 
 export function SoundMap({ audio, lib, colors, height, scene, highlight = [], only = null, mark, onSelect }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -125,7 +137,7 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
   const focusId = scene.kind === "song" ? scene.id : null;
   const released = focusId !== null && releasedFor === `${focusId}|${highlight.join()}`;
   // A released song scene shows plainly until something interacts with it again.
-  const highlighting = lit.size > 0 && scene.kind !== "bridge" && !released;
+  const highlighting = lit.size > 0 && scene.kind !== "bridge" && scene.kind !== "set" && !released;
   // Songs the focus lines go to; while highlighting, the closest highlighted ones (exact once vectors load).
   const focusNear = useMemo(() => {
     if (!focusId) return [];
@@ -208,7 +220,7 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
   };
 
   // Everything the scene needs on screen, and so where the camera belongs.
-  const bridgeIds = scene.kind === "bridge" ? scene.ids : [];
+  const bridgeIds = scene.kind === "bridge" || scene.kind === "set" ? scene.ids : [];
   const subjects = focusId ? [focusId, ...focusNear.map((n) => n.id)] : bridgeIds.length > 1 ? bridgeIds : [];
   const subjectPoints = (subjects.length && mark ? [...subjects, mark] : subjects).flatMap((id): Point[] => {
     const i = data.pos.get(id);
@@ -359,19 +371,26 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
       ring(fx, fy, 10);
     }
 
-    // The bridge: one line through its songs, with ends that look different from each other.
+    // The bridge (or set): one line through its songs, with ends that look different from each other.
     const route = bridgeIds.flatMap((id) => {
       const i = data.pos.get(id);
       return i === undefined ? [] : [i];
     });
+    const rough = scene.kind === "set" ? scene.rough : null;
     if (route.length > 0) {
       ctx.globalAlpha = 0.9;
-      ctx.strokeStyle = BRIDGE_COLORS.path;
       ctx.lineWidth = 2;
       ctx.lineJoin = "round";
-      ctx.beginPath();
-      route.forEach((i, step) => (step ? ctx.lineTo(...at(i)) : ctx.moveTo(...at(i))));
-      ctx.stroke();
+      route.slice(1).forEach((i, step) => {
+        const bad = rough?.has(audio.ids[route[step]!]!) ?? false;
+        ctx.strokeStyle = bad ? BAD : BRIDGE_COLORS.path;
+        ctx.setLineDash(bad ? [4, 4] : []);
+        ctx.beginPath();
+        ctx.moveTo(...at(route[step]!));
+        ctx.lineTo(...at(i));
+        ctx.stroke();
+      });
+      ctx.setLineDash([]);
       ctx.globalAlpha = 1;
       ctx.fillStyle = BRIDGE_COLORS.path;
       for (const i of route.slice(1, -1)) dot(...at(i), r + 1.5);
@@ -384,6 +403,24 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
         ctx.lineWidth = 1.5;
         ctx.globalAlpha = 0.5;
         ring(...at(i), 11);
+      }
+    }
+    if (scene.kind === "set") {
+      ctx.globalAlpha = 0.9;
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = "#a092ab";
+      ctx.setLineDash([2, 3]);
+      for (const id of scene.dashed) {
+        const i = data.pos.get(id);
+        if (i !== undefined) ring(...at(i), r + 4);
+      }
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = BAD;
+      for (const id of scene.ringed) {
+        const i = data.pos.get(id);
+        if (i !== undefined) ring(...at(i), 9);
       }
     }
 
@@ -629,7 +666,7 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
         width={width * (window.devicePixelRatio || 1)}
         height={height * (window.devicePixelRatio || 1)}
         style={{ width, height }}
-        className={drag.current ? "cursor-grabbing" : hover ? "cursor-pointer" : bridgeIds.length === 1 ? "cursor-crosshair" : "cursor-grab"}
+        className={drag.current ? "cursor-grabbing" : hover ? "cursor-pointer" : scene.kind === "bridge" && bridgeIds.length === 1 ? "cursor-crosshair" : "cursor-grab"}
         onPointerDown={(e) => {
           cancelAnimationFrame(glide.current);
           drag.current = { x: e.clientX, y: e.clientY, moved: 0 };
