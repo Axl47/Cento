@@ -2,10 +2,14 @@
 // songs shows how smoothly one hands off to the next (click it to hear the seam), songs that don't fit are
 // marked, and rough handoffs say why (tempo, level, key) and offer songs to put in between. Drag to reorder (a
 // dragged song is pinned to its slot), Smooth reorders the rest, ⌘Z undoes. The right column shows the set's
-// energy arc above songs to add or the set on the map.
+// energy arc above songs to add or the set on the map. Songs to add can be narrowed by feel (mood, genre, tempo,
+// vocals, language), which also works on an empty set as a way to start one.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { sortTargets, primaryPlaylists, type Library, type Track } from "../core/library.ts";
+import { positions } from "../core/audio.ts";
+import { ANY_FEEL, feelMatch, hasFeel, likeness, TEMPOS, type Feel, type Tempo } from "../core/feel.ts";
 import { energyArc, handoffReasons, loudnessSpan } from "../core/features.ts";
+import { MOODS } from "../core/tags.ts";
 import { additions, fillers, handoff, misfits, smoothestOrder, twoGroups, type Sound } from "../core/setlist.ts";
 import { parseSpotifyLinks } from "../core/spotify.ts";
 import { resolveLinks } from "./links.ts";
@@ -34,6 +38,10 @@ const ADVANCE_EARLY_MS = 300;
 /** Until Spotify reports the song playing, the switch runs on a timer this much shorter than the seam. */
 const UNCONFIRMED_EARLY_MS = 1000;
 const SUGGESTIONS = 10;
+/** Songs offered once a feel narrows them; more than plain suggestions, since a feel is also how a set gets started. */
+const FEEL_PICKS = 20;
+const GENRE_CHOICES = 60;
+const LANGUAGE_CHOICES = 6;
 const FILLERS = 3;
 const SEARCH_RESULTS = 8;
 const START_PLAYLISTS = 12;
@@ -42,7 +50,7 @@ const CHIPS = 8;
 const artistNames = (t: Track) => t.artists.map((a) => a.name).join(", ");
 
 export function BuildView({ colors }: { colors: Map<string, string> }) {
-  const { lib, audio, vectors, edges, features, hidden } = useApp();
+  const { lib, audio, vectors, edges, features, tags, languages, hidden } = useApp();
   const { sets, currentId, change, undo, rename, split } = useSets();
   const current = sets.find((s) => s.id === currentId)!;
   const player = usePlayer();
@@ -52,11 +60,13 @@ export function BuildView({ colors }: { colors: Map<string, string> }) {
   const [gap, setGap] = useState<string | null>(null); // the song whose rough handoff to the next is open
   const [dragging, setDragging] = useState<string | null>(null);
   const [dropAt, setDropAt] = useState<number | null>(null);
+  const [feel, setFeel] = useState<Feel>(ANY_FEEL);
 
   useEffect(() => {
     if (audio) useApp.getState().loadEdges();
   }, [audio]);
   useEffect(() => useApp.getState().loadFeatures(), []);
+  useEffect(() => useApp.getState().loadTags(), []);
 
   const onMap = useMemo(() => new Set(audio?.ids ?? []), [audio]);
   const span = useMemo(() => (features ? loudnessSpan(features) : null), [features]);
@@ -100,6 +110,33 @@ export function BuildView({ colors }: { colors: Map<string, string> }) {
     return additions(sound, placed, (id) => !!lib.tracks[id] && fresh(lib.tracks[id]), SUGGESTIONS).flatMap((s) => lib.tracks[s.id] ?? []);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sound, lib, placed, pool, inSet]);
+  // Songs with the chosen feel: the ones most like the set first, or the surest matches while the set is empty.
+  const feelPicks = useMemo(() => {
+    if (!lib || !hasFeel(feel)) return null;
+    const pos = audio ? positions(audio) : new Map<string, number>();
+    const like = vectors && placed.length ? likeness(vectors, placed.map((id) => pos.get(id)!)) : null;
+    return [...pool.values()]
+      .flatMap((t) => {
+        if (inSet.has(songKey(t))) return [];
+        const match = feelMatch(feel, { features: features?.get(t.id), tags: tags?.get(t.id), language: languages?.get(t.isrc ?? t.id) });
+        const row = pos.get(t.id);
+        return match ? [{ t, score: like ? (row === undefined ? -1 : like(row)) : match }] : [];
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, FEEL_PICKS)
+      .map((s) => s.t);
+  }, [feel, lib, audio, vectors, placed, pool, inSet, features, tags, languages]);
+  const feelChoices = useMemo(() => {
+    const count = (names: Iterable<string>) => {
+      const counts = new Map<string, number>();
+      for (const name of names) counts.set(name, (counts.get(name) ?? 0) + 1);
+      return [...counts].sort((a, b) => b[1] - a[1]).map(([name]) => name);
+    };
+    return {
+      genres: count([...(tags?.values() ?? [])].flatMap((t) => t.genres[0]?.[0] ?? [])).slice(0, GENRE_CHOICES).sort(),
+      languages: count(languages?.values() ?? []).slice(0, LANGUAGE_CHOICES),
+    };
+  }, [tags, languages]);
   const gapFill = useMemo(() => {
     const at = gap ? ids.indexOf(gap) : -1;
     if (!sound || !lib || at < 0 || at === ids.length - 1) return [];
@@ -186,6 +223,17 @@ export function BuildView({ colors }: { colors: Map<string, string> }) {
             </button>
           ))}
         </div>
+        {(tags || features) && <FeelPicker feel={feel} onChange={setFeel} choices={feelChoices} />}
+        {feelPicks && feelPicks.length > 0 && (
+          <div className="rounded-xl bg-zinc-900 px-3 py-2">
+            {feelPicks.map((t) => (
+              <Suggestion key={t.id} track={t} onPlay={() => play(t)} onAdd={() => addSongs([t.id])} />
+            ))}
+            <button className="btn mt-2 w-full" onClick={() => addSongs(feelPicks.map((t) => t.id))}>
+              Add all
+            </button>
+          </div>
+        )}
       </div>
     );
   }
@@ -339,20 +387,23 @@ export function BuildView({ colors }: { colors: Map<string, string> }) {
               ))}
             </div>
             {side === "add" ? (
-              suggestions.length > 0 && (
-                <div className="rounded-xl bg-zinc-900 px-3 py-2">
-                  {suggestions.map((t) => (
-                    <Suggestion key={t.id} track={t} onPlay={() => play(t)} onAdd={() => addSongs([t.id])} />
-                  ))}
-                </div>
-              )
+              <>
+                {(tags || features) && <FeelPicker feel={feel} onChange={setFeel} choices={feelChoices} />}
+                {(feelPicks ?? suggestions).length > 0 && (
+                  <div className="rounded-xl bg-zinc-900 px-3 py-2">
+                    {(feelPicks ?? suggestions).map((t) => (
+                      <Suggestion key={t.id} track={t} onPlay={() => play(t)} onAdd={() => addSongs([t.id])} />
+                    ))}
+                  </div>
+                )}
+              </>
             ) : (
               <SoundMap
                 audio={audio}
                 lib={lib}
                 colors={colors}
                 height={480}
-                scene={{ kind: "set", ids: placed, rough: roughOnMap, ringed: groups ? groups[1] : flagged, dashed: suggestions.map((t) => t.id) }}
+                scene={{ kind: "set", ids: placed, rough: roughOnMap, ringed: groups ? groups[1] : flagged, dashed: (feelPicks ?? suggestions).map((t) => t.id) }}
                 mark={mark}
               />
             )}
@@ -433,6 +484,45 @@ function EnergyArc({ ids, energy, nameOf, marked }: { ids: string[]; energy: (nu
           })}
         </svg>
       </div>
+    </div>
+  );
+}
+
+const languageNames = new Intl.DisplayNames(["en"], { type: "language" });
+
+/** The feel to narrow added songs by: moods, tempo and instrumental as chips, then a genre and a language to pick. */
+function FeelPicker({ feel, onChange, choices }: { feel: Feel; onChange: (feel: Feel) => void; choices: { genres: string[]; languages: string[] } }) {
+  const chip = (label: string, on: boolean, toggle: () => void) => (
+    <button key={label} onClick={toggle} className={`rounded-full px-2.5 py-0.5 ${on ? "bg-zinc-100 text-zinc-900" : "bg-white/5 text-zinc-400 hover:text-zinc-200"}`}>
+      {label}
+    </button>
+  );
+  const select = "rounded-full bg-white/5 px-2 py-0.5 text-zinc-400 hover:text-zinc-200 focus:outline-none";
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 text-xs">
+      {MOODS.map((mood) =>
+        chip(mood, feel.moods.includes(mood), () => onChange({ ...feel, moods: feel.moods.includes(mood) ? feel.moods.filter((m) => m !== mood) : [...feel.moods, mood] })),
+      )}
+      {chip("instrumental", feel.instrumental, () => onChange({ ...feel, instrumental: !feel.instrumental }))}
+      {(Object.keys(TEMPOS) as Tempo[]).map((tempo) => chip(`${tempo} BPM`, feel.tempo === tempo, () => onChange({ ...feel, tempo: feel.tempo === tempo ? null : tempo })))}
+      {choices.genres.length > 0 && (
+        <select aria-label="Genre" value={feel.genre ?? ""} onChange={(e) => onChange({ ...feel, genre: e.target.value || null })} className={`${select} ${feel.genre ? "!bg-zinc-100 !text-zinc-900" : ""}`}>
+          <option value="">Genre</option>
+          {choices.genres.map((genre) => (
+            <option key={genre}>{genre}</option>
+          ))}
+        </select>
+      )}
+      {choices.languages.length > 0 && (
+        <select aria-label="Language" value={feel.language ?? ""} onChange={(e) => onChange({ ...feel, language: e.target.value || null })} className={`${select} ${feel.language ? "!bg-zinc-100 !text-zinc-900" : ""}`}>
+          <option value="">Language</option>
+          {choices.languages.map((code) => (
+            <option key={code} value={code}>
+              {languageNames.of(code) ?? code}
+            </option>
+          ))}
+        </select>
+      )}
     </div>
   );
 }
