@@ -4,13 +4,14 @@
 import { create } from "zustand";
 import { config } from "../core/config.ts";
 import { inbox, type Library } from "../core/library.ts";
-import { neighborsFrom, type AudioIndex, type Vectors } from "../core/audio.ts";
+import { decodeVectors, neighborsFrom, type AudioIndex, type Vectors } from "../core/audio.ts";
 import { classifierFrom, type ClassifierData, type SoundClassifier } from "../core/classifier.ts";
 import { applyLedger, unconfirmed, type LedgerEntry } from "../core/ledger.ts";
 import type { Languages } from "../core/languages.ts";
 import { themeIndex, type ThemeData, type ThemeIndex } from "../core/themes.ts";
 import { buildModel, prechecked, suggest, type ArtistRules, type Model, type Neighbors } from "../core/suggest.ts";
-import { addToPlaylist, createPlaylist, removeFromPlaylist, setLiked } from "../core/spotify.ts";
+import type { Edges } from "../core/setlist.ts";
+import { addToPlaylist, createPlaylist, removeFromPlaylist, replacePlaylist, setLiked } from "../core/spotify.ts";
 import { client } from "./auth.ts";
 
 
@@ -35,6 +36,8 @@ type State = {
   neighbors: Neighbors | undefined;
   /** Exact sound vectors, loaded in the background after `audio`; null until then or if missing. */
   vectors: Vectors | null;
+  /** How each song starts and ends (data/edges.bin), loaded by `loadEdges`; null until then or if missing. */
+  edges: Edges | null;
   /** Per-playlist sound classifiers (data/classifier.json); undefined until trained. */
   classifier: SoundClassifier | undefined;
   /** What songs are about (data/themes.json), loaded in the background; null until then or if missing. */
@@ -59,6 +62,8 @@ type State = {
   pendingWrites: number;
 
   setVectors: (vectors: Vectors) => void;
+  /** Fetches the edge vectors once, for the Build tab; without them, handoffs use whole songs. */
+  loadEdges: () => void;
   setThemes: (data: ThemeData) => void;
   setLanguages: (languages: Languages) => void;
   /** Takes freshly trained classifiers and re-ranks the queue. */
@@ -74,8 +79,11 @@ type State = {
   dropFromShelf: (playlistId: string) => void;
   /** Creates a private Spotify playlist, adds it to the library, and checks it for the current song. */
   createPlaylist: (name: string) => Promise<void>;
-  /** Saves these songs, in order, as a new private playlist that stays out of sorting. */
-  saveBridge: (name: string, trackIds: string[]) => void;
+  /**
+   * Saves these songs, in order, as a private playlist that stays out of sorting: a new one, or `playlistId`
+   * renamed and refilled. `onSaved` gets the playlist's id once Spotify has it.
+   */
+  saveList: (name: string, trackIds: string[], playlistId?: string, onSaved?: (id: string) => void) => void;
   /** Takes freshly synced data, keeping sorts Spotify doesn't show yet. */
   replaceLibrary: (lib: Library) => void;
   setOrder: (order: Order) => void;
@@ -150,6 +158,7 @@ async function saveLedger(ledger: LedgerEntry[]) {
 }
 
 let writes: Promise<void> = Promise.resolve();
+let edgesRequested = false;
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 
 /** Persists the library to data/library.json (debounced). */
@@ -219,6 +228,7 @@ export const useApp = create<State>()((set, get) => {
     audio: null,
     neighbors: undefined,
     vectors: null,
+    edges: null,
     classifier: undefined,
     themes: null,
     languages: null,
@@ -236,6 +246,19 @@ export const useApp = create<State>()((set, get) => {
     pendingWrites: 0,
 
     setVectors: (vectors) => set({ vectors }),
+
+    loadEdges: () => {
+      if (edgesRequested) return;
+      edgesRequested = true;
+      fetch("/api/edges")
+        .then((res) => (res.ok ? res.arrayBuffer() : null))
+        .then((buf) => {
+          const edges = buf && decodeVectors(buf);
+          // Two rows per song of audio.json; a mismatch means one was rebuilt without the other.
+          if (edges && edges.scale.length === 2 * (get().audio?.ids.length ?? -1)) set({ edges });
+        })
+        .catch(console.error);
+    },
 
     setThemes: (data) => set({ themes: themeIndex(data) }),
 
@@ -323,14 +346,21 @@ export const useApp = create<State>()((set, get) => {
       }
     },
 
-    saveBridge: (name, trackIds) =>
+    saveList: (name, trackIds, playlistId, onSaved) =>
       write(`Saving "${name}"`, async () => {
-        const created = await createPlaylist(client, name);
-        await addToPlaylist(client, created.id, trackIds);
+        let id = playlistId;
+        if (id) {
+          await client.request("PUT", `/playlists/${id}`, { name });
+          await replacePlaylist(client, id, trackIds);
+        } else {
+          id = (await createPlaylist(client, name)).id;
+          await addToPlaylist(client, id, trackIds);
+        }
         // Hidden so the next resync doesn't make a listening list into a sorting suggestion.
-        const hidden = [...new Set([...get().hidden, created.id])];
+        const hidden = [...new Set([...get().hidden, id])];
         set({ hidden });
         await fetch("/api/hidden", { method: "PUT", body: JSON.stringify(hidden) });
+        onSaved?.(id);
       }),
 
     replaceLibrary: (fresh) => {

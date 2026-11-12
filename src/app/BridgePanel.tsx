@@ -14,7 +14,7 @@ const MAX_LENGTH = 40;
 const ADVANCE_EARLY_MS = 300;
 
 export function BridgePanel({ bridge, onMark }: { bridge: Bridge; onMark: (id: string | null) => void }) {
-  const { lib, audio, vectors, saveBridge } = useApp();
+  const { lib, audio, vectors, saveList } = useApp();
   const player = usePlayer();
   const [listening, setListening] = useState(false); // playing through the list, rather than one song
   const [savedAs, setSavedAs] = useState<string | null>(null);
@@ -85,7 +85,7 @@ export function BridgePanel({ bridge, onMark }: { bridge: Bridge; onMark: (id: s
               disabled={savedAs === name}
               title="Creates a private playlist, hidden from sorting suggestions"
               onClick={() => {
-                saveBridge(name, ids);
+                saveList(name, ids);
                 setSavedAs(name);
               }}
             >
