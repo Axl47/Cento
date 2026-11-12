@@ -12,7 +12,7 @@ import { closeTo, topArtists, traits, type TraitData } from "../core/traits.ts";
 import { usePlayer } from "./player.ts";
 import { useSets } from "./sets.ts";
 import { useApp } from "./store.ts";
-import { groupsOf, replaceGroup, updateGroup, useWorkshop, type By, type Group, type Split } from "./workshop.ts";
+import { groupsOf, pruned, replaceGroup, signature, updateGroup, useWorkshop, type By, type Group, type Split } from "./workshop.ts";
 
 const SELECTED_KEY = "playlists-tab-selected";
 const KS = [2, 3, 4, 5, 6] as const;
@@ -239,6 +239,11 @@ function SplitPane({
       change(playlist.id, () => ({ by, k, groups: groupsOf(groups), unplaced }));
     }
   };
+  // Songs taken out of the playlist since it was split (in Doesn't fit, or on Spotify) leave their groups too.
+  useEffect(() => {
+    const next = split && pruned(split, new Set(playlist.trackIds));
+    if (next && next !== split) change(playlist.id, () => next);
+  }, [split, playlist.trackIds, playlist.id, change]);
   useEffect(() => {
     if (!split && sound && big) regroup("sound", DEFAULT_K);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -272,8 +277,13 @@ function SplitPane({
             fallback={defaults[i] ?? playlist.name}
             data={data}
             onEdit={(fn) => edit((s) => updateGroup(s, g.key, fn))}
-            onSplit={() => edit((s) => replaceGroup(s, g.key, soundGroups(sound, g.ids, 2).groups))}
-            onSaved={() => change(playlist.id, (s) => updateGroup(s!, g.key, () => ({ saved: true })))}
+            onSplit={() =>
+              edit((s) => {
+                const { groups, unplaced } = soundGroups(sound, g.ids, 2);
+                // Songs with no sound yet (a group made by lyrics can hold some) stay with the first half.
+                return groups.length < 2 ? s : replaceGroup(s, g.key, groups.map((ids, i) => (i === 0 ? [...ids, ...unplaced] : ids)));
+              })
+            }
             onOpenBuild={onOpenBuild}
           />
         ))}
@@ -296,7 +306,6 @@ function GroupCard({
   data,
   onEdit,
   onSplit,
-  onSaved,
   onOpenBuild,
 }: {
   group: Group;
@@ -307,9 +316,9 @@ function GroupCard({
   /** The name shown until one is typed. */
   fallback: string;
   data: TraitData;
+  /** Changes the group as it is when the change lands, so it's safe to call after a Spotify write. */
   onEdit: (fn: (g: Group) => Partial<Group>) => void;
   onSplit: () => void;
-  onSaved: () => void;
   onOpenBuild: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -317,7 +326,9 @@ function GroupCard({
   const artists = useMemo(() => topArtists(data.lib, group.ids, 3), [data.lib, group.ids]);
   const name = group.name ?? fallback;
   const songs = expanded ? group.ids : group.ids.slice(0, CARD_SONGS);
-  const saving = group.saving && !group.saved && pendingWrites > 0;
+  const saveName = name.trim() || fallback;
+  const saved = group.savedAs === signature(saveName, group.ids);
+  const saving = group.saving && pendingWrites > 0;
 
   return (
     <div className="flex min-w-0 flex-col gap-2 rounded-xl bg-zinc-900 p-3">
@@ -380,13 +391,17 @@ function GroupCard({
         </button>
         <button
           className="btn ml-auto border-transparent bg-commit px-2 py-0.5 text-xs font-semibold text-zinc-950 hover:bg-commit/85"
-          disabled={group.saved || saving}
+          disabled={saved || saving}
           onClick={() => {
+            const sent = signature(saveName, group.ids);
             onEdit(() => ({ saving: true }));
-            useApp.getState().savePlaylist(name.trim() || fallback, group.ids, onSaved);
+            useApp.getState().savePlaylist(saveName, group.ids, group.playlistId, {
+              created: (playlistId) => onEdit(() => ({ playlistId })),
+              saved: () => onEdit(() => ({ saving: false, savedAs: sent })),
+            });
           }}
         >
-          {group.saved ? "Saved" : saving ? "Saving…" : "Save as playlist"}
+          {saving ? "Saving…" : saved ? "Saved" : group.savedAs ? "Update playlist" : "Save as playlist"}
         </button>
       </div>
     </div>
@@ -468,41 +483,34 @@ function MissingPane({ playlist, all, evidence, memberOf, colors }: RowsProps & 
   );
 }
 
-/** The playlist's songs least likely to belong; each can be removed from it, and put back until you leave. */
+/** The playlist's songs least likely to belong; each can be removed from it, and put back until you leave the pane. */
 function DoubtedPane({ playlist, evidence, memberOf, colors }: RowsProps) {
   const lib = useApp((s) => s.lib)!;
-  const [removed, setRemoved] = useState<ReadonlySet<string>>(new Set());
   const [limit, setLimit] = useState(PAGE);
-  // The songs as the pane opened, so removed rows keep their place.
+  // The songs as the pane opened, so removed rows keep their place. A row is removed while the playlist doesn't
+  // hold its song, so a removal Spotify refused shows as not removed again.
   const [ids] = useState(playlist.trackIds);
+  const members = useMemo(() => new Set(playlist.trackIds), [playlist.trackIds]);
   const found = useMemo(() => doubted(evidence, { id: playlist.id, trackIds: ids }), [evidence, playlist.id, ids]);
   const { addToPlaylist, removeFromPlaylist } = useApp.getState();
-
-  const mark = (id: string, gone: boolean) =>
-    setRemoved((r) => {
-      const next = new Set(r);
-      if (gone) next.add(id);
-      else next.delete(id);
-      return next;
-    });
 
   return (
     <div className="rounded-xl bg-zinc-900 px-3 py-2">
       <Rows
         scored={found.slice(0, limit)}
         lib={lib}
-        dimmed={removed}
+        dimmed={(id) => !members.has(id)}
         render={(s, t) => (
           <>
             <SongButton track={t} />
             <PlaylistChips of={memberOf.get(s.id)} except={playlist.id} colors={colors} />
             {!evidence.byRule && <ScoreBar score={s.score} />}
-            {removed.has(s.id) ? (
-              <button className="btn w-20 px-2 py-0.5 text-xs opacity-100" onClick={() => (addToPlaylist(playlist.id, [s.id]), mark(s.id, false))}>
+            {!members.has(s.id) ? (
+              <button className="btn w-20 px-2 py-0.5 text-xs opacity-100" onClick={() => addToPlaylist(playlist.id, [s.id])}>
                 Undo
               </button>
             ) : (
-              <button className="btn w-20 px-2 py-0.5 text-xs" onClick={() => (removeFromPlaylist(playlist.id, [s.id]), mark(s.id, true))}>
+              <button className="btn w-20 px-2 py-0.5 text-xs" onClick={() => removeFromPlaylist(playlist.id, [s.id])}>
                 Remove
               </button>
             )}
@@ -524,7 +532,7 @@ function Rows({
 }: {
   scored: Scored[];
   lib: { tracks: Record<string, Track> };
-  dimmed?: ReadonlySet<string>;
+  dimmed?: (id: string) => boolean;
   render: (s: Scored, t: Track) => React.ReactNode;
 }) {
   return (
@@ -532,7 +540,7 @@ function Rows({
       {scored.map((s) => {
         const t = lib.tracks[s.id];
         return t ? (
-          <li key={s.id} className={`flex items-center gap-2.5 py-1 ${dimmed?.has(s.id) ? "[&>*:not(:last-child)]:opacity-40" : ""}`}>
+          <li key={s.id} className={`flex items-center gap-2.5 py-1 ${dimmed?.(s.id) ? "[&>*:not(:last-child)]:opacity-40" : ""}`}>
             {render(s, t)}
           </li>
         ) : null;

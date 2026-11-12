@@ -13,8 +13,14 @@ export type Group = {
   theme?: string;
   /** Set when Save is clicked; the button shows Saving… while writes are pending. */
   saving?: boolean;
-  saved?: boolean;
+  /** The playlist made from the group, once Spotify has created it. */
+  playlistId?: string;
+  /** The `signature` of what that playlist was last filled with; edits since then can be saved again. */
+  savedAs?: string;
 };
+
+/** A name and songs as one string, to tell whether a group still matches what was saved. */
+export const signature = (name: string, ids: string[]) => [name, ...ids].join("\n");
 
 export type By = "sound" | "lyrics";
 
@@ -31,6 +37,13 @@ export const updateGroup = (split: Split, key: number, fn: (g: Group) => Partial
   ...split,
   groups: split.groups.map((g) => (g.key === key ? { ...g, ...fn(g) } : g)).filter((g) => g.ids.length > 0),
 });
+
+/** `split` without the songs that have left the playlist (`members` is what it holds now); the same object when none have. */
+export const pruned = (split: Split, members: ReadonlySet<string>): Split => {
+  const kept = (ids: string[]) => ids.filter((id) => members.has(id));
+  if ([...split.groups.flatMap((g) => g.ids), ...split.unplaced].every((id) => members.has(id))) return split;
+  return { ...split, groups: split.groups.map((g) => ({ ...g, ids: kept(g.ids) })).filter((g) => g.ids.length > 0), unplaced: kept(split.unplaced) };
+};
 
 /** `split` with group `key` replaced, in its place, by fresh groups for `parts`. */
 export const replaceGroup = (split: Split, key: number, parts: string[][]): Split => ({

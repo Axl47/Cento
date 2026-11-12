@@ -94,11 +94,21 @@ type State = {
    * renamed and refilled. `onSaved` gets the playlist's id once Spotify has it.
    */
   saveList: (name: string, trackIds: string[], playlistId?: string, onSaved?: (id: string) => void) => void;
-  /** Saves these songs, in order, as a new private playlist that counts for sorting like any other; `onSaved` runs once Spotify has it. */
-  savePlaylist: (name: string, trackIds: string[], onSaved?: () => void) => void;
-  /** Adds songs to one of your playlists, here and on Spotify. */
+  /**
+   * Saves these songs, in order, as a private playlist that counts for sorting like any other. Without `playlistId`
+   * it creates one and reports its id through `created` before filling it, so a failed upload can be retried into
+   * the same playlist; with one, that playlist is renamed and refilled. `saved` runs once Spotify has all of it.
+   */
+  savePlaylist: (name: string, trackIds: string[], playlistId: string | undefined, on: { created: (id: string) => void; saved: () => void }) => void;
+  /**
+   * Adds songs to one of your playlists, here and on Spotify, skipping ones already in it. Recorded like a sort, so
+   * a resync that doesn't show them yet keeps them; if Spotify refuses, they're taken back out.
+   */
   addToPlaylist: (playlistId: string, trackIds: string[]) => void;
-  /** Takes songs out of one of your playlists, here and on Spotify; they stay in your other playlists. */
+  /**
+   * Takes songs out of one of your playlists, here and on Spotify; they stay in your other playlists. If Spotify
+   * refuses, they're put back.
+   */
   removeFromPlaylist: (playlistId: string, trackIds: string[]) => void;
   /** Takes freshly synced data, keeping sorts Spotify doesn't show yet. */
   replaceLibrary: (lib: Library) => void;
@@ -197,6 +207,21 @@ function edit(lib: Library, fn: (draft: { playlists: Map<string, string[]>; like
     liked: draft.liked,
     playlists: lib.playlists.map((p) => ({ ...p, trackIds: playlists.get(p.id) ?? p.trackIds })),
   };
+}
+
+/** The distinct songs of `trackIds` that are (`inIt`) or aren't in the playlist. */
+function membersOf(lib: Library | null, playlistId: string, trackIds: string[], inIt: boolean) {
+  const members = new Set(lib?.playlists.find((p) => p.id === playlistId)?.trackIds);
+  return [...new Set(trackIds)].filter((id) => members.has(id) === inIt);
+}
+
+/** `lib` with these songs in the playlist (appended, unless already there) or out of it. */
+function withMembers(lib: Library, playlistId: string, trackIds: string[], inIt: boolean) {
+  const moved = new Set(trackIds);
+  return edit(lib, (d) => {
+    const rest = (d.playlists.get(playlistId) ?? []).filter((id) => !moved.has(id) || inIt);
+    d.playlists.set(playlistId, inIt ? [...rest, ...trackIds.filter((id) => !rest.includes(id))] : rest);
+  });
 }
 
 export const useApp = create<State>()((set, get) => {
@@ -401,28 +426,65 @@ export const useApp = create<State>()((set, get) => {
         onSaved?.(id);
       }),
 
-    savePlaylist: (name, trackIds, onSaved) =>
+    savePlaylist: (name, trackIds, playlistId, on) =>
       write(`Saving "${name}"`, async () => {
-        const { id } = await createPlaylist(client, name);
-        await addToPlaylist(client, id, trackIds);
+        let id = playlistId;
+        if (id) await client.request("PUT", `/playlists/${id}`, { name });
+        else {
+          id = (await createPlaylist(client, name)).id;
+          on.created(id);
+        }
+        await replacePlaylist(client, id, trackIds);
         const lib = get().lib;
-        if (lib) setLib({ ...lib, playlists: [...lib.playlists, { id, name, imageUrl: null, trackIds }] }, true);
-        onSaved?.();
+        if (lib) {
+          const known = lib.playlists.some((p) => p.id === id);
+          const playlists = known ? lib.playlists.map((p) => (p.id === id ? { ...p, name, trackIds } : p)) : [...lib.playlists, { id, name, imageUrl: null, trackIds }];
+          setLib({ ...lib, playlists }, true);
+        }
+        on.saved();
       }),
 
     addToPlaylist: (playlistId, trackIds) => {
       const lib = get().lib;
-      if (!lib || trackIds.length === 0) return;
-      setLib(edit(lib, (d) => d.playlists.set(playlistId, [...(d.playlists.get(playlistId) ?? []), ...trackIds])), true);
-      write("Adding to playlist", () => addToPlaylist(client, playlistId, trackIds));
+      const fresh = membersOf(lib, playlistId, trackIds, false);
+      if (!lib || fresh.length === 0) return;
+      const at = new Date().toISOString();
+      const entries = fresh.map((trackId): LedgerEntry => ({ trackId, added: [playlistId], unliked: false, at }));
+      setLedger([...get().ledger, ...entries]);
+      setLib(applyLedger(lib, entries), true);
+      write("Adding to playlist", async () => {
+        try {
+          await addToPlaylist(client, playlistId, fresh);
+        } catch (e) {
+          setLedger(get().ledger.filter((entry) => !entries.includes(entry)));
+          const now = get().lib;
+          if (now) setLib(withMembers(now, playlistId, fresh, false), true);
+          throw e;
+        }
+      });
     },
 
     removeFromPlaylist: (playlistId, trackIds) => {
       const lib = get().lib;
-      if (!lib || trackIds.length === 0) return;
-      const gone = new Set(trackIds);
-      setLib(edit(lib, (d) => d.playlists.set(playlistId, (d.playlists.get(playlistId) ?? []).filter((id) => !gone.has(id)))), true);
-      write("Removing from playlist", () => removeFromPlaylist(client, playlistId, trackIds));
+      const present = membersOf(lib, playlistId, trackIds, true);
+      if (!lib || present.length === 0) return;
+      // A sort or add that no resync has confirmed yet would otherwise put them back.
+      const gone = new Set(present);
+      setLedger(
+        get()
+          .ledger.map((e) => (gone.has(e.trackId) ? { ...e, added: e.added.filter((p) => p !== playlistId) } : e))
+          .filter((e) => e.added.length > 0 || e.unliked),
+      );
+      setLib(withMembers(lib, playlistId, present, false), true);
+      write("Removing from playlist", async () => {
+        try {
+          await removeFromPlaylist(client, playlistId, present);
+        } catch (e) {
+          const now = get().lib;
+          if (now) setLib(withMembers(now, playlistId, present, true), true);
+          throw e;
+        }
+      });
     },
 
     replaceLibrary: (fresh) => {
