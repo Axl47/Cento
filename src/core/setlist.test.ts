@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { encodeVectors, decodeVectors, type AudioIndex } from "./audio.ts";
-import { additions, handoff, misfits, smoothestOrder, type Sound } from "./setlist.ts";
+import { additions, fillers, handoff, misfits, smoothestOrder, twoGroups, type Sound } from "./setlist.ts";
 
 const angle = (deg: number) => Float32Array.from([Math.cos((deg * Math.PI) / 180), Math.sin((deg * Math.PI) / 180), 0]);
 const decode = (rows: Float32Array[]) => {
@@ -28,6 +28,20 @@ test("a set too big to try every order is still put in its smooth order", () => 
   forwardOrBack(got, [...degrees].sort((a, b) => a - b).map(String));
 });
 
+test("a pinned song keeps its slot and the rest are ordered smoothly around it", () => {
+  assert.deepEqual(smoothestOrder(sound([0, 20, 40, 60, 80]), ["80", "0", "40", "20", "60"], noArtist, new Set(["80"])), ["80", "60", "40", "20", "0"]);
+});
+
+test("pinned songs keep their slots in sets too big to try every order", () => {
+  const degrees = Array.from({ length: 24 }, (_, i) => (i * 7 * 5) % 120);
+  const ids = degrees.map(String);
+  const got = smoothestOrder(sound(degrees), ids, noArtist, new Set([ids[3]!, ids[17]!]));
+
+  assert.equal(got[3], ids[3]);
+  assert.equal(got[17], ids[17]);
+  assert.deepEqual([...got].sort(), [...ids].sort());
+});
+
 test("the same artist isn't placed twice in a row when another order is nearly as smooth", () => {
   const artist = (id: string) => (id === "0" || id === "2" ? "x" : id);
   const got = smoothestOrder(sound([0, 2, 4, 6]), ["0", "2", "4", "6"], artist);
@@ -52,4 +66,16 @@ test("additions are the nearby songs closest to the set, leaving out its own son
   const s = sound([0, 10, 20, 40, 5, 10.5], [[1, 2, 4, 5], [0, 2, 3, 4, 5], [], [], [], []]);
 
   assert.deepEqual(additions(s, ["0", "10"], (id) => id !== "5", 5).map((a) => a.id), ["20", "40"]);
+});
+
+test("a set of two sounds splits into them, the bigger group first, each in the set's order", () => {
+  const ids = ["85", "0", "10", "80", "5", "15", "90"];
+
+  assert.deepEqual(twoGroups(sound(ids.map(Number)), ids), [["0", "10", "5", "15"], ["85", "80", "90"]]);
+});
+
+test("the song that fills a gap best is the one between its two songs, not another release of either", () => {
+  const s = sound([0, 40, 20, 30, 90, 0.1]);
+
+  assert.deepEqual(fillers(s, "0", "40", ["20", "30", "90", "0.1"], 2).map((f) => f.id), ["20", "30"]);
 });
