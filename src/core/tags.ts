@@ -9,3 +9,21 @@ export type SongTags = {
 };
 
 export type Tags = ReadonlyMap<string, SongTags>;
+
+/** data/tags.json: the genre and mood names once, then per library track id its genres (as indices into `genres`), their probabilities, and a probability per mood. */
+export type TagsFile = {
+  genres: string[];
+  moods: string[];
+  songs: Record<string, [genres: number[], probabilities: number[], moods: number[]]>;
+};
+
+export const decodeTags = (file: TagsFile): Tags =>
+  new Map(
+    Object.entries(file.songs).map(([id, [genres, probabilities, moods]]) => [
+      id,
+      {
+        genres: genres.map((g, i): [string, number] => [file.genres[g]!, probabilities[i]!]),
+        moods: Object.fromEntries(file.moods.map((name, i) => [name, moods[i]!])),
+      },
+    ]),
+  );

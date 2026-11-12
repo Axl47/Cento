@@ -12,6 +12,7 @@ import { themeIndex, type ThemeData, type ThemeIndex } from "../core/themes.ts";
 import { buildModel, prechecked, suggest, type ArtistRules, type Model, type Neighbors } from "../core/suggest.ts";
 import type { Edges } from "../core/setlist.ts";
 import { decodeFeatures, type FeaturesFile, type SongFeatures } from "../core/features.ts";
+import { decodeTags, type Tags, type TagsFile } from "../core/tags.ts";
 import { addToPlaylist, createPlaylist, removeFromPlaylist, replacePlaylist, setLiked } from "../core/spotify.ts";
 import { client } from "./auth.ts";
 
@@ -69,6 +70,10 @@ type State = {
   loadEdges: () => void;
   /** Fetches the song features once, for the Build tab. */
   loadFeatures: () => void;
+  /** Each song's genres and moods (data/tags.json), loaded by `loadTags`; null until then or if missing. */
+  tags: Tags | null;
+  /** Fetches the song tags once. */
+  loadTags: () => void;
   setThemes: (data: ThemeData) => void;
   setLanguages: (languages: Languages) => void;
   /** Takes freshly trained classifiers and re-ranks the queue. */
@@ -165,6 +170,7 @@ async function saveLedger(ledger: LedgerEntry[]) {
 let writes: Promise<void> = Promise.resolve();
 let edgesRequested = false;
 let featuresRequested = false;
+let tagsRequested = false;
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 
 /** Persists the library to data/library.json (debounced). */
@@ -236,6 +242,7 @@ export const useApp = create<State>()((set, get) => {
     vectors: null,
     edges: null,
     features: null,
+    tags: null,
     classifier: undefined,
     themes: null,
     languages: null,
@@ -273,6 +280,15 @@ export const useApp = create<State>()((set, get) => {
       fetch("/api/features")
         .then((res) => (res.ok ? (res.json() as Promise<FeaturesFile>) : null))
         .then((file) => file && set({ features: decodeFeatures(file) }))
+        .catch(console.error);
+    },
+
+    loadTags: () => {
+      if (tagsRequested) return;
+      tagsRequested = true;
+      fetch("/api/tags")
+        .then((res) => (res.ok ? (res.json() as Promise<TagsFile>) : null))
+        .then((file) => file && set({ tags: decodeTags(file) }))
         .catch(console.error);
     },
 
