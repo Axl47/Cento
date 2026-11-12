@@ -1,9 +1,11 @@
 // Build tab: turns a handful of songs into a playlist. The ordered list is the screen: a bar between each two
 // songs shows how smoothly one hands off to the next (click it to hear the seam), songs that don't fit are
-// marked, and rough handoffs offer songs to put in between. Drag to reorder (a dragged song is pinned to its
-// slot), Smooth reorders the rest, ⌘Z undoes. The right column suggests songs to add or shows the set on the map.
+// marked, and rough handoffs say why (tempo, level, key) and offer songs to put in between. Drag to reorder (a
+// dragged song is pinned to its slot), Smooth reorders the rest, ⌘Z undoes. The right column shows the set's
+// energy arc above songs to add or the set on the map.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { sortTargets, primaryPlaylists, type Library, type Track } from "../core/library.ts";
+import { energyArc, handoffReasons, loudnessSpan } from "../core/features.ts";
 import { additions, fillers, handoff, misfits, smoothestOrder, twoGroups, type Sound } from "../core/setlist.ts";
 import { parseSpotifyLinks } from "../core/spotify.ts";
 import { resolveLinks } from "./links.ts";
@@ -40,7 +42,7 @@ const CHIPS = 8;
 const artistNames = (t: Track) => t.artists.map((a) => a.name).join(", ");
 
 export function BuildView({ colors }: { colors: Map<string, string> }) {
-  const { lib, audio, vectors, edges, hidden } = useApp();
+  const { lib, audio, vectors, edges, features, hidden } = useApp();
   const { sets, currentId, change, undo, rename, split } = useSets();
   const current = sets.find((s) => s.id === currentId)!;
   const player = usePlayer();
@@ -54,8 +56,10 @@ export function BuildView({ colors }: { colors: Map<string, string> }) {
   useEffect(() => {
     if (audio) useApp.getState().loadEdges();
   }, [audio]);
+  useEffect(() => useApp.getState().loadFeatures(), []);
 
   const onMap = useMemo(() => new Set(audio?.ids ?? []), [audio]);
+  const span = useMemo(() => (features ? loudnessSpan(features) : null), [features]);
   const sound = useMemo((): Sound | null => (audio && vectors ? { index: audio, vectors, edges: edges ?? undefined } : null), [audio, vectors, edges]);
   const primary = useMemo(() => (lib ? primaryPlaylists(sortTargets(lib, hidden)) : new Map<string, string>()), [lib, hidden]);
   // One release per song, preferring one on the map: what search, suggestions and gap fillers draw from.
@@ -219,6 +223,8 @@ export function BuildView({ colors }: { colors: Map<string, string> }) {
             const prev = ids[i - 1];
             const misfit = !groups && flagged.includes(id);
             const pinned = current.pinned.includes(id);
+            const after = features?.get(id);
+            const before = prev && features?.get(prev);
             return (
               <li
                 key={id}
@@ -251,6 +257,7 @@ export function BuildView({ colors }: { colors: Map<string, string> }) {
                     baseline={audio?.baseline ?? 0}
                     playing={seam.seam?.from.id === prev && seam.seam.to.id === id}
                     open={gap === prev}
+                    reasons={before && after ? handoffReasons(before, after) : []}
                     onPlay={() => {
                       const from = trackOf(prev);
                       if (from) seam.start(from, track);
@@ -277,6 +284,11 @@ export function BuildView({ colors }: { colors: Map<string, string> }) {
                     {track.name} <span className="text-xs text-zinc-400">{artistNames(track)}</span>
                     {misfit && <span className="text-xs" style={{ color: BAD }}> · doesn't fit</span>}
                   </button>
+                  {after?.steady && after.bpm && (
+                    <span title="BPM" className="shrink-0 text-xs text-zinc-500">
+                      {Math.round(after.bpm)}
+                    </span>
+                  )}
                   {misfit ? (
                     <button className="btn px-2 py-0.5 text-xs" onClick={() => remove(id)}>
                       Remove
@@ -314,6 +326,7 @@ export function BuildView({ colors }: { colors: Map<string, string> }) {
             onSplit={() => split(groups[1])}
           />
         )}
+        {features && span && <EnergyArc ids={ids} energy={energyArc(ids, features, span)} nameOf={(id) => trackOf(id)?.name ?? ""} marked={mark} />}
         {!audio ? null : !vectors ? (
           <p className="text-sm text-zinc-500">Loading the sound vectors…</p>
         ) : (
@@ -355,7 +368,23 @@ const DropLine = ({ edge }: { edge: "top" | "bottom" }) => (
 );
 
 /** The bar between two songs: how smooth the handoff is. Click to hear it; a rough one can open songs to put in between. */
-function Joint({ value, baseline, playing, open, onPlay, onRough }: { value: number; baseline: number; playing: boolean; open: boolean; onPlay: () => void; onRough: () => void }) {
+function Joint({
+  value,
+  baseline,
+  playing,
+  open,
+  reasons,
+  onPlay,
+  onRough,
+}: {
+  value: number;
+  baseline: number;
+  playing: boolean;
+  open: boolean;
+  reasons: string[];
+  onPlay: () => void;
+  onRough: () => void;
+}) {
   const kind = value >= SMOOTH ? "smooth" : value < ROUGH ? "rough" : "middling";
   const share = Math.min(Math.max((value - baseline) / (1 - baseline), 0), 1);
   return (
@@ -369,6 +398,41 @@ function Joint({ value, baseline, playing, open, onPlay, onRough }: { value: num
           rough
         </button>
       )}
+      {kind === "rough" && reasons.length > 0 && <span className="text-zinc-500">· {reasons.join(" · ")}</span>}
+    </div>
+  );
+}
+
+/** Pixels above and below the arc's line, so the top and bottom dots aren't clipped. */
+const ARC_PAD = 5;
+const ARC_HEIGHT = 54;
+
+/** The set's loudness song by song (null leaves a gap), the song hovered in the list enlarged; hidden until three songs have it. */
+function EnergyArc({ ids, energy, nameOf, marked }: { ids: string[]; energy: (number | null)[]; nameOf: (id: string) => string; marked: string | null }) {
+  if (energy.filter((e) => e !== null).length < 3) return null;
+  const x = (i: number) => `${ids.length > 1 ? (i / (ids.length - 1)) * 100 : 50}%`;
+  const y = (e: number) => ARC_PAD + (1 - e) * (ARC_HEIGHT - 2 * ARC_PAD);
+  return (
+    <div className="space-y-2 rounded-xl bg-zinc-900 p-3">
+      <h4 className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">Energy</h4>
+      <div className="px-1.5">
+        <svg width="100%" height={ARC_HEIGHT} className="overflow-visible">
+          {energy.map((e, i) => {
+            const next = energy[i + 1];
+            return e !== null && next != null ? <line key={i} x1={x(i)} y1={y(e)} x2={x(i + 1)} y2={y(next)} stroke="#52525b" strokeWidth={1.5} /> : null;
+          })}
+          {energy.map((e, i) => {
+            const id = ids[i]!;
+            return e === null ? null : (
+              <g key={id}>
+                <title>{nameOf(id)}</title>
+                <circle cx={x(i)} cy={y(e)} r={8} fill="transparent" />
+                <circle cx={x(i)} cy={y(e)} r={marked === id ? 4 : 2.5} fill={marked === id ? "#fafafa" : "#a1a1aa"} />
+              </g>
+            );
+          })}
+        </svg>
+      </div>
     </div>
   );
 }

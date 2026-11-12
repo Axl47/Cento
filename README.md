@@ -87,7 +87,9 @@ track-URI play request is accepted but loads nothing on this account.
   ≥ 0.65, red under 0.55, scaled from the random-pair baseline). Click it to hear the last 15 s of one and the first
   15 s of the next, or click a song to play it (`Space` play/pause). **Smooth** reorders for the best handoffs;
   dragging a song pins it (●, click to toggle) and Smooth keeps pinned songs in their slots. `rough` on a handoff
-  offers songs that would bridge it. Songs that don't fit are marked with **Remove**; when more than a quarter
+  offers songs that would bridge it, and says why when it can: a tempo jump (half and double time don't count), the next
+  song starting much louder or quieter than the last one ended, or clashing keys. Songs with a steady beat show their
+  BPM, and an **Energy** card plots each song's loudness in set order. Songs that don't fit are marked with **Remove**; when more than a quarter
   don't, **Two groups** offers to keep the first group or split the second into its own set. The right column
   suggests songs to add, or shows the set as a route on the map. `⌘Z` undoes. Sets are kept in this browser;
   **Save to Spotify** creates a private playlist in this order that stays out of sorting, and later updates it.
