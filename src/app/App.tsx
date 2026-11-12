@@ -85,7 +85,8 @@ export function App() {
       if (e.target instanceof HTMLInputElement || e.metaKey || e.ctrlKey) return;
       const key = e.key.toLowerCase();
       if (key === "m") setTab((t) => (t === "map" ? "sort" : "map"));
-      // On the map, B is "Bridge from here".
+      // On the map, B is "Bridge from here". Build opens with its input focused, which must not receive the key.
+      if (key === "b") e.preventDefault();
       if (key === "b") setTab((t) => (t === "map" ? t : t === "build" ? "sort" : "build"));
       if (key === "l") setTab((t) => (t === "lyrics" ? "sort" : "lyrics"));
       if (key === "t") setTab((t) => (t === "themes" ? "sort" : "themes"));

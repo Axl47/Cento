@@ -361,7 +361,7 @@ function Joint({ value, baseline, playing, open, onPlay, onRough }: { value: num
   return (
     <div className={`flex items-center gap-2 pl-[38px] text-[11px] ${kind === "rough" ? "h-6" : "h-4"}`}>
       <button onClick={onPlay} aria-label="Play the handoff" title="Play the handoff" className="group flex h-full items-center gap-2">
-        <span className="block h-[3px] rounded-full" style={{ width: Math.max(share * BAR_PX, 3), background: BAR_COLORS[kind] }} />
+        <span className="block h-[3px] rounded-full" style={{ width: Math.max(share * BAR_PX, 16), background: BAR_COLORS[kind] }} />
         <span className={`text-[9px] ${playing ? "text-zinc-100" : "text-zinc-400 opacity-0 group-hover:opacity-100"}`}>▶</span>
       </button>
       {kind === "rough" && (
