@@ -13,9 +13,12 @@ export type TraitData = {
 };
 
 const MAX_TRAITS = 5;
-/** A genre or mood has to be this much more likely in the group than around it to describe it. */
-const LIFT = 0.08;
+/** A genre has to be this much more likely in the group than in the rest to describe it; a mood, which varies more, this much. */
+const GENRE_LIFT = 0.06;
+const MOOD_LIFT = 0.15;
 const GENRES = 2;
+/** Genres the tagger falls back on for songs it can't place, so they say nothing about a group. */
+const CATCH_ALL = new Set(["Cloud Rap", "K-pop"]);
 /** The middle tempo has to differ by this share to be worth saying. */
 const TEMPO_GAP = 0.1;
 /** Loudness has to differ by this many LU. */
@@ -41,11 +44,11 @@ function tagMeans(ids: string[], tagsOf: (id: string) => Iterable<[string, numbe
 }
 
 /** Tags clearly likelier in `ids` than in `among`, the biggest difference first. */
-function lifted(ids: string[], among: string[], tagsOf: (id: string) => Iterable<[string, number]> | undefined) {
+function lifted(ids: string[], among: string[], least: number, tagsOf: (id: string) => Iterable<[string, number]> | undefined) {
   const around = tagMeans(among, tagsOf);
   return [...tagMeans(ids, tagsOf)]
     .map(([name, p]) => ({ name, lift: p - (around.get(name) ?? 0) }))
-    .filter((t) => t.lift >= LIFT)
+    .filter((t) => t.lift >= least)
     .sort((a, b) => b.lift - a.lift)
     .map((t) => t.name);
 }
@@ -60,12 +63,13 @@ export function traits({ lib, features, languages, tags }: TraitData, ids: strin
   if (!among.length) return [];
   const out: string[] = [];
   if (tags) {
-    out.push(...lifted(ids, among, (id) => tags.get(id)?.genres).slice(0, GENRES));
+    const genres = (id: string) => tags.get(id)?.genres.filter(([name]) => !CATCH_ALL.has(name));
+    out.push(...lifted(ids, among, GENRE_LIFT, genres).slice(0, GENRES));
     const moods = (id: string) => {
       const song = tags.get(id);
       return song && Object.entries(song.moods);
     };
-    out.push(...lifted(ids, among, moods).slice(0, 1));
+    out.push(...lifted(ids, among, MOOD_LIFT, moods).slice(0, 1));
   }
   if (features) {
     const of = (list: string[]) => list.flatMap((id) => features.get(id) ?? []);

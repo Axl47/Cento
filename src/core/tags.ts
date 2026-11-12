@@ -1,6 +1,12 @@
 // What each song sounds like in words: genres and moods, from Essentia's pretrained taggers run on the engine's
 // sound vectors (Stemma's bench/tags.py), condensed by `pnpm tags` into data/tags.json.
 
+/**
+ * The moods kept from the engine, by the name the app shows. Left out on purpose: "happy" (the Happy playlist scores
+ * the same as the library average), "danceable" (nearly every song), "bright" and "tonal" (noise on this library).
+ */
+export const MOODS = ["aggressive", "relaxed", "sad", "party", "acoustic", "electronic"] as const;
+
 export type SongTags = {
   /** The song's likeliest genres, likeliest first, each with its probability. */
   genres: [name: string, p: number][];
