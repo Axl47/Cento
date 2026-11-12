@@ -66,8 +66,11 @@ export const encodeFeatures = (songs: Map<string, SongFeatures>): FeaturesFile =
 export const decodeFeatures = (file: FeaturesFile): Map<string, SongFeatures> =>
   new Map(Object.entries(file).map(([id, row]) => [id, Object.fromEntries(FIELDS.map((k, i) => [k, row[i]])) as SongFeatures]));
 
-/** A tempo change beyond this share (after allowing half/double time) is heard as a jump. */
-export const TEMPO_JUMP = 0.08;
+/**
+ * A tempo change beyond this share (after allowing half/double time) counts as a jump. With half and double time
+ * equal, tempos can differ by at most 41%, so a tight limit flags most pairs: 8% fires on three in four, this on about a third.
+ */
+export const TEMPO_JUMP = 0.2;
 /** The next song starting this many LU louder or quieter than the last one ended: about twice or half as loud. */
 export const ENERGY_JUMP = 10;
 /** Keys are trusted above this strength. */
