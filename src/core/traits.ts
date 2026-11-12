@@ -116,8 +116,9 @@ export function topArtists(lib: Library, ids: string[], limit: number): string[]
   return [...counts].sort((a, b) => b[1] - a[1]).slice(0, limit).map(([name]) => name);
 }
 
-/** A group is close to another playlist when that playlist holds this share of it, and this many times its share of the parent. */
+/** A group is close to another playlist when that playlist holds this share of it (and at least this many of its songs), and this many times its share of the parent. */
 const CLOSE_SHARE = 0.2;
+const CLOSE_SONGS = 3;
 const CLOSE_LIFT = 2;
 
 /**
@@ -138,7 +139,7 @@ export function closeTo(ids: string[], all: string[], others: Pick<Playlist, "id
       }
       return { id: p.id, count, share: count / group.size, base: inParent / parent.size };
     })
-    .filter((p) => p.share >= CLOSE_SHARE && p.share >= CLOSE_LIFT * p.base)
+    .filter((p) => p.count >= CLOSE_SONGS && p.share >= CLOSE_SHARE && p.share >= CLOSE_LIFT * p.base)
     .sort((a, b) => b.share - a.share)
     .slice(0, limit)
     .map(({ id, count }) => ({ id, count }));
