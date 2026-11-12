@@ -1,9 +1,9 @@
 // What sets a group of songs apart from the rest of a bigger group it belongs to (a playlist within the library, or part of a
 // playlist within the playlist), as a few short words: its genres, mood, tempo, loudness, vocals and language.
-import type { SongFeatures } from "./features.ts";
+import { KEY_STRENGTH, type SongFeatures } from "./features.ts";
 import type { Languages } from "./languages.ts";
 import type { Library } from "./library.ts";
-import type { Tags } from "./tags.ts";
+import type { SongTags, Tags } from "./tags.ts";
 
 export type TraitData = {
   lib: Library;
@@ -109,4 +109,18 @@ export function topArtists(lib: Library, ids: string[], limit: number): string[]
   const counts = new Map<string, number>();
   for (const id of ids) for (const artist of lib.tracks[id]?.artists ?? []) counts.set(artist.name, (counts.get(artist.name) ?? 0) + 1);
   return [...counts].sort((a, b) => b[1] - a[1]).slice(0, limit).map(([name]) => name);
+}
+
+/** A single song's genre has to be at least this likely to be named, and a mood this likely. */
+const SONG_GENRE = 0.15;
+const SONG_MOOD = 0.75;
+
+/** One song in a few words: its likeliest genres, its strongest mood, its tempo when the beat is steady, and its key. */
+export function songWords(tags: SongTags | undefined, features: SongFeatures | undefined): string[] {
+  const out = (tags?.genres ?? []).filter(([name, p]) => p >= SONG_GENRE && !CATCH_ALL.has(name)).slice(0, GENRES).map(([name]) => name);
+  const mood = Object.entries(tags?.moods ?? {}).sort((a, b) => b[1] - a[1])[0];
+  if (mood && mood[1] >= SONG_MOOD) out.push(mood[0]);
+  if (features?.steady && features.bpm) out.push(`${Math.round(features.bpm)} BPM`);
+  if (features && features.keyStrength >= KEY_STRENGTH) out.push(features.key);
+  return out;
 }

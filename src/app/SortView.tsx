@@ -7,6 +7,7 @@ import { sortTargets, type Track } from "../core/library.ts";
 import { LINE_BREAK } from "../core/lyrics.ts";
 import { knownArtistSongs, suggest, type Suggestion } from "../core/suggest.ts";
 import { readPlaylist, songThemes } from "../core/themes.ts";
+import { songWords } from "../core/traits.ts";
 import { CommandPalette } from "./CommandPalette.tsx";
 import { RuleEditor } from "./RuleEditor.tsx";
 import { PlaylistInfo } from "./PlaylistInfo.tsx";
@@ -187,6 +188,7 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
             <h2 className="mb-2 text-4xl font-extrabold leading-[0.95] tracking-tight text-balance text-zinc-50 xl:text-5xl">{track.name}</h2>
             <p className="font-medium text-zinc-100">{track.artists.map((a) => a.name).join(", ")}</p>
             <p className="truncate text-xs text-zinc-400">{track.album.name}</p>
+            <SongSound trackId={track.id} />
             <SongThemes track={track} playlistIds={rows.map((r) => r.playlistId)} colors={colors} />
             {player.enabled && (
               <>
@@ -324,6 +326,17 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
       {ruleFor && byId.get(ruleFor) && <RuleEditor playlist={byId.get(ruleFor)!} track={track} onClose={() => setRuleFor(null)} />}
     </div>
   );
+}
+
+/** The song in a few words (genres, mood, tempo, key), once the tags and features have loaded. */
+function SongSound({ trackId }: { trackId: string }) {
+  const { tags, features } = useApp();
+  useEffect(() => {
+    useApp.getState().loadTags();
+    useApp.getState().loadFeatures();
+  }, []);
+  const words = songWords(tags?.get(trackId), features?.get(trackId));
+  return words.length ? <p className="mt-1 truncate text-xs text-zinc-400">{words.join(" · ")}</p> : null;
 }
 
 /** What the song's lyrics lean toward, the lines that show it, and which suggested playlists have that theme too. A hint: the ranking never sees it. */

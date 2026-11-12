@@ -3,7 +3,7 @@ import { test } from "node:test";
 import type { SongFeatures } from "./features.ts";
 import type { Library } from "./library.ts";
 import type { SongTags } from "./tags.ts";
-import { topArtists, traits } from "./traits.ts";
+import { songWords, topArtists, traits } from "./traits.ts";
 
 const song = (over: Partial<SongFeatures>): SongFeatures => ({
   bpm: 100, steady: true, key: "C major", camelot: "8B", keyStrength: 0.9, lufs: -9, intro: 0, outro: 0, vocals: 0.8, vocalsFirst: 1, vocalsLast: 100, ...over,
@@ -29,4 +29,12 @@ test("a group is described by what sets it apart from the songs around it", () =
 
 test("the artists with the most songs come first", () => {
   assert.deepEqual(topArtists(lib, [...trap, "pop1"], 1), ["A"]);
+});
+
+test("a song is put in words only where the data is sure", () => {
+  const tags: SongTags = { genres: [["Trap", 0.4], ["Cloud Rap", 0.3], ["House", 0.1]], moods: { sad: 0.8, party: 0.9 } };
+
+  assert.deepEqual(songWords(tags, song({ bpm: 140.2, key: "F minor" })), ["Trap", "party", "140 BPM", "F minor"]);
+  assert.deepEqual(songWords({ genres: [["Trap", 0.1]], moods: { sad: 0.5 } }, song({ steady: false, keyStrength: 0.5 })), []);
+  assert.deepEqual(songWords(undefined, undefined), []);
 });
