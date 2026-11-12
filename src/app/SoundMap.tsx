@@ -14,7 +14,10 @@
 // Unless the Compilations setting is on, uncounted and artist playlists color no songs and tint no tiles.
 // Under every scene, hex tiles tint each area by the playlist most of its songs are colored by; a corner panel says
 // which playlists the songs of the tile under the pointer are in, alongside any hovered song's own tooltip.
+// A `colorable` map (the Sound map tab) can instead color songs, tiles and area names by a category (mood, tempo,
+// genre or era, see core/colorBy.ts), chosen under Color by in the gear menu, with a legend in the bottom-left corner.
 import { useEffect, useMemo, useRef, useState } from "react";
+import { categorize, COLOR_BY, type CategoryMode } from "../core/colorBy.ts";
 import { closestAmong, nearestSorted, NEAREST, neighborsFrom, type AudioIndex } from "../core/audio.ts";
 import { regions, tileKeyAt, tileUp } from "../core/hexTiles.ts";
 import { isArtistPlaylist, primaryPlaylists, sortTargets, type Library } from "../core/library.ts";
@@ -50,6 +53,8 @@ type Props = {
   /** Song to point out, e.g. one hovered in a list next to the map. */
   mark?: string | null;
   onSelect?: (trackId: string) => void;
+  /** Offer Color by in the gear menu and follow it; without it, the map always colors by playlist. */
+  colorable?: boolean;
 };
 
 const OVERVIEW: Camera = { k: 1, cx: 0, cy: 0 };
@@ -71,8 +76,15 @@ const PILL_HEIGHT = 22;
 const FONT = { pill: "700 13px ui-sans-serif, system-ui", near: "600 12px ui-sans-serif, system-ui", rest: "11px ui-sans-serif, system-ui" };
 export const BRIDGE_COLORS = { start: "#6ee7b7", end: "#f9a8d4", path: "#7dd3fc" };
 const BAD = "#ff8f7a";
+/** Category colors, in each mode's legend order; tempo and era run cool to warm (slow to fast, old to new). */
+const CATEGORY_COLORS: Record<CategoryMode, readonly string[]> = {
+  mood: ["#f87171", "#2dd4bf", "#60a5fa", "#f472b6", "#fbbf24", "#a78bfa"],
+  tempo: ["#60a5fa", "#c084fc", "#fb923c"],
+  genre: ["#f87171", "#22d3ee", "#facc15", "#a78bfa", "#34d399", "#f472b6", "#fb923c", "#60a5fa", "#a3e635", "#d6a77a"],
+  era: ["#60a5fa", "#a78bfa", "#f472b6", "#fb923c"],
+};
 
-export function SoundMap({ audio, lib, colors, height, scene, highlight = [], only = null, mark, onSelect }: Props) {
+export function SoundMap({ audio, lib, colors, height, scene, highlight = [], only = null, mark, onSelect, colorable = false }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const view = useRef<Camera>(OVERVIEW);
@@ -101,6 +113,10 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
   const vectors = useApp((s) => s.vectors);
   const compilations = useMapSettings((s) => s.compilations);
   const setCompilations = useMapSettings((s) => s.setCompilations);
+  const savedColorBy = useMapSettings((s) => s.colorBy);
+  const setColorBy = useMapSettings((s) => s.setColorBy);
+  const tags = useApp((s) => s.tags);
+  const features = useApp((s) => s.features);
   const [menu, setMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   // Per-point data, parallel to audio.ids. Hidden playlists never color songs; unless compilations are on, neither
@@ -119,11 +135,42 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
     };
   }, [audio, lib, hidden, uncounted, compilations]);
 
-  // Tiles of the drawn songs, each led by the playlist most of its songs are colored by, and the areas they form.
+  useEffect(() => {
+    if (!colorable) return;
+    useApp.getState().loadTags();
+    useApp.getState().loadFeatures();
+  }, [colorable]);
+  // Color by modes whose data is here; a saved mode whose data isn't falls back to playlists.
+  const offered = useMemo(() => {
+    if (!colorable) return [];
+    const hasYears = audio.ids.some((id) => lib.tracks[id]?.year);
+    return COLOR_BY.filter((m) => (m === "mood" || m === "genre" ? !!tags : m === "tempo" ? !!features : m === "era" ? hasYears : true));
+  }, [colorable, audio, lib, tags, features]);
+  const colorBy = offered.includes(savedColorBy) ? savedColorBy : "playlist";
+
+  // What colors songs, tiles and area names: per song its leading group (a playlist, or its category), each group's
+  // name and color, and every group a song is in (for the tile panel). Categories are drawn as if they were playlists.
+  const paint = useMemo(() => {
+    if (colorBy === "playlist") return { lead: data.primary, names: data.names, colors, groupsOf: data.playlistsOf, legend: [] };
+    const { categories, of } = categorize(colorBy, audio.ids, (id) => ({ tags: tags?.get(id), features: features?.get(id), year: lib.tracks[id]?.year }));
+    const palette = CATEGORY_COLORS[colorBy];
+    return {
+      lead: of,
+      names: new Map(categories.map((c) => [c, c])),
+      colors: new Map(categories.map((c, i) => [c, palette[i % palette.length]!])),
+      groupsOf: audio.ids.map((id) => {
+        const c = of.get(id);
+        return c ? [c] : [];
+      }),
+      legend: categories,
+    };
+  }, [colorBy, data, colors, audio, lib, tags, features]);
+
+  // Tiles of the drawn songs, each led by the playlist (or category) most of its songs are colored by, and the areas they form.
   const tiled = useMemo(() => {
-    const tiles = tileUp(audio.xy, TILE, (i) => data.primary.get(audio.ids[i]!) ?? null, only ? (i) => only.has(audio.ids[i]!) : undefined);
+    const tiles = tileUp(audio.xy, TILE, (i) => paint.lead.get(audio.ids[i]!) ?? null, only ? (i) => only.has(audio.ids[i]!) : undefined);
     return { tiles, regions: regions(tiles, TILE).filter((r) => r.songs >= MIN_REGION_SONGS) };
-  }, [audio, data, only]);
+  }, [audio, paint, only]);
 
   // Song -> the first highlighted playlist it's in. Built from all playlists, so a hidden one still lights up.
   const lit = useMemo(() => {
@@ -193,7 +240,7 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
     for (const tile of tiled.tiles.values()) {
       const fromMiddle = (i: number) => Math.hypot(audio.xy[i]![0] - tile.x, audio.xy[i]![1] - tile.y);
       const byMiddle = tile.songs.toSorted((a, b) => fromMiddle(a) - fromMiddle(b));
-      const lead = byMiddle.find((i) => data.primary.get(audio.ids[i]!) === tile.top) ?? byMiddle[0]!;
+      const lead = byMiddle.find((i) => paint.lead.get(audio.ids[i]!) === tile.top) ?? byMiddle[0]!;
       [lead, ...byMiddle.filter((i) => i !== lead)].forEach((i, turn) => {
         const tier = highlighting && lit.has(audio.ids[i]!) ? 0 : turn === 0 ? 1 : 2;
         ranked.push({ i, tier, turn });
@@ -208,7 +255,7 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
     }));
     const zooms = revealZooms(candidates, base, NAME_ROOM);
     return ranked.map(({ i }, n) => ({ i, zoom: zooms[n]!, width: candidates[n]!.width }));
-  }, [tiled, data, audio, lib, lit, highlighting, base]);
+  }, [tiled, paint, audio, lib, lit, highlighting, base]);
 
   const toScreen = (x: number, y: number): [number, number] => {
     const { k, cx, cy } = view.current;
@@ -247,10 +294,11 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
     const r = dotRadius();
     // Anything but a plain overview grays the songs the story isn't about.
     const dimming = highlighting || (!overview && !released);
+    // Highlighted songs take their highlighted playlist's color, unless the map is colored by category.
     const colorOf = (i: number) => {
       const id = audio.ids[i]!;
-      const p = highlighting ? lit.get(id) : data.primary.get(id);
-      return p ? (colors.get(p) ?? UNSORTED) : UNSORTED;
+      const p = highlighting && colorBy === "playlist" ? lit.get(id) : paint.lead.get(id);
+      return p ? (paint.colors.get(p) ?? UNSORTED) : UNSORTED;
     };
     const at = (i: number) => toScreen(...audio.xy[i]!);
     const dot = (x: number, y: number, radius: number) => {
@@ -280,13 +328,13 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
       if (sx < -corner || sy < -corner || sx > width + corner || sy > height + corner) continue;
       const strength = tile.share * Math.min(tile.songs.length / 8, 1);
       ctx.globalAlpha = (0.07 + 0.33 * strength) * (1 + 0.6 * zoomedOut) * (dimming ? 0.5 : 1);
-      ctx.fillStyle = tile.top ? (colors.get(tile.top) ?? UNSORTED) : UNSORTED;
+      ctx.fillStyle = tile.top ? (paint.colors.get(tile.top) ?? UNSORTED) : UNSORTED;
       hex(sx, sy, corner * 0.94);
       ctx.fill();
     }
     if (hoveredTile) {
       ctx.globalAlpha = 0.7;
-      ctx.strokeStyle = hoveredTile.top ? (colors.get(hoveredTile.top) ?? UNSORTED) : UNSORTED;
+      ctx.strokeStyle = hoveredTile.top ? (paint.colors.get(hoveredTile.top) ?? UNSORTED) : UNSORTED;
       ctx.lineWidth = 1.5;
       hex(...toScreen(hoveredTile.x, hoveredTile.y), corner * 0.94);
       ctx.stroke();
@@ -317,8 +365,8 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
       }
     }
 
-    // Names of the areas playlists lead (zoomed out), biggest first; highlighted playlists keep theirs through overlaps.
-    // Each playlist is named once, on its biggest area; its other areas are still tinted.
+    // Names of the areas playlists (or categories) lead (zoomed out), biggest first; highlighted playlists keep theirs
+    // through overlaps. Each is named once, on its biggest area; its other areas are still tinted.
     if (regionAlpha > 0) {
       const taken: Box[] = [];
       const named = new Set<string>();
@@ -326,10 +374,10 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
       ctx.textAlign = "center";
       ctx.lineJoin = "round";
       for (const region of tiled.regions) {
-        if (highlighting && !highlight.includes(region.group)) continue;
+        if (highlighting && colorBy === "playlist" && !highlight.includes(region.group)) continue;
         if (named.has(region.group)) continue;
         named.add(region.group);
-        const name = data.names.get(region.group) ?? "";
+        const name = paint.names.get(region.group) ?? "";
         const [sx, sy] = toScreen(region.x, region.y);
         const w = ctx.measureText(name).width;
         const box: Box = [sx - w / 2 - 3, sy - 8, w + 6, 14];
@@ -651,11 +699,12 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
   });
 
   const hoveredTrack = hover ? lib.tracks[audio.ids[hover.i]!] : undefined;
-  // The hovered tile's playlists, by the share of its songs in each (a song can be in several, so they overlap).
+  // The hovered tile's playlists (or categories), by the share of its songs in each (a song can be in several
+  // playlists, so they overlap).
   const tileShares = (() => {
     if (!hoveredTile) return [];
     const counts = new Map<string, number>();
-    for (const i of hoveredTile.songs) for (const p of data.playlistsOf[i]!) counts.set(p, (counts.get(p) ?? 0) + 1);
+    for (const i of hoveredTile.songs) for (const p of paint.groupsOf[i]!) counts.set(p, (counts.get(p) ?? 0) + 1);
     return [...counts].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([id, n]) => ({ id, share: n / hoveredTile.songs.length }));
   })();
 
@@ -720,15 +769,15 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
           className={`pointer-events-none absolute top-2 z-10 w-56 rounded-lg border border-white/10 bg-zinc-900/90 px-3 py-2 text-xs shadow-xl ${area.corner ? "right-2" : "left-2"}`}
         >
           <div className="mb-1.5 text-zinc-400">{hoveredTile.songs.length === 1 ? "1 song" : `${hoveredTile.songs.length} songs`}</div>
-          {tileShares.length === 0 && <div className="text-zinc-500">Unsorted</div>}
+          {tileShares.length === 0 && colorBy === "playlist" && <div className="text-zinc-500">Unsorted</div>}
           {tileShares.map(({ id, share }) => (
             <div key={id} className="mt-1">
               <div className="flex justify-between gap-2">
-                <span className="truncate text-zinc-200">{data.names.get(id)}</span>
+                <span className="truncate text-zinc-200">{paint.names.get(id)}</span>
                 <span className="tabular-nums text-zinc-400">{Math.round(share * 100)}%</span>
               </div>
               <div className="mt-0.5 h-1 rounded-full bg-white/5">
-                <div className="h-full rounded-full" style={{ width: `${share * 100}%`, background: colors.get(id) ?? UNSORTED }} />
+                <div className="h-full rounded-full" style={{ width: `${share * 100}%`, background: paint.colors.get(id) ?? UNSORTED }} />
               </div>
             </div>
           ))}
@@ -751,8 +800,35 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
           </div>
         </div>
       )}
+      {paint.legend.length > 0 && (
+        <div className="pointer-events-none absolute bottom-2 left-2 z-10 space-y-1 rounded-lg border border-white/10 bg-zinc-900/90 px-3 py-2 text-xs text-zinc-300">
+          {paint.legend.map((c) => (
+            <div key={c} className="flex items-center gap-2">
+              <span className="size-2.5 shrink-0 rounded-full" style={{ background: paint.colors.get(c) }} />
+              {c}
+            </div>
+          ))}
+        </div>
+      )}
       <div ref={menuRef} className="absolute bottom-2 right-2 z-20 flex flex-col items-end gap-1.5">
-        {menu && (
+        {menu && offered.length > 1 && (
+          <div className="rounded-lg border border-white/10 bg-zinc-900/95 px-3 py-2 text-xs text-zinc-400 shadow-xl">
+            <div className="mb-1.5">Color by</div>
+            <div className="flex gap-1">
+              {offered.map((m) => (
+                <button
+                  key={m}
+                  aria-pressed={m === colorBy}
+                  onClick={() => setColorBy(m)}
+                  className={`rounded-md px-2 py-1 capitalize ${m === colorBy ? "bg-white/15 text-zinc-50" : "text-zinc-300 hover:bg-white/5"}`}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {menu && colorBy === "playlist" && (
           <button
             role="switch"
             aria-checked={compilations}

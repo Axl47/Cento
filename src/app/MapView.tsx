@@ -100,7 +100,7 @@ export function MapView({ colors, onSortSong }: { colors: Map<string, string>; o
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
       <div className="relative min-w-0">
-        <SoundMap audio={audio} lib={lib} colors={colors} height={height} scene={scene} highlight={shown} only={only} mark={mark} onSelect={choose} />
+        <SoundMap audio={audio} lib={lib} colors={colors} height={height} scene={scene} highlight={shown} only={only} mark={mark} onSelect={choose} colorable />
         {bridge.picking && (
           <p className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-full bg-zinc-950/90 px-3 py-1.5 text-xs text-zinc-100 shadow-xl">
             Click the song to bridge to · <kbd>Esc</kbd> cancels
