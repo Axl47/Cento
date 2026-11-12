@@ -105,6 +105,7 @@ track-URI play request is accepted but loads nothing on this account.
   (artist playlists and hidden ones don't count).
   Rename a group, drop songs from it (×), divide it in two again, or open it in Build. **Save as playlist** creates
   a private playlist from the group that counts for sorting like any other; the parent playlist is left as it is.
+  Change the group afterwards and the button becomes **Update playlist**.
   Splits last until a reload. **Missing** lists songs in your library the playlist probably should have; **Add** puts
   the checked ones in it on Spotify. **Doesn't fit** lists its songs least likely to belong; **Remove** takes one out of
   it on Spotify (it stays in your other playlists and in Everything), with **Undo** until you leave. A playlist with
