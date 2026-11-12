@@ -125,6 +125,9 @@ Spotify shows them; entries older than a day are dropped too.
   playlist is reliably predictable (a held-out test on new artists: about two-thirds of those checks were already right).
   The classifier also uses each song's lyric language when `data/languages.jsonl` exists; refresh it with the engine's
   `audio-embed languages <lyrics.jsonl> --out data/languages.jsonl`. Songs without one use sound alone.
+  When `pnpm lyrics` has built `data/lyrics-index.*`, it also uses what each song's lyrics mean (the average of its passage
+  vectors, written to `data/lyrics-vectors.jsonl`); songs without lyrics are scored from sound alone. Rerun `pnpm lyrics` first
+  so new songs have them.
 - `pnpm lyrics` builds `data/lyrics-index.*` for the Lyrics tab from the engine's fetched lyrics (or `LYRICS_FILE`). It
   downloads the text model once, and later runs embed only new lyrics. Restart `pnpm dev` afterwards. It also scores
   every song against the list of `THEMES` in `src/core/themes.ts` for the Themes tab: edit the list and rerun to change them.

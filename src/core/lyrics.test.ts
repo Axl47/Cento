@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { LINE_BREAK, passagesOf, searchLyrics, type LyricIndex } from "./lyrics.ts";
+import { LINE_BREAK, passagesOf, searchLyrics, songVectors, type LyricIndex } from "./lyrics.ts";
 
 const lines = (word: string, n: number) => Array.from({ length: n }, (_, i) => `${word} line number ${i} of this stanza`);
 
@@ -44,4 +44,12 @@ test("exact words outrank meaning, ignoring accents and punctuation", () => {
 
 test("exact words must be whole words in Latin text", () => {
   assert.equal(searchLyrics(index, new Float32Array([1, 0]), "isma fras", 4).some((h) => h.exact), false);
+});
+
+test("a song's vector is the unit-length mean of its passages", () => {
+  const vectors = songVectors({ keys: ["a", "a", "b"], vectors: new Float32Array([1, 0, 0, 1, 0, 1]), dim: 2 });
+
+  assert.deepEqual([...vectors.keys()], ["a", "b"]);
+  assert.ok(Math.abs(vectors.get("a")![0]! - Math.SQRT1_2) < 1e-6 && Math.abs(vectors.get("a")![1]! - Math.SQRT1_2) < 1e-6);
+  assert.deepEqual([...vectors.get("b")!], [0, 1]);
 });

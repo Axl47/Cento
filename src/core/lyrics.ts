@@ -73,3 +73,18 @@ export function searchLyrics(index: LyricIndex, queryVector: Float32Array, query
   });
   return [...best.values()].sort((a, b) => Number(b.exact) - Number(a.exact) || b.score - a.score).slice(0, limit);
 }
+
+/** One unit-length vector per song (its ISRC, or track id): the mean of its passage vectors, which describes the lyrics as a whole. */
+export function songVectors({ keys, vectors, dim }: Pick<LyricIndex, "keys" | "vectors" | "dim">): Map<string, Float32Array> {
+  const sums = new Map<string, Float32Array>();
+  keys.forEach((key, row) => {
+    const sum = sums.get(key) ?? new Float32Array(dim);
+    for (let d = 0; d < dim; d++) sum[d]! += vectors[row * dim + d]!;
+    sums.set(key, sum);
+  });
+  for (const sum of sums.values()) {
+    const norm = Math.hypot(...sum) || 1;
+    for (let d = 0; d < dim; d++) sum[d]! /= norm;
+  }
+  return sums;
+}

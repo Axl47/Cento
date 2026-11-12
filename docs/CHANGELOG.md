@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- The sound classifier also learns from what each song's lyrics mean, when `pnpm lyrics` has run, which places songs by artists you've never sorted a little better: the right playlist lands in the top 3 for about 3 more of every 100 such songs in `pnpm eval`. Songs without lyrics are scored from sound alone.
 - A Build tab (`B`) turns a handful of songs into a playlist: add songs by pasting Spotify links or searching, see how smoothly each song hands off to the next and listen to each handoff, let **Smooth** order them around songs you've pinned, fill rough handoffs with suggested songs, drop songs that don't fit or split a set that's really two, and save it as a private Spotify playlist that stays out of sorting. Sets are kept in the browser.
 - The host refreshes your data every day from 12:01 AM: it resyncs the library, embeds new songs and rebuilds the sound map, and retrains the classifiers. A day it missed runs as soon as the host starts again.
 - `pnpm host` now runs the host in the background and returns right away, starts it again whenever you log in to the Mac, and restarts it if it crashes, so plays keep being recorded without a terminal held open. `pnpm host:stop` stops it.
