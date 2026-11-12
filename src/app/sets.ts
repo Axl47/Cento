@@ -55,6 +55,8 @@ type SetsState = {
   add: () => void;
   /** Moves `moved` out of the current set into a new set beside it. Undo can't bring them back, since they now live there. */
   split: (moved: string[]) => void;
+  /** Starts a set holding these songs and opens it. */
+  open: (name: string, ids: string[]) => void;
   /** Records that set `setId` was saved as `playlistId` holding these songs under this name. */
   markSaved: (setId: string, saved: NonNullable<BuildSet["saved"]>) => void;
 };
@@ -95,6 +97,11 @@ export const useSets = create<SetsState>()((set, get) => ({
 
   add: () => {
     const fresh = blank();
+    set((st) => ({ sets: [...pruned(st.sets, fresh.id), fresh], currentId: fresh.id }));
+  },
+
+  open: (name, ids) => {
+    const fresh = blank(name, { ids, pinned: [], extra: {} });
     set((st) => ({ sets: [...pruned(st.sets, fresh.id), fresh], currentId: fresh.id }));
   },
 

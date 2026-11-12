@@ -94,6 +94,12 @@ type State = {
    * renamed and refilled. `onSaved` gets the playlist's id once Spotify has it.
    */
   saveList: (name: string, trackIds: string[], playlistId?: string, onSaved?: (id: string) => void) => void;
+  /** Saves these songs, in order, as a new private playlist that counts for sorting like any other; `onSaved` runs once Spotify has it. */
+  savePlaylist: (name: string, trackIds: string[], onSaved?: () => void) => void;
+  /** Adds songs to one of your playlists, here and on Spotify. */
+  addToPlaylist: (playlistId: string, trackIds: string[]) => void;
+  /** Takes songs out of one of your playlists, here and on Spotify; they stay in your other playlists. */
+  removeFromPlaylist: (playlistId: string, trackIds: string[]) => void;
   /** Takes freshly synced data, keeping sorts Spotify doesn't show yet. */
   replaceLibrary: (lib: Library) => void;
   setOrder: (order: Order) => void;
@@ -394,6 +400,30 @@ export const useApp = create<State>()((set, get) => {
         await fetch("/api/hidden", { method: "PUT", body: JSON.stringify(hidden) });
         onSaved?.(id);
       }),
+
+    savePlaylist: (name, trackIds, onSaved) =>
+      write(`Saving "${name}"`, async () => {
+        const { id } = await createPlaylist(client, name);
+        await addToPlaylist(client, id, trackIds);
+        const lib = get().lib;
+        if (lib) setLib({ ...lib, playlists: [...lib.playlists, { id, name, imageUrl: null, trackIds }] }, true);
+        onSaved?.();
+      }),
+
+    addToPlaylist: (playlistId, trackIds) => {
+      const lib = get().lib;
+      if (!lib || trackIds.length === 0) return;
+      setLib(edit(lib, (d) => d.playlists.set(playlistId, [...(d.playlists.get(playlistId) ?? []), ...trackIds])), true);
+      write("Adding to playlist", () => addToPlaylist(client, playlistId, trackIds));
+    },
+
+    removeFromPlaylist: (playlistId, trackIds) => {
+      const lib = get().lib;
+      if (!lib || trackIds.length === 0) return;
+      const gone = new Set(trackIds);
+      setLib(edit(lib, (d) => d.playlists.set(playlistId, (d.playlists.get(playlistId) ?? []).filter((id) => !gone.has(id)))), true);
+      write("Removing from playlist", () => removeFromPlaylist(client, playlistId, trackIds));
+    },
 
     replaceLibrary: (fresh) => {
       const ledger = unconfirmed(fresh, get().ledger);
