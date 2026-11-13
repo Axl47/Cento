@@ -31,6 +31,16 @@ const TABS = {
   now: { label: "Now playing", hint: "Switch with N" },
 };
 
+type Tab = keyof typeof TABS;
+
+const isTab = (name: string): name is Tab => Object.hasOwn(TABS, name);
+
+/** The tab the URL names (`#playlists`), so a reload or a bookmark opens where you were. Sort has no name. */
+const tabInUrl = (): Tab => {
+  const name = location.hash.slice(1);
+  return isTab(name) ? name : "sort";
+};
+
 type Phase = { kind: "starting" } | { kind: "login" } | { kind: "needs-sync" } | { kind: "ready" } | { kind: "error"; message: string };
 
 const getJson = async <T,>(url: string): Promise<T | null> => {
@@ -53,7 +63,7 @@ async function loadVectors(audio: AudioIndex) {
 
 export function App() {
   const [phase, setPhase] = useState<Phase>({ kind: "starting" });
-  const [tab, setTab] = useState<keyof typeof TABS>("sort");
+  const [tab, setTab] = useState(tabInUrl);
   const [syncing, setSyncing] = useState<string | null>(null);
   /** Why the last resync from the main screen failed; earlier phases show errors full-screen instead. */
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -83,6 +93,15 @@ export function App() {
       }
     })();
   }, [initPlayer, load]);
+
+  useEffect(() => {
+    if (tabInUrl() !== tab) history.replaceState(null, "", tab === "sort" ? location.pathname + location.search : `#${tab}`);
+  }, [tab]);
+  useEffect(() => {
+    const onHash = () => setTab(tabInUrl());
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { groupsOf, pruned, replaceGroup, updateGroup, type Split } from "./workshop.ts";
+import { groupsOf, moveSong, pruned, replaceGroup, updateGroup, type Split } from "./workshop.ts";
 
 const split = (lists: string[][]): Split => ({ by: "sound", k: lists.length, groups: groupsOf(lists), unplaced: [] });
 
@@ -29,4 +29,12 @@ test("songs that left the playlist leave their groups, and a split nothing left 
   assert.deepEqual(next.groups.map((g) => g.ids), [["a"]]);
   assert.deepEqual(next.unplaced, ["d"]);
   assert.equal(pruned(s, new Set(["a", "b", "c", "d", "new"])), s);
+});
+
+test("a song moved to another group leads it, and the group it emptied is dropped", () => {
+  const s = split([["a", "b"], ["c"], ["d"]]);
+  const next = moveSong(s, "c", s.groups[0]!.key);
+
+  assert.deepEqual(next.groups.map((g) => g.ids), [["c", "a", "b"], ["d"]]);
+  assert.equal(moveSong(next, "c", next.groups[0]!.key), next);
 });

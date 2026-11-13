@@ -8,6 +8,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- A reload opens the tab you were on (it's in the address, like `#playlists`), and the Playlists tab comes back to the view you had open with your splits as you left them, saved groups included.
+- A song can be dragged from one split group to another.
 - A playlist can be a part of another, like Future Bass of EDM. Sorting a song into a part also puts it in the playlist the part belongs to, the Playlists tab lists parts under their playlist, and its new **Parts** view shows which of a part's songs the playlist is still missing, which other playlists already sit mostly inside it, and which of its songs are in no part yet, with the parts each sounds closest to. A split group saved as a playlist becomes a part of the playlist it was split from.
 - `pnpm plays` counts how often each song was played and skipped, and when it last played, from the plays the host records and, once its files are in `data/extended-history/`, Spotify's Extended Streaming History, counting a play both have once. The daily refresh runs it.
 - The sound classifier also learns from what each song's lyrics mean, when `pnpm lyrics` has run, which places songs by artists you've never sorted a little better: the right playlist lands in the top 3 for about 3 more of every 100 such songs in `pnpm eval`. Songs without lyrics are scored from sound alone.
