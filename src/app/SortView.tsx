@@ -3,7 +3,8 @@
 // about the focused playlist, and this session's sorts. The right side shows where the song
 // sits by sound: among its nearest songs, or against the tile being hovered (or chosen with ↑↓).
 import { useEffect, useMemo, useState } from "react";
-import { sortTargets, type Track } from "../core/library.ts";
+import { config } from "../core/config.ts";
+import { inbox, sortTargets, type Track } from "../core/library.ts";
 import { LINE_BREAK } from "../core/lyrics.ts";
 import { knownArtistSongs, suggest, type Suggestion } from "../core/suggest.ts";
 import { readPlaylist, songThemes } from "../core/themes.ts";
@@ -507,11 +508,23 @@ export const PauseIcon = () => (
   </svg>
 );
 
-/** The on/off row for playlists that shouldn't count as sorted, for doing a rough pass and a proper one later. */
+/**
+ * The on/off row for playlists that shouldn't count as sorted, for doing a rough pass and a proper one later. At its
+ * end, the songs that are in the all-songs playlist and nowhere else (liked or not) can be let into the queue.
+ */
 function UncountedRow({ onAdd }: { onAdd: () => void }) {
-  const { lib, uncounted, shelf } = useApp();
+  const { lib, hidden, uncounted, shelf: kept } = useApp();
   const { setUncounted, dropFromShelf } = useApp.getState();
   const name = (id: string) => lib?.playlists.find((p) => p.id === id)?.name ?? "Deleted playlist";
+  const all = config.allPlaylistId;
+  const shelf = kept.filter((id) => id !== all);
+  const withAll = uncounted.includes(all);
+  // How many songs the all-songs playlist brings (or would bring) into the queue.
+  const onlyInAll = useMemo(() => {
+    if (!lib) return 0;
+    const others = uncounted.filter((id) => id !== all);
+    return inbox(lib, hidden, [...others, all]).length - inbox(lib, hidden, others).length;
+  }, [lib, hidden, uncounted, all]);
   return (
     <div className="-mt-2 mb-5 flex flex-wrap items-center gap-1.5 text-xs text-zinc-400">
       <span>Not counted as sorted:</span>
@@ -531,6 +544,16 @@ function UncountedRow({ onAdd }: { onAdd: () => void }) {
       <button onClick={onAdd} title="Search for a playlist, then choose Don't count" className="text-zinc-500 underline-offset-2 hover:text-zinc-200 hover:underline">
         {shelf.length ? "Add…" : "Add a playlist…"}
       </button>
+      {onlyInAll > 0 && (
+        <button
+          aria-pressed={withAll}
+          onClick={() => setUncounted(all, !withAll)}
+          className={`ml-auto rounded-full border px-2.5 py-0.5 hover:text-zinc-50 ${withAll ? "border-white/40 bg-white/10 text-zinc-100" : "border-white/10 text-zinc-500"}`}
+        >
+          {withAll ? "" : "+"}
+          {onlyInAll.toLocaleString()} only in {name(all)}
+        </button>
+      )}
     </div>
   );
 }

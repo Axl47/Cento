@@ -39,6 +39,8 @@ default) what to play and shows the position Spotify reports. Audio never plays 
 works. Needs Premium and Spotify open somewhere. Tracks are started as a position in their album: a plain
 track-URI play request is accepted but loads nothing on this account.
 
+The address names the tab you're on (`#playlists`), so a reload or a bookmark opens it.
+
 - **Sort**: the current liked song plays from ~35% in, with its genres, mood, tempo, key and release year under the
   album name (see `pnpm tags`; the year needs a resync made after it was added). Its playlists show as tiles; the bar on each is the
   model's confidence. Confident suggestions start checked. For artists you've never sorted, that's limited to the one
@@ -73,6 +75,8 @@ track-URI play request is accepted but loads nothing on this account.
   one later. In `⌘K`, search for a playlist and choose **Don't count**. It joins a row on the sort screen where a
   click switches it on or off. While on, its songs are back in the queue even if they're no longer liked, unless
   another playlist that counts already has them, and it isn't suggested. Nothing changes on Spotify, and the row is saved in this browser.
+  At the end of the row, **+N only in Everything** does the same for the all-songs playlist: it lets in the songs that
+  are in it and in no playlist that counts, which the queue otherwise never shows because they aren't liked.
 
 - **Sound map**: every song placed by sound, over hex tiles tinted by the playlist most of each tile's songs are
   in. Playlists not counted as sorted and playlists named after their own artist color no songs and tint no tiles, unless **Compilations** is on (gear, bottom right of the map; saved in this browser). Tints are stronger where that playlist clearly leads (see `src/core/hexTiles.ts`). Zoomed out, each playlist's
@@ -107,10 +111,10 @@ track-URI play request is accepted but loads nothing on this account.
   (songs with no clear theme stay out of every group).
   A group that mostly falls in a playlist you already have shows that playlist and the share of the group in it
   (artist playlists and hidden ones don't count).
-  Rename a group, drop songs from it (×), divide it in two again, or open it in Build. **Save as playlist** creates
+  Rename a group, drop songs from it (×), drag a song to another group, divide it in two again, or open it in Build. **Save as playlist** creates
   a private playlist from the group that counts for sorting like any other and becomes a part of the playlist you
   split, which is left as it is. Change the group afterwards and the button becomes **Update playlist**.
-  Splits last until a reload. **Parts** lists the playlists that are parts of this one, with the songs each has that
+  Splits are kept in this browser. **Parts** lists the playlists that are parts of this one, with the songs each has that
   this one lacks (**Add** puts them in it), and offers playlists that already sit mostly inside it; any other can
   be added by name. Below, **In no part** lists this playlist's songs that are in none of its parts, the ones that
   sound most like a part first, each with the parts it sounds closest to (point at a row for the rest); click one to

@@ -15,9 +15,10 @@ import { PartsPane } from "./PartsPane.tsx";
 import { Empty, PAGE, ShowMore, SongButton } from "./rows.tsx";
 import { useSets } from "./sets.ts";
 import { useApp } from "./store.ts";
-import { groupsOf, pruned, replaceGroup, signature, updateGroup, useWorkshop, type By, type Group, type Split } from "./workshop.ts";
+import { groupsOf, moveSong, pruned, replaceGroup, signature, updateGroup, useWorkshop, type By, type Group, type Split } from "./workshop.ts";
 
 const SELECTED_KEY = "playlists-tab-selected";
+const MODE_KEY = "playlists-tab-mode";
 const KS = [2, 3, 4, 5, 6] as const;
 const DEFAULT_K = 3;
 /** Smaller playlists show their songs instead of a split. */
@@ -37,9 +38,12 @@ const BYS: Record<By, string> = { sound: "Sound", lyrics: "Lyrics" };
 type Sound = NonNullable<Evidence["sound"]>;
 
 
-function readSelected() {
+const isMode = (name: string | null): name is Mode => name !== null && Object.hasOwn(MODES, name);
+
+/** What this browser last had open in the tab, so a reload comes back to it. */
+function stored(key: string) {
   try {
-    return localStorage.getItem(SELECTED_KEY);
+    return localStorage.getItem(key);
   } catch {
     return null;
   }
@@ -48,9 +52,12 @@ function readSelected() {
 /** The tab. `onOpenBuild` switches to the Build tab after a group was opened there as a new set. */
 export function PlaylistsView({ colors, onOpenBuild }: { colors: Map<string, string>; onOpenBuild: () => void }) {
   const { lib, audio, vectors, classifier, features, languages, tags, themes, rules, hidden, parents } = useApp();
-  const [selected, setSelected] = useState(readSelected);
+  const [selected, setSelected] = useState(() => stored(SELECTED_KEY));
   const [filter, setFilter] = useState("");
-  const [mode, setMode] = useState<Mode>("split");
+  const [mode, setMode] = useState((): Mode => {
+    const last = stored(MODE_KEY);
+    return isMode(last) ? last : "split";
+  });
 
   useEffect(() => {
     useApp.getState().loadFeatures();
@@ -59,10 +66,11 @@ export function PlaylistsView({ colors, onOpenBuild }: { colors: Map<string, str
   useEffect(() => {
     try {
       if (selected) localStorage.setItem(SELECTED_KEY, selected);
+      localStorage.setItem(MODE_KEY, mode);
     } catch {
-      // Blocked storage only means the selection resets on reload.
+      // Blocked storage only means the tab opens on its defaults after a reload.
     }
-  }, [selected]);
+  }, [selected, mode]);
 
   const playlists = useMemo(() => (lib ? sortTargets(lib).toSorted((a, b) => b.trackIds.length - a.trackIds.length) : []), [lib]);
   const all = useMemo(() => lib?.playlists.find((p) => p.id === config.allPlaylistId)?.trackIds ?? [], [lib]);
@@ -299,6 +307,7 @@ function SplitPane({
             parentId={playlist.id}
             data={data}
             onEdit={(fn) => edit((s) => updateGroup(s, g.key, fn))}
+            onTake={(id) => edit((s) => moveSong(s, id, g.key))}
             onSplit={() =>
               edit((s) => {
                 const { groups, unplaced } = soundGroups(sound, g.ids, 2);
@@ -319,7 +328,10 @@ function SplitPane({
   );
 }
 
-/** One group: its name, what sets it apart, its songs, and what to do with it. */
+/** The song being dragged out of a group, and that group's key. */
+let dragged: { id: string; from: number } | null = null;
+
+/** One group: its name, what sets it apart, its songs, and what to do with it. A song can be dragged to another group. */
 function GroupCard({
   group,
   words,
@@ -328,6 +340,7 @@ function GroupCard({
   parentId,
   data,
   onEdit,
+  onTake,
   onSplit,
   onOpenBuild,
 }: {
@@ -343,10 +356,13 @@ function GroupCard({
   data: TraitData;
   /** Changes the group as it is when the change lands, so it's safe to call after a Spotify write. */
   onEdit: (fn: (g: Group) => Partial<Group>) => void;
+  /** Moves a song dropped on the card into this group. */
+  onTake: (id: string) => void;
   onSplit: () => void;
   onOpenBuild: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [over, setOver] = useState(false);
   const pendingWrites = useApp((s) => s.pendingWrites);
   const artists = useMemo(() => topArtists(data.lib, group.ids, 3), [data.lib, group.ids]);
   const name = group.name ?? fallback;
@@ -356,7 +372,20 @@ function GroupCard({
   const saving = group.saving && pendingWrites > 0;
 
   return (
-    <div className="flex min-w-0 flex-col gap-2 rounded-xl bg-zinc-900 p-3">
+    <div
+      className={`flex min-w-0 flex-col gap-2 rounded-xl bg-zinc-900 p-3 ${over ? "ring-1 ring-white/40" : ""}`}
+      onDragOver={(e) => {
+        if (!dragged || dragged.from === group.key) return;
+        e.preventDefault();
+        setOver(true);
+      }}
+      onDragLeave={(e) => !(e.relatedTarget instanceof Node && e.currentTarget.contains(e.relatedTarget)) && setOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setOver(false);
+        if (dragged) onTake(dragged.id);
+      }}
+    >
       <input
         aria-label="Group name"
         value={name}
@@ -381,7 +410,17 @@ function GroupCard({
           const t = data.lib.tracks[id];
           if (!t) return null;
           return (
-            <li key={id} className="group flex items-center gap-1 py-0.5">
+            <li
+              key={id}
+              className="group flex items-center gap-1 py-0.5"
+              draggable
+              onDragStart={(e) => {
+                dragged = { id, from: group.key };
+                e.dataTransfer.effectAllowed = "move";
+                e.dataTransfer.setData("text/plain", t.name);
+              }}
+              onDragEnd={() => (dragged = null)}
+            >
               <SongButton track={t} />
               <button
                 aria-label={`Drop ${t.name}`}

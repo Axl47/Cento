@@ -1,11 +1,12 @@
-// The Playlists tab's work in progress: how each playlist is being split into groups. Kept in memory only, so
-// switching playlists or tabs keeps it and a reload starts over.
+// The Playlists tab's work in progress: how each playlist is being split into groups. Kept in this browser, so
+// switching playlists or tabs, or reloading, keeps it.
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 export type Group = {
   /** Stable across edits, for React keys. */
   key: number;
-  /** Most typical song first. */
+  /** Most typical song first, after any moved in by hand. */
   ids: string[];
   /** What the user typed; null shows the default name. */
   name: string | null;
@@ -38,6 +39,14 @@ export const updateGroup = (split: Split, key: number, fn: (g: Group) => Partial
   groups: split.groups.map((g) => (g.key === key ? { ...g, ...fn(g) } : g)).filter((g) => g.ids.length > 0),
 });
 
+/** `split` with song `id` moved to the top of group `key`; a group it leaves empty is dropped. */
+export function moveSong(split: Split, id: string, key: number): Split {
+  const to = split.groups.find((g) => g.key === key);
+  if (!to || to.ids.includes(id)) return split;
+  const without = (g: Group) => (g.ids.includes(id) ? { ...g, ids: g.ids.filter((x) => x !== id) } : g);
+  return { ...split, groups: split.groups.map((g) => (g.key === key ? { ...g, ids: [id, ...g.ids] } : without(g))).filter((g) => g.ids.length > 0) };
+}
+
 /** `split` without the songs that have left the playlist (`members` is what it holds now); the same object when none have. */
 export const pruned = (split: Split, members: ReadonlySet<string>): Split => {
   const kept = (ids: string[]) => ids.filter((id) => members.has(id));
@@ -58,7 +67,25 @@ type WorkshopState = {
   change: (playlistId: string, fn: (split: Split | undefined) => Split) => void;
 };
 
-export const useWorkshop = create<WorkshopState>()((set) => ({
-  splits: {},
-  change: (playlistId, fn) => set((s) => ({ splits: { ...s.splits, [playlistId]: fn(s.splits[playlistId]) } })),
-}));
+/** `splits` as a reload finds them: any save in flight died with the page, so no group is still saving. */
+export const restored = (splits: Record<string, Split>): Record<string, Split> =>
+  Object.fromEntries(Object.entries(splits).map(([id, split]) => [id, { ...split, groups: split.groups.map(({ saving: _, ...g }) => g) }]));
+
+export const useWorkshop = create<WorkshopState>()(
+  persist(
+    (set) => ({
+      splits: {},
+      change: (playlistId, fn) => set((s) => ({ splits: { ...s.splits, [playlistId]: fn(s.splits[playlistId]) } })),
+    }),
+    {
+      name: "playlists-tab-splits",
+      partialize: ({ splits }) => ({ splits }),
+      merge: (saved, current) => {
+        const splits = restored((saved as Partial<Pick<WorkshopState, "splits">> | undefined)?.splits ?? {});
+        // New groups take keys past the restored ones.
+        nextKey = Math.max(nextKey, ...Object.values(splits).flatMap((split) => split.groups.map((g) => g.key + 1)));
+        return { ...current, splits };
+      },
+    },
+  ),
+);
