@@ -107,9 +107,10 @@ The address names the tab you're on (`#playlists`), so a reload or a bookmark op
   **Save to Spotify** creates a private playlist in this order that stays out of sorting, and later updates it.
 - **Playlists** (`P`): a workshop for one of your playlists, picked from the list on the left (biggest first, each
   with its parts under it).
-  **Split** divides it into 2–6 groups by sound, each named after what sets it apart from the rest of the playlist,
+  **Split** divides it into 2–8 groups by sound, each named after what sets it apart from the rest of the playlist,
   or by **Lyrics**: the themes most of its songs are about, each holding the songs that carry that theme clearly
-  (songs with no clear theme stay out of every group).
+  (songs with no clear theme stay out of every group), or by **Genre**: the genres most of its songs lead with
+  (see `pnpm tags`), each holding the songs it fits best, with the rest left out.
   A group that mostly falls in a playlist you already have shows that playlist and the share of the group in it
   (artist playlists and hidden ones don't count).
   Rename a group, drop songs from it (×), drag a song to another group, divide it in two again, or open it in Build. **Save as playlist** creates

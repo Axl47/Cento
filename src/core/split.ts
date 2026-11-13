@@ -1,7 +1,8 @@
-// Dividing a big playlist into groups of songs that sound alike, or that are about the same thing, to make
-// smaller playlists from it.
+// Dividing a big playlist into groups of songs that sound alike, are about the same thing, or share a genre, to
+// make smaller playlists from it.
 import { positions, type AudioIndex, type Vectors } from "./audio.ts";
 import type { Library } from "./library.ts";
+import { CATCH_ALL_GENRES, type Tags } from "./tags.ts";
 import type { ThemeIndex } from "./themes.ts";
 
 const RESTARTS = 6;
@@ -10,7 +11,7 @@ const ROUNDS = 30;
 export type Split = {
   /** Biggest group first; within a group, the songs most typical of it come first. */
   groups: string[][];
-  /** Songs with no sound vector, which can't be placed. */
+  /** Songs that can't be placed: no sound vector, or (by lyrics or genre) none of the chosen themes or genres. */
   unplaced: string[];
 };
 
@@ -151,6 +152,37 @@ export function themeGroups(index: ThemeIndex, lib: Library, ids: string[], k: n
   return {
     groups: groups.map(([, songs]) => songs.sort((a, b) => b.score - a.score).map((s) => s.id)),
     names: groups.map(([theme]) => index.themes[theme]!),
+    unplaced: ids.filter((id) => !placed.has(id)),
+  };
+}
+
+/** A song belongs to a genre group from this probability. */
+const GENRE_MIN = 0.1;
+
+/**
+ * `ids` grouped by genre: the `k` genres that are the likeliest genre of the most songs, each holding the songs it's
+ * likelier for than the other chosen genres, the surest first. `unplaced` holds songs with no tags or none of the
+ * chosen genres. The tagger's catch-all genres are skipped. `names` is parallel to `groups`.
+ */
+export function genreGroups(tags: Tags, ids: string[], k: number): Split & { names: string[] } {
+  const tagged = [...new Set(ids)].flatMap((id) => {
+    const genres = tags.get(id)?.genres.filter(([genre]) => !CATCH_ALL_GENRES.has(genre));
+    return genres?.length ? [{ id, genres }] : [];
+  });
+  const leading = new Map<string, number>();
+  for (const { genres } of tagged) leading.set(genres[0]![0], (leading.get(genres[0]![0]) ?? 0) + 1);
+  const chosen = new Set([...leading].sort((a, b) => b[1] - a[1]).slice(0, k).map(([genre]) => genre));
+  const members = new Map<string, { id: string; p: number }[]>([...chosen].map((genre) => [genre, []]));
+  for (const { id, genres } of tagged) {
+    // Genres come likeliest first, so the first chosen one is the song's best.
+    const best = genres.find(([genre, p]) => chosen.has(genre) && p >= GENRE_MIN);
+    if (best) members.get(best[0])!.push({ id, p: best[1] });
+  }
+  const groups = [...members].filter(([, songs]) => songs.length).sort((a, b) => b[1].length - a[1].length);
+  const placed = new Set(groups.flatMap(([, songs]) => songs.map((s) => s.id)));
+  return {
+    groups: groups.map(([, songs]) => songs.sort((a, b) => b.p - a.p).map((s) => s.id)),
+    names: groups.map(([genre]) => genre),
     unplaced: ids.filter((id) => !placed.has(id)),
   };
 }
