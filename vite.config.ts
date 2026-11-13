@@ -14,6 +14,7 @@ import { config } from "./src/core/config.ts";
  *   GET/PUT /api/rules    -> data/rules.json (artist rules; 404 until the first one is saved)
  *   GET/PUT /api/hidden   -> data/hidden.json (playlists hidden from suggestions; same)
  *   GET/PUT /api/ledger   -> data/ledger.json (sorts not yet confirmed by a resync; same)
+ *   GET/PUT /api/parents  -> data/parents.json (which playlists are parts of which; same)
  *   GET     /api/merges   -> data/merges.json (`pnpm merge-copies` log; 404 until it has applied)
  *   GET     /api/audio    -> data/audio.json (404 until `pnpm audio` has run)
  *   GET     /api/vectors  -> data/vectors.bin (same; binary)
@@ -64,6 +65,7 @@ function localData(): Plugin {
     "/api/rules": "data/rules.json",
     "/api/hidden": "data/hidden.json",
     "/api/ledger": "data/ledger.json",
+    "/api/parents": "data/parents.json",
     "/api/merges": "data/merges.json",
     "/api/audio": "data/audio.json",
     "/api/vectors": "data/vectors.bin",
@@ -75,7 +77,7 @@ function localData(): Plugin {
     "/api/themes": "data/themes.json",
     "/api/languages": "data/languages.jsonl",
   };
-  const writable = new Set(["data/library.json", "data/rules.json", "data/hidden.json", "data/ledger.json"]);
+  const writable = new Set(["data/library.json", "data/rules.json", "data/hidden.json", "data/ledger.json", "data/parents.json"]);
 
 
   return {

@@ -1,6 +1,7 @@
 // Playlists tab: a workshop for one of your playlists. Split divides it into groups by sound or by what the lyrics
-// are about, to save as smaller playlists (the parent stays as it is), Missing finds songs in your library it
-// probably should have, and Doesn't fit lists its own songs least likely to belong. A playlist with an artist rule
+// are about, to save as smaller playlists that become its parts (the playlist stays as it is), Parts keeps it and
+// its parts in step, Missing finds songs in your library it probably should have, and Doesn't fit lists its own
+// songs least likely to belong. The list on the left shows each part under the playlist it's part of. A playlist with an artist rule
 // is checked against the rule instead: Missing is its artists' other songs, Doesn't fit the songs by anyone else.
 import { useEffect, useMemo, useState } from "react";
 import { doubted, missing, type Evidence, type Scored } from "../core/belong.ts";
@@ -9,7 +10,9 @@ import { isArtistPlaylist, sortTargets, type Playlist, type Track } from "../cor
 import { soundGroups, themeGroups } from "../core/split.ts";
 import type { ThemeIndex } from "../core/themes.ts";
 import { closeTo, topArtists, traits, type TraitData } from "../core/traits.ts";
-import { usePlayer } from "./player.ts";
+import { partsOf } from "../core/family.ts";
+import { PartsPane } from "./PartsPane.tsx";
+import { Empty, PAGE, ShowMore, SongButton } from "./rows.tsx";
 import { useSets } from "./sets.ts";
 import { useApp } from "./store.ts";
 import { groupsOf, pruned, replaceGroup, signature, updateGroup, useWorkshop, type By, type Group, type Split } from "./workshop.ts";
@@ -22,20 +25,17 @@ const MIN_SPLIT = 4;
 /** Groups smaller than this have no Split button. */
 const MIN_SUBSPLIT = 8;
 const CARD_SONGS = 8;
-const PAGE = 40;
 const MISSING_LIMIT = 200;
 const CHIPS = 3;
 const CLOSE = 2;
 
-type Mode = "split" | "missing" | "doubted";
-const MODES: Record<Mode, string> = { split: "Split", missing: "Missing", doubted: "Doesn't fit" };
+type Mode = "split" | "parts" | "missing" | "doubted";
+const MODES: Record<Mode, string> = { split: "Split", parts: "Parts", missing: "Missing", doubted: "Doesn't fit" };
 
 const BYS: Record<By, string> = { sound: "Sound", lyrics: "Lyrics" };
 
 type Sound = NonNullable<Evidence["sound"]>;
 
-const artistNames = (t: Track) => t.artists.map((a) => a.name).join(", ");
-const play = (t: Track) => void usePlayer.getState().play(t.id, t.durationMs);
 
 function readSelected() {
   try {
@@ -47,7 +47,7 @@ function readSelected() {
 
 /** The tab. `onOpenBuild` switches to the Build tab after a group was opened there as a new set. */
 export function PlaylistsView({ colors, onOpenBuild }: { colors: Map<string, string>; onOpenBuild: () => void }) {
-  const { lib, audio, vectors, classifier, features, languages, tags, themes, rules, hidden } = useApp();
+  const { lib, audio, vectors, classifier, features, languages, tags, themes, rules, hidden, parents } = useApp();
   const [selected, setSelected] = useState(readSelected);
   const [filter, setFilter] = useState("");
   const [mode, setMode] = useState<Mode>("split");
@@ -90,9 +90,23 @@ export function PlaylistsView({ colors, onOpenBuild }: { colors: Map<string, str
 
   const headerTraits = useMemo(() => (data && playlist ? traits(data, playlist.trackIds, all) : []), [data, playlist, all]);
 
+  // The list as a tree: each part sits under what it's part of (under each, if several), biggest first.
+  const tree = useMemo(() => {
+    const byId = new Map(playlists.map((p) => [p.id, p]));
+    const parts = partsOf(parents);
+    const rows: { playlist: Playlist; depth: number; key: string }[] = [];
+    const walk = (p: Playlist, depth: number, path: string) => {
+      rows.push({ playlist: p, depth, key: `${path}/${p.id}` });
+      for (const child of playlists) if (parts.get(p.id)?.includes(child.id)) walk(child, depth + 1, `${path}/${p.id}`);
+    };
+    for (const p of playlists) if (!parents[p.id]?.some((id) => byId.has(id))) walk(p, 0, "");
+    return rows;
+  }, [playlists, parents]);
+
   if (!lib || !data) return null;
   const q = filter.trim().toLowerCase();
-  const shown = q ? playlists.filter((p) => p.name.toLowerCase().includes(q)) : playlists;
+  const shown = q ? playlists.filter((p) => p.name.toLowerCase().includes(q)).map((p) => ({ playlist: p, depth: 0, key: p.id })) : tree;
+  const partOf = playlist ? playlists.filter((p) => parents[playlist.id]?.includes(p.id)) : [];
 
   return (
     <div className="grid gap-6 md:grid-cols-[260px_minmax(0,1fr)]">
@@ -104,11 +118,12 @@ export function PlaylistsView({ colors, onOpenBuild }: { colors: Map<string, str
           className="mb-2 w-full rounded-lg border border-white/10 bg-transparent px-2.5 py-1.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-white/30 focus:outline-none"
         />
         <ul className="max-h-64 overflow-y-auto md:max-h-none">
-          {shown.map((p) => (
-            <li key={p.id}>
+          {shown.map(({ playlist: p, depth, key }) => (
+            <li key={key}>
               <button
                 onClick={() => setSelected(p.id)}
-                className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm ${p.id === playlist?.id ? "bg-white/10 text-zinc-50" : "text-zinc-300 hover:bg-white/5"} ${hidden.includes(p.id) ? "opacity-50" : ""}`}
+                style={{ paddingLeft: 8 + depth * 14 }}
+                className={`flex w-full items-center gap-2 rounded-md py-1 pr-2 text-left text-sm ${p.id === playlist?.id ? "bg-white/10 text-zinc-50" : "text-zinc-300 hover:bg-white/5"} ${hidden.includes(p.id) ? "opacity-50" : ""}`}
               >
                 <span className="size-2 shrink-0 rounded-full" style={{ background: colors.get(p.id) }} />
                 <span className="min-w-0 flex-1 truncate">{p.name}</span>
@@ -124,10 +139,24 @@ export function PlaylistsView({ colors, onOpenBuild }: { colors: Map<string, str
           <header className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
             <h2 className="min-w-0 truncate text-lg font-semibold text-zinc-50">{playlist.name}</h2>
             <span className="text-sm text-zinc-400">{playlist.trackIds.length} songs</span>
+            {partOf.length > 0 && (
+              <span className="text-sm text-zinc-500">
+                part of{" "}
+                {partOf.map((p, i) => (
+                  <span key={p.id}>
+                    {i > 0 && ", "}
+                    <button className="text-zinc-300 underline-offset-2 hover:text-zinc-50 hover:underline" onClick={() => setSelected(p.id)}>
+                      {p.name}
+                    </button>
+                  </span>
+                ))}
+              </span>
+            )}
             <Chips words={headerTraits} />
             <Segmented className="ml-auto" options={Object.keys(MODES) as Mode[]} value={mode} label={(m) => MODES[m]} onChange={setMode} />
           </header>
           {mode === "split" && <SplitPane key={playlist.id} playlist={playlist} sound={sound} themes={themes} data={data} others={soundPlaylists} colors={colors} onOpenBuild={onOpenBuild} />}
+          {mode === "parts" && <PartsPane key={playlist.id} playlist={playlist} playlists={playlists} sound={sound} colors={colors} onOpen={setSelected} />}
           {mode === "missing" && <MissingPane key={playlist.id} playlist={playlist} all={all} evidence={evidence} memberOf={memberOf} colors={colors} />}
           {mode === "doubted" && <DoubtedPane key={playlist.id} playlist={playlist} evidence={evidence} memberOf={memberOf} colors={colors} />}
         </main>
@@ -172,15 +201,6 @@ function Segmented<T extends string | number>({
         </button>
       ))}
     </div>
-  );
-}
-
-/** Title and artists; clicking plays it. */
-function SongButton({ track }: { track: Track }) {
-  return (
-    <button className="min-w-0 flex-1 truncate text-left text-sm text-zinc-100" onClick={() => play(track)}>
-      {track.name} <span className="text-xs text-zinc-400">{artistNames(track)}</span>
-    </button>
   );
 }
 
@@ -275,6 +295,7 @@ function SplitPane({
             words={words[i] ?? []}
             close={close[i] ?? []}
             fallback={defaults[i] ?? playlist.name}
+            parentId={playlist.id}
             data={data}
             onEdit={(fn) => edit((s) => updateGroup(s, g.key, fn))}
             onSplit={() =>
@@ -303,12 +324,15 @@ function GroupCard({
   words,
   close,
   fallback,
+  parentId,
   data,
   onEdit,
   onSplit,
   onOpenBuild,
 }: {
   group: Group;
+  /** The playlist being split: a group saved as a playlist becomes one of its parts. */
+  parentId: string;
   /** What sets the group apart from the rest of the playlist. */
   words: string[];
   /** Playlists you already have that hold much of the group, with how many of its songs. */
@@ -396,7 +420,10 @@ function GroupCard({
             const sent = signature(saveName, group.ids);
             onEdit(() => ({ saving: true }));
             useApp.getState().savePlaylist(saveName, group.ids, group.playlistId, {
-              created: (playlistId) => onEdit(() => ({ playlistId })),
+              created: (playlistId) => {
+                onEdit(() => ({ playlistId }));
+                useApp.getState().setPart(playlistId, parentId, true);
+              },
               saved: () => onEdit(() => ({ saving: false, savedAs: sent })),
             });
           }}
@@ -548,11 +575,3 @@ function Rows({
     </ul>
   );
 }
-
-const Empty = ({ children }: { children: string }) => <p className="py-1 text-sm text-zinc-500">{children}</p>;
-
-const ShowMore = ({ onClick }: { onClick: () => void }) => (
-  <button className="mt-1 text-xs text-zinc-400 hover:text-zinc-100" onClick={onClick}>
-    Show more
-  </button>
-);

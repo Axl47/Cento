@@ -6,6 +6,7 @@ import { config } from "../core/config.ts";
 import { inbox, type Library } from "../core/library.ts";
 import { decodeVectors, neighborsFrom, type AudioIndex, type Vectors } from "../core/audio.ts";
 import { classifierFrom, type ClassifierData, type SoundClassifier } from "../core/classifier.ts";
+import { ancestors, knownParents, setPart, withAncestors, type Parents } from "../core/family.ts";
 import { applyLedger, unconfirmed, type LedgerEntry } from "../core/ledger.ts";
 import type { Languages } from "../core/languages.ts";
 import { themeIndex, type ThemeData, type ThemeIndex } from "../core/themes.ts";
@@ -55,6 +56,8 @@ type State = {
   uncounted: string[];
   /** Playlists kept in the sort screen's on/off row, whether or not they're uncounted right now. */
   shelf: string[];
+  /** Which playlists are parts of which (data/parents.json): a song put in a part also goes in what it's part of. */
+  parents: Parents;
   /** Sorts made here that a resync hasn't confirmed yet. */
   ledger: LedgerEntry[];
   queue: string[];
@@ -78,7 +81,9 @@ type State = {
   setLanguages: (languages: Languages) => void;
   /** Takes freshly trained classifiers and re-ranks the queue. */
   setClassifier: (data: ClassifierData) => void;
-  load: (lib: Library, audio: AudioIndex | null, rules: ArtistRules, hidden: string[], ledger: LedgerEntry[], classifier: ClassifierData | null) => void;
+  load: (lib: Library, audio: AudioIndex | null, rules: ArtistRules, hidden: string[], ledger: LedgerEntry[], classifier: ClassifierData | null, parents: Parents) => void;
+  /** Makes `child` a part of `parent` (or no longer one) and saves it. Songs don't move: the part's strays show in the Playlists tab. */
+  setPart: (child: string, parent: string, on: boolean) => void;
   /** Sets (or with [] clears) a playlist's artist rule, saves it, and updates the current picks. */
   setRule: (playlistId: string, artists: ArtistRules[string]) => void;
   /** Hides a playlist from suggestions (or shows it again), saves, and rebuilds the queue. */
@@ -101,8 +106,9 @@ type State = {
    */
   savePlaylist: (name: string, trackIds: string[], playlistId: string | undefined, on: { created: (id: string) => void; saved: () => void }) => void;
   /**
-   * Adds songs to one of your playlists, here and on Spotify, skipping ones already in it. Recorded like a sort, so
-   * a resync that doesn't show them yet keeps them; if Spotify refuses, they're taken back out.
+   * Adds songs to one of your playlists and to every playlist it's part of, here and on Spotify, skipping ones
+   * already there. Recorded like a sort, so a resync that doesn't show them yet keeps them; if Spotify refuses,
+   * they're taken back out.
    */
   addToPlaylist: (playlistId: string, trackIds: string[]) => void;
   /**
@@ -123,11 +129,11 @@ type State = {
   setRemoveFromLikes: (on: boolean) => void;
 };
 
-/** Playlists checked when a song comes up: confident cold suggestions for known artists. */
-export function initialPicks(s: Pick<State, "lib" | "model" | "neighbors">, trackId: string | undefined): string[] {
+/** Playlists checked when a song comes up: confident cold suggestions for known artists, and whatever those are part of. */
+export function initialPicks(s: Pick<State, "lib" | "model" | "neighbors" | "parents">, trackId: string | undefined): string[] {
   const track = trackId ? s.lib?.tracks[trackId] : undefined;
   if (!track || !s.model) return [];
-  return prechecked(s.model, track, suggest(s.model, track, [], s.neighbors));
+  return withAncestors(s.parents, prechecked(s.model, track, suggest(s.model, track, [], s.neighbors)));
 }
 
 /** Orders the inbox. "similar" chains each song to its nearest unsorted neighbor by sound. */
@@ -265,6 +271,27 @@ export const useApp = create<State>()((set, get) => {
     set({ hidden, uncounted, model, queue, picked });
   };
 
+  /** Adds songs to one playlist, here and on Spotify, skipping ones already in it; taken back out if Spotify refuses. */
+  const addTo = (playlistId: string, trackIds: string[]) => {
+    const lib = get().lib;
+    const fresh = membersOf(lib, playlistId, trackIds, false);
+    if (!lib || fresh.length === 0) return;
+    const at = new Date().toISOString();
+    const entries = fresh.map((trackId): LedgerEntry => ({ trackId, added: [playlistId], unliked: false, at }));
+    setLedger([...get().ledger, ...entries]);
+    setLib(applyLedger(lib, entries), true);
+    write("Adding to playlist", async () => {
+      try {
+        await addToPlaylist(client, playlistId, fresh);
+      } catch (e) {
+        setLedger(get().ledger.filter((entry) => !entries.includes(entry)));
+        const now = get().lib;
+        if (now) setLib(withMembers(now, playlistId, fresh, false), true);
+        throw e;
+      }
+    });
+  };
+
   return {
     lib: null,
     model: null,
@@ -281,6 +308,7 @@ export const useApp = create<State>()((set, get) => {
     hidden: [],
     uncounted: [],
     shelf: [],
+    parents: {},
     ledger: [],
     queue: [],
     picked: [],
@@ -338,15 +366,24 @@ export const useApp = create<State>()((set, get) => {
       if (current && rebuilt.includes(current)) set({ queue: [current, ...rebuilt.filter((id) => id !== current)] });
     },
 
-    load: (synced, audio, rules, hidden, ledger, trained) => {
+    load: (synced, audio, rules, hidden, ledger, trained, savedParents) => {
       const lib = applyLedger(synced, ledger);
+      const parents = knownParents(savedParents, (id) => lib.playlists.some((p) => p.id === id));
       const neighbors = audio ? neighborsFrom(audio) : undefined;
       const { uncounted, shelf } = readPass(lib);
       const classifier = trained ? classifierFrom(trained) : undefined;
       const model = modelOf(lib, rules, hidden, uncounted, classifier);
       const order: Order = audio ? "similar" : "confident";
       const queue = buildQueue(lib, model, neighbors, order, hidden, uncounted);
-      set({ lib, model, audio, neighbors, classifier, rules, hidden, uncounted, shelf, ledger, order, queue, picked: initialPicks({ lib, model, neighbors }, queue[0]) });
+      set({ lib, model, audio, neighbors, classifier, rules, hidden, uncounted, shelf, parents, ledger, order, queue, picked: initialPicks({ lib, model, neighbors, parents }, queue[0]) });
+    },
+
+    setPart: (child, parent, on) => {
+      const parents = setPart(get().parents, child, parent, on);
+      if (parents === get().parents) return;
+      void fetch("/api/parents", { method: "PUT", body: JSON.stringify(parents) });
+      // The current song's picks follow: a checked part brings its new playlist along.
+      set((s) => ({ parents, picked: on ? withAncestors(parents, s.picked) : s.picked }));
     },
 
     setHidden: (playlistId, hide) => {
@@ -445,25 +482,8 @@ export const useApp = create<State>()((set, get) => {
       }),
 
     addToPlaylist: (playlistId, trackIds) => {
-      const lib = get().lib;
-      const fresh = membersOf(lib, playlistId, trackIds, false);
-      if (!lib || fresh.length === 0) return;
-      const at = new Date().toISOString();
-      const entries = fresh.map((trackId): LedgerEntry => ({ trackId, added: [playlistId], unliked: false, at }));
-      setLedger([...get().ledger, ...entries]);
-      setLib(applyLedger(lib, entries), true);
-      write("Adding to playlist", async () => {
-        try {
-          await addToPlaylist(client, playlistId, fresh);
-        } catch (e) {
-          setLedger(get().ledger.filter((entry) => !entries.includes(entry)));
-          const now = get().lib;
-          if (now) setLib(withMembers(now, playlistId, fresh, false), true);
-          throw e;
-        }
-      });
+      for (const id of [playlistId, ...ancestors(get().parents, playlistId)]) addTo(id, trackIds);
     },
-
     removeFromPlaylist: (playlistId, trackIds) => {
       const lib = get().lib;
       const present = membersOf(lib, playlistId, trackIds, true);
@@ -489,6 +509,7 @@ export const useApp = create<State>()((set, get) => {
 
     replaceLibrary: (fresh) => {
       const ledger = unconfirmed(fresh, get().ledger);
+      set((s) => ({ parents: knownParents(s.parents, (id) => fresh.playlists.some((p) => p.id === id)) }));
       setLedger(ledger);
       setLib(applyLedger(fresh, ledger), false);
       set((s) => ({ history: [], picked: initialPicks(s, s.queue[0]) }));
@@ -501,7 +522,7 @@ export const useApp = create<State>()((set, get) => {
       set({ order, queue, picked: initialPicks(get(), queue[0]) });
     },
 
-    togglePick: (id) => set((s) => ({ picked: s.picked.includes(id) ? s.picked.filter((p) => p !== id) : [...s.picked, id] })),
+    togglePick: (id) => set((s) => ({ picked: s.picked.includes(id) ? s.picked.filter((p) => p !== id) : withAncestors(s.parents, [...s.picked, id]) })),
 
     sort: (trackIds) => {
       const { lib, picked, removeFromLikes } = get();

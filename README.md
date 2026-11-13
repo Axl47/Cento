@@ -65,6 +65,9 @@ track-URI play request is accepted but loads nothing on this account.
   result). They're never suggested, the model doesn't learn from them, they're left off the sound map, and a
   liked song that's only in hidden playlists still counts as unsorted. You can still pick one from `⌘K`,
   which also lists them to unhide. Saved in `data/hidden.json`.
+- **Parts**: a playlist can be a part of another, like Future Bass of EDM (set in the Playlists tab). Checking a
+  part checks the playlists it's part of too, so a song sorted into Future Bass also lands in EDM; uncheck EDM to
+  leave it out that once. Saved in `data/parents.json`.
 
 - **Not counted as sorted**: for doing a rough pass into a catch-all playlist (one per artist, say) and a proper
   one later. In `⌘K`, search for a playlist and choose **Don't count**. It joins a row on the sort screen where a
@@ -97,16 +100,21 @@ track-URI play request is accepted but loads nothing on this account.
   suggests songs to add, or shows the set as a route on the map. The suggestions can be narrowed by mood, vocals,
   tempo, genre, language and era; with an empty set the same filters pick 20 songs to start from. `⌘Z` undoes. Sets are kept in this browser;
   **Save to Spotify** creates a private playlist in this order that stays out of sorting, and later updates it.
-- **Playlists** (`P`): a workshop for one of your playlists, picked from the list on the left (biggest first).
+- **Playlists** (`P`): a workshop for one of your playlists, picked from the list on the left (biggest first, each
+  with its parts under it).
   **Split** divides it into 2–6 groups by sound, each named after what sets it apart from the rest of the playlist,
   or by **Lyrics**: the themes most of its songs are about, each holding the songs that carry that theme clearly
   (songs with no clear theme stay out of every group).
   A group that mostly falls in a playlist you already have shows that playlist and the share of the group in it
   (artist playlists and hidden ones don't count).
   Rename a group, drop songs from it (×), divide it in two again, or open it in Build. **Save as playlist** creates
-  a private playlist from the group that counts for sorting like any other; the parent playlist is left as it is.
-  Change the group afterwards and the button becomes **Update playlist**.
-  Splits last until a reload. **Missing** lists songs in your library the playlist probably should have; **Add** puts
+  a private playlist from the group that counts for sorting like any other and becomes a part of the playlist you
+  split, which is left as it is. Change the group afterwards and the button becomes **Update playlist**.
+  Splits last until a reload. **Parts** lists the playlists that are parts of this one, with the songs each has that
+  this one lacks (**Add** puts them in it), and offers playlists that already sit mostly inside it; any other can
+  be added by name. Below, **In no part** lists this playlist's songs that are in none of its parts, the ones that
+  sound most like a part first, each with the parts it sounds closest to (point at a row for the rest); click one to
+  put the song in it. Adding a song to a part anywhere in the app also adds it to what the part belongs to. **Missing** lists songs in your library the playlist probably should have; **Add** puts
   the checked ones in it on Spotify. **Doesn't fit** lists its songs least likely to belong; **Remove** takes one out of
   it on Spotify (it stays in your other playlists and in Everything), with **Undo** until you leave. A playlist with
   an artist rule is checked against the rule, not its sound: Missing is its artists' songs that aren't in it, and
