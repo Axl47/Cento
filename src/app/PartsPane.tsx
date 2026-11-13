@@ -3,9 +3,9 @@
 // belongs in, and the playlists it's part of or looks like a part of.
 import { useMemo, useState } from "react";
 import { ancestors, likelyParts, likelyWholes, strays, unplaced } from "../core/family.ts";
-import { isArtistPlaylist, type Playlist } from "../core/library.ts";
+import type { Playlist } from "../core/library.ts";
 import { suggest } from "../core/suggest.ts";
-import { Empty, PAGE, ShowMore, SongButton } from "./rows.tsx";
+import { Dot, Empty, PAGE, ShowMore, SongButton } from "./rows.tsx";
 import { useApp, type Added } from "./store.ts";
 
 /** Parts offered on each song that's in none. */
@@ -21,22 +21,23 @@ const FOUND = 6;
 
 type Offer = { partId: string; score: number };
 
-const Dot = ({ color }: { color: string | undefined }) => <span className="size-2 shrink-0 rounded-full" style={{ background: color }} />;
-
 export function PartsPane({
   playlist,
   playlists,
+  sounds,
   colors,
   onOpen,
 }: {
   playlist: Playlist;
   /** Every playlist that could be a part, biggest first. */
   playlists: Playlist[];
+  /** The playlists worth being a part of: the ones about a sound. */
+  sounds: Playlist[];
   colors: Map<string, string>;
   /** Opens another playlist in the tab. */
   onOpen: (playlistId: string) => void;
 }) {
-  const { lib, model, neighbors, parents, rules, hidden, uncounted } = useApp();
+  const { lib, model, neighbors, parents, hidden } = useApp();
   const { setPart, addToPlaylist, removeFromPlaylist } = useApp.getState();
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState(PAGE);
@@ -50,14 +51,7 @@ export function PartsPane({
     : likely.flatMap((c) => playlists.find((p) => p.id === c.id && !hidden.includes(p.id)) ?? []);
   const shared = new Map(likely.map((c) => [c.id, c.shared]));
   const wholes = playlists.filter((p) => parents[playlist.id]?.includes(p.id));
-  // An artist's catch-all, or a playlist left out of sorting, isn't something to be a part of.
-  const likelyOf = useMemo(() => {
-    const whole = (id: string) => {
-      const p = playlists.find((x) => x.id === id);
-      return !!lib && !!p && !hidden.includes(id) && !uncounted.includes(id) && !rules[id] && !isArtistPlaylist(lib, p);
-    };
-    return likelyWholes(parents, playlist, playlists).filter((c) => whole(c.id));
-  }, [lib, parents, playlist, playlists, hidden, uncounted, rules]);
+  const likelyOf = useMemo(() => likelyWholes(parents, playlist, sounds), [parents, playlist, sounds]);
 
   // The songs in no part and the parts offered for each, likeliest song first, as they stood when the set of parts
   // last changed: a placed song keeps its row (with Undo), and placing one doesn't reshuffle the rows under the pointer.

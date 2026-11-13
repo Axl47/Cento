@@ -14,6 +14,8 @@ export function SongButton({ track }: { track: Track }) {
   );
 }
 
+export const Dot = ({ color }: { color: string | undefined }) => <span className="size-2 shrink-0 rounded-full" style={{ background: color }} />;
+
 export const Empty = ({ children }: { children: string }) => <p className="py-1 text-sm text-zinc-500">{children}</p>;
 
 export const ShowMore = ({ onClick }: { onClick: () => void }) => (

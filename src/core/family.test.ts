@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ancestors, knownParents, likelyParts, likelyWholes, partsOf, partsToOffer, setPart, strays, unplaced, withAncestors, type Parents } from "./family.ts";
+import { ancestors, knownParents, likelyParts, likelyFamilies, likelyWholes, partsOf, partsToOffer, setPart, strays, unplaced, withAncestors, type Parents } from "./family.ts";
 
 const parents: Parents = { "future-bass": ["edm"], "melodic-dubstep": ["edm"], edm: ["electronic"], "neo-perreo": ["edm", "urbano"] };
 
@@ -73,4 +73,20 @@ test("a playlist looks like a part of the bigger playlists that hold most of it,
   ];
   const family = { gaming: ["already"], "its-part": ["gaming"] };
   assert.deepEqual(likelyWholes(family, part, others).map((c) => [c.id, c.shared]), [["flow", 10], ["everything-ish", 10], ["half", 6]]);
+});
+
+test("likely parts across the library sit once each, under the smallest playlist that holds most of them", () => {
+  const ids = (n: number, prefix = "s") => Array.from({ length: n }, (_, i) => `${prefix}${i}`);
+  const playlists = [
+    { id: "urbano", trackIds: [...ids(40), ...ids(60, "u")] },
+    { id: "regueton", trackIds: [...ids(20), ...ids(5, "r")] },
+    { id: "antiguo", trackIds: [...ids(8), "old1", "old2"] },
+    { id: "trap", trackIds: ids(10, "u") },
+    { id: "declared", trackIds: ids(60, "u").slice(50) },
+    { id: "unrelated", trackIds: ids(30, "x") },
+  ];
+  assert.deepEqual(likelyFamilies({ declared: ["urbano"] }, playlists), [
+    { whole: "urbano", parts: [{ id: "trap", shared: 10, size: 10 }, { id: "regueton", shared: 20, size: 25 }] },
+    { whole: "regueton", parts: [{ id: "antiguo", shared: 8, size: 10 }] },
+  ]);
 });

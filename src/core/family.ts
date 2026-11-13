@@ -114,3 +114,20 @@ export function likelyWholes(parents: Parents, part: Songs, others: readonly Son
     .filter((c) => c.shared >= LIKELY_PART * c.size)
     .sort((a, b) => b.shared - a.shared || sizes.get(a.id)! - sizes.get(b.id)!);
 }
+
+/**
+ * Every playlist among `playlists` that looks like a part of another, each listed once, under its closest fit: the
+ * smallest of its `likelyWholes`, so a chain is found from the bottom up (Regueton Antiguo under Regueton, not under
+ * Urbano, which holds both). The biggest playlist comes first, and under each its most contained candidate.
+ */
+export function likelyFamilies(parents: Parents, playlists: readonly Songs[]): { whole: string; parts: Candidate[] }[] {
+  const size = new Map(playlists.map((p) => [p.id, p.trackIds.length]));
+  const families = new Map<string, Candidate[]>();
+  for (const part of playlists) {
+    const [closest] = likelyWholes(parents, part, playlists).sort((a, b) => size.get(a.id)! - size.get(b.id)!);
+    if (closest) families.set(closest.id, [...(families.get(closest.id) ?? []), { ...closest, id: part.id }]);
+  }
+  return [...families]
+    .map(([whole, parts]) => ({ whole, parts: parts.sort((a, b) => b.shared / b.size - a.shared / a.size || b.size - a.size) }))
+    .sort((a, b) => size.get(b.whole)! - size.get(a.whole)!);
+}
