@@ -175,7 +175,7 @@ export function PlaylistsView({ colors, onOpenBuild }: { colors: Map<string, str
             <Segmented className="ml-auto" options={Object.keys(MODES) as Mode[]} value={mode} label={(m) => MODES[m]} onChange={setMode} />
           </header>
           {mode === "split" && <SplitPane key={playlist.id} playlist={playlist} parts={playlists.filter((p) => parents[p.id]?.includes(playlist.id))} sound={sound} themes={themes} data={data} others={soundPlaylists} colors={colors} onOpenBuild={onOpenBuild} />}
-          {mode === "parts" && <PartsPane key={playlist.id} playlist={playlist} playlists={playlists} sound={sound} colors={colors} onOpen={setSelected} />}
+          {mode === "parts" && <PartsPane key={playlist.id} playlist={playlist} playlists={playlists} colors={colors} onOpen={setSelected} />}
           {mode === "missing" && <MissingPane key={playlist.id} playlist={playlist} all={all} evidence={evidence} memberOf={memberOf} colors={colors} />}
           {mode === "doubted" && <DoubtedPane key={playlist.id} playlist={playlist} evidence={evidence} memberOf={memberOf} colors={colors} />}
         </main>

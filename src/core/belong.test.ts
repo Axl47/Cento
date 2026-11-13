@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { decodeVectors, encodeVectors, type AudioIndex } from "./audio.ts";
-import { doubted, missing, placements } from "./belong.ts";
+import { doubted, missing } from "./belong.ts";
 import { classifierFrom } from "./classifier.ts";
 
 const classifier = classifierFrom({
@@ -41,25 +41,4 @@ test("a playlist with an artist rule misses exactly its artists' songs and doubt
 
   assert.deepEqual(missing(rule, { id: "p", trackIds: ["theirs-in", "other-in"] }, ["theirs-out", "other-out", "theirs-in"], 5), [{ id: "theirs-out", score: 1 }]);
   assert.deepEqual(doubted(rule, { id: "p", trackIds: ["theirs-in", "other-in"] }), [{ id: "other-in", score: 0 }]);
-});
-
-test("a song is placed in the part it sounds closest to, and an artist-rule part takes only its artists' songs", () => {
-  const angle = (deg: number) => Float32Array.from([Math.cos((deg * Math.PI) / 180), Math.sin((deg * Math.PI) / 180), 0]);
-  const degrees = { calm1: 0, calm2: 10, loud1: 90, loud2: 100, nearCalm: 15, nearLoud: 80, theirs: 85 };
-  const raw = encodeVectors(Object.values(degrees).map(angle));
-  const sound = {
-    index: { ids: Object.keys(degrees), baseline: 0 } as AudioIndex,
-    vectors: decodeVectors(raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength) as ArrayBuffer),
-  };
-  const parts = [
-    { id: "calm", trackIds: ["calm1", "calm2"] },
-    { id: "loud", trackIds: ["loud1", "loud2"] },
-    { id: "artist", trackIds: [], byRule: (id: string) => id === "theirs" },
-  ];
-  const placed = placements(sound, parts, ["nearCalm", "nearLoud", "theirs", "no-sound"]);
-
-  assert.deepEqual(placed.get("nearCalm")!.map((p) => p.partId), ["calm", "loud"]);
-  assert.deepEqual(placed.get("nearLoud")!.map((p) => p.partId), ["loud", "calm"]);
-  assert.deepEqual(placed.get("theirs")![0], { partId: "artist", score: 1 });
-  assert.deepEqual(placed.get("no-sound"), []);
 });
