@@ -41,8 +41,8 @@ track-URI play request is accepted but loads nothing on this account.
 
 The address names the tab you're on (`#playlists`), so a reload or a bookmark opens it.
 
-- **Sort**: the current liked song plays from ~35% in, with its genres, mood, tempo, key and release year under the
-  album name (see `pnpm tags`; the year needs a resync made after it was added). Its playlists show as tiles; the bar on each is the
+- **Sort**: the current liked song plays from ~35% in, with its genres, mood, tempo, key, release year and how many times
+  you've played it under the album name (see `pnpm tags` and `pnpm plays`; the year needs a resync made after it was added). Its playlists show as tiles; the bar on each is the
   model's confidence. Confident suggestions start checked. For artists you've never sorted, that's limited to the one
   playlist the sound classifier is confident about (see `pnpm classify`). `1`–`8` toggle, `Enter` sorts (adds to
   checked playlists + the all-songs playlist, removes from Liked Songs), `S` skips, `Space` play/pause,
@@ -59,7 +59,8 @@ The address names the tab you're on (`#playlists`), so a reload or a bookmark op
   - **Undo**: each sorted song stays in a row below the actions with its own Undo; `⌘Z` undoes the latest
     (re-liking loses the original liked date).
   - **`⌘K`** (or `/`): find a playlist and check it, create a private one named after the search (checked,
-    no resync needed), hide/unhide, artist rules, queue order, "Remove from Liked Songs", playback device.
+    no resync needed), hide/unhide, artist rules, queue order (similar songs together, most confident, newest liked or most played
+    first), "Remove from Liked Songs", playback device.
 - **Artist rules**: **Artists…** in the playlist info (or on a `⌘K` result) says "this playlist is for these
   artists" (any of them matches; autocomplete from your library). Matching songs get the playlist on top and
   checked; it's never suggested for other songs. Saved in `data/rules.json`, which `pnpm eval` also reads.
