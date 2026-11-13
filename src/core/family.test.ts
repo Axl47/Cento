@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ancestors, knownParents, likelyParts, likelyWholes, partsOf, setPart, strays, unplaced, withAncestors, type Parents } from "./family.ts";
+import { ancestors, knownParents, likelyParts, likelyWholes, partsOf, partsToOffer, setPart, strays, unplaced, withAncestors, type Parents } from "./family.ts";
 
 const parents: Parents = { "future-bass": ["edm"], "melodic-dubstep": ["edm"], edm: ["electronic"], "neo-perreo": ["edm", "urbano"] };
 
@@ -16,6 +16,16 @@ test("a part can't be made a part of itself or of its own part", () => {
   assert.deepEqual(setPart(parents, "rock", "electronic", true).rock, ["electronic"]);
   assert.equal("future-bass" in setPart(parents, "future-bass", "edm", false), false);
   assert.deepEqual(setPart(parents, "neo-perreo", "edm", false)["neo-perreo"], ["urbano"]);
+});
+
+test("a picked playlist with no part picked offers its best parts", () => {
+  const ranked = ["rock", "melodic-dubstep", "neo-perreo", "future-bass"];
+  assert.deepEqual(partsToOffer(parents, ["edm"], ranked, 2), ["melodic-dubstep", "neo-perreo"]);
+  // Electronic's part (EDM) is picked, so only EDM's own parts are offered; with one of those picked, none are.
+  assert.deepEqual(partsToOffer(parents, ["edm", "electronic"], ranked, 1), ["melodic-dubstep"]);
+  assert.deepEqual(partsToOffer(parents, ["future-bass", "edm", "electronic"], ["rock", "melodic-dubstep"], 2), []);
+  // A part of two picked playlists is offered once.
+  assert.deepEqual(partsToOffer(parents, ["edm", "urbano"], ranked, 3), ["melodic-dubstep", "neo-perreo", "future-bass"]);
 });
 
 test("deleted playlists drop out of the families", () => {

@@ -70,7 +70,8 @@ The address names the tab you're on (`#playlists`), so a reload or a bookmark op
   which also lists them to unhide. Saved in `data/hidden.json`.
 - **Parts**: a playlist can be a part of another, like Future Bass of EDM (set in the Playlists tab). Checking a
   part checks the playlists it's part of too, so a song sorted into Future Bass also lands in EDM; uncheck EDM to
-  leave it out that once. Saved in `data/parents.json`.
+  leave it out that once. A checked playlist with parts, none of them checked, gets its two likeliest parts as the
+  next tiles, marked with a strip in its color. Saved in `data/parents.json`.
 
 - **Not counted as sorted**: for doing a rough pass into a catch-all playlist (one per artist, say) and a proper
   one later. In `⌘K`, search for a playlist and choose **Don't count**. It joins a row on the sort screen where a
