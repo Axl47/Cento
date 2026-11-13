@@ -10,7 +10,7 @@ export type Group = {
   ids: string[];
   /** What the user typed; null shows the default name. */
   name: string | null;
-  /** What the group's lyrics are about, for a group made by lyrics. */
+  /** What the group was made around, for a group made by lyrics (its theme) or by genre. */
   theme?: string;
   /** Set when Save is clicked; the button shows Saving… while writes are pending. */
   saving?: boolean;
@@ -23,9 +23,9 @@ export type Group = {
 /** A name and songs as one string, to tell whether a group still matches what was saved. */
 export const signature = (name: string, ids: string[]) => [name, ...ids].join("\n");
 
-export type By = "sound" | "lyrics";
+export type By = "sound" | "lyrics" | "genre";
 
-/** `unplaced` are the songs in no group: no sound yet (by sound), or no clear theme (by lyrics). */
+/** `unplaced` are the songs in no group: no sound yet (by sound), no clear theme (by lyrics), or none of the genres (by genre). */
 export type Split = { by: By; k: number; groups: Group[]; unplaced: string[] };
 
 let nextKey = 0;

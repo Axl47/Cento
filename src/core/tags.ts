@@ -7,6 +7,9 @@
  */
 export const MOODS = ["aggressive", "relaxed", "sad", "party", "acoustic", "electronic"] as const;
 
+/** Genres the tagger falls back on for songs it can't place, so they say nothing about a song or a group. */
+export const CATCH_ALL_GENRES: ReadonlySet<string> = new Set(["Cloud Rap", "K-pop"]);
+
 export type SongTags = {
   /** The song's likeliest genres, likeliest first, each with its probability. */
   genres: [name: string, p: number][];

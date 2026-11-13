@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import { doubted, missing, type Evidence, type Scored } from "../core/belong.ts";
 import { config } from "../core/config.ts";
 import { isArtistPlaylist, sortTargets, type Playlist, type Track } from "../core/library.ts";
-import { soundGroups, themeGroups } from "../core/split.ts";
+import { genreGroups, soundGroups, themeGroups } from "../core/split.ts";
 import type { ThemeIndex } from "../core/themes.ts";
 import { closeTo, topArtists, traits, type TraitData } from "../core/traits.ts";
 import { partsOf } from "../core/family.ts";
@@ -19,7 +19,7 @@ import { groupsOf, moveSong, pruned, replaceGroup, signature, updateGroup, useWo
 
 const SELECTED_KEY = "playlists-tab-selected";
 const MODE_KEY = "playlists-tab-mode";
-const KS = [2, 3, 4, 5, 6] as const;
+const KS = [2, 3, 4, 5, 6, 7, 8] as const;
 const DEFAULT_K = 3;
 /** Smaller playlists show their songs instead of a split. */
 const MIN_SPLIT = 4;
@@ -33,7 +33,8 @@ const CLOSE = 2;
 type Mode = "split" | "parts" | "missing" | "doubted";
 const MODES: Record<Mode, string> = { split: "Split", parts: "Parts", missing: "Missing", doubted: "Doesn't fit" };
 
-const BYS: Record<By, string> = { sound: "Sound", lyrics: "Lyrics" };
+const BYS: Record<By, string> = { sound: "Sound", lyrics: "Lyrics", genre: "Genre" };
+const UNPLACED: Record<By, string> = { sound: "no sound yet", lyrics: "no clear theme", genre: "none of these genres" };
 
 type Sound = NonNullable<Evidence["sound"]>;
 
@@ -213,7 +214,7 @@ function Segmented<T extends string | number>({
   );
 }
 
-/** The playlist's groups, by sound or by lyrics, as cards to rename, trim, split further, and save. */
+/** The playlist's groups, by sound, lyrics or genre, as cards to rename, trim, split further, and save. */
 function SplitPane({
   playlist,
   sound,
@@ -263,6 +264,10 @@ function SplitPane({
       if (!themes) return;
       const { groups, names, unplaced } = themeGroups(themes, data.lib, playlist.trackIds, k);
       change(playlist.id, () => ({ by, k, groups: groupsOf(groups, names), unplaced }));
+    } else if (by === "genre") {
+      if (!data.tags) return;
+      const { groups, names, unplaced } = genreGroups(data.tags, playlist.trackIds, k);
+      change(playlist.id, () => ({ by, k, groups: groupsOf(groups, names), unplaced }));
     } else if (sound) {
       const { groups, unplaced } = soundGroups(sound, playlist.trackIds, k);
       change(playlist.id, () => ({ by, k, groups: groupsOf(groups), unplaced }));
@@ -290,10 +295,12 @@ function SplitPane({
   if (!sound || !split) return null;
 
   const edit = (fn: (s: Split) => Split) => change(playlist.id, (s) => fn(s!));
+  // The ways to split that have their data.
+  const ways = (Object.keys(BYS) as By[]).filter((by) => by === "sound" || (by === "lyrics" ? themes : data.tags));
   return (
     <div className="@container">
       <div className="mb-3 flex flex-wrap gap-2">
-        {themes && <Segmented options={Object.keys(BYS) as By[]} value={split.by} label={(by) => BYS[by]} onChange={(by) => by !== split.by && regroup(by, split.k)} />}
+        {ways.length > 1 && <Segmented options={ways} value={split.by} label={(by) => BYS[by]} onChange={(by) => by !== split.by && regroup(by, split.k)} />}
         <Segmented options={KS} value={split.k} onChange={(k) => k !== split.k && regroup(split.by, k)} />
       </div>
       <div className="grid gap-3 @2xl:grid-cols-2 @5xl:grid-cols-3">
@@ -321,7 +328,7 @@ function SplitPane({
       </div>
       {split.unplaced.length > 0 && (
         <p className="mt-3 text-xs text-zinc-500">
-          {split.unplaced.length === 1 ? "1 song has" : `${split.unplaced.length} songs have`} {split.by === "lyrics" ? "no clear theme" : "no sound yet"}
+          {split.unplaced.length === 1 ? "1 song has" : `${split.unplaced.length} songs have`} {UNPLACED[split.by]}
         </p>
       )}
     </div>

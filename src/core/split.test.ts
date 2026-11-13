@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { decodeVectors, encodeVectors, type AudioIndex } from "./audio.ts";
 import type { Library } from "./library.ts";
-import { soundGroups, themeGroups } from "./split.ts";
+import { genreGroups, soundGroups, themeGroups } from "./split.ts";
 import { themeIndex } from "./themes.ts";
 
 const angle = (deg: number) => Float32Array.from([Math.cos((deg * Math.PI) / 180), Math.sin((deg * Math.PI) / 180), 0]);
@@ -44,5 +44,24 @@ test("songs group under the themes most of them are about, clearest first, and t
     groups: [["love1", "love2"], ["war2", "war1"]],
     names: ["love", "war"],
     unplaced: ["vague", "silent", "sea1"],
+  });
+});
+
+test("songs group under the genres most of them lead with (catch-all genres aside), surest first, and the rest are left out", () => {
+  const tags = new Map(
+    Object.entries({
+      dnb1: [["Drum n Bass", 0.5], ["Breakcore", 0.2]],
+      dnb2: [["K-pop", 0.5], ["Drum n Bass", 0.3]],
+      core1: [["Breakcore", 0.6]],
+      core2: [["Breakcore", 0.4], ["Drum n Bass", 0.3]],
+      mostlyTrance: [["Trance", 0.4], ["Breakcore", 0.2]],
+      faint: [["Ambient", 0.4], ["Breakcore", 0.05]],
+    } satisfies Record<string, [string, number][]>).map(([id, genres]) => [id, { genres, moods: {} }]),
+  );
+
+  assert.deepEqual(genreGroups(tags, ["faint", "dnb2", "core2", "untagged", "mostlyTrance", "core1", "dnb1"], 2), {
+    groups: [["core1", "core2", "mostlyTrance"], ["dnb1", "dnb2"]],
+    names: ["Breakcore", "Drum n Bass"],
+    unplaced: ["faint", "untagged"],
   });
 });

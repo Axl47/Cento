@@ -3,7 +3,7 @@
 import { KEY_STRENGTH, type SongFeatures } from "./features.ts";
 import type { Languages } from "./languages.ts";
 import type { Library, Playlist } from "./library.ts";
-import type { SongTags, Tags } from "./tags.ts";
+import { CATCH_ALL_GENRES, type SongTags, type Tags } from "./tags.ts";
 
 export type TraitData = {
   lib: Library;
@@ -17,8 +17,6 @@ const MAX_TRAITS = 6;
 const GENRE_LIFT = 0.06;
 const MOOD_LIFT = 0.15;
 const GENRES = 2;
-/** Genres the tagger falls back on for songs it can't place, so they say nothing about a group. */
-const CATCH_ALL = new Set(["Cloud Rap", "K-pop"]);
 /** The middle tempo has to differ by this share to be worth saying. */
 const TEMPO_GAP = 0.1;
 /** Loudness has to differ by this many LU. */
@@ -65,7 +63,7 @@ export function traits({ lib, features, languages, tags }: TraitData, ids: strin
   if (!among.length) return [];
   const out: string[] = [];
   if (tags) {
-    const genres = (id: string) => tags.get(id)?.genres.filter(([name]) => !CATCH_ALL.has(name));
+    const genres = (id: string) => tags.get(id)?.genres.filter(([name]) => !CATCH_ALL_GENRES.has(name));
     out.push(...lifted(ids, among, GENRE_LIFT, genres).slice(0, GENRES));
     const moods = (id: string) => {
       const song = tags.get(id);
@@ -151,7 +149,7 @@ const SONG_MOOD = 0.75;
 
 /** One song in a few words: its likeliest genres, its strongest mood, its tempo when the beat is steady, and its key. */
 export function songWords(tags: SongTags | undefined, features: SongFeatures | undefined): string[] {
-  const out = (tags?.genres ?? []).filter(([name, p]) => p >= SONG_GENRE && !CATCH_ALL.has(name)).slice(0, GENRES).map(([name]) => name);
+  const out = (tags?.genres ?? []).filter(([name, p]) => p >= SONG_GENRE && !CATCH_ALL_GENRES.has(name)).slice(0, GENRES).map(([name]) => name);
   const mood = Object.entries(tags?.moods ?? {}).sort((a, b) => b[1] - a[1])[0];
   if (mood && mood[1] >= SONG_MOOD) out.push(mood[0]);
   if (features?.steady && features.bpm) out.push(`${Math.round(features.bpm)} BPM`);
