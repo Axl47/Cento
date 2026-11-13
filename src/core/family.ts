@@ -86,3 +86,22 @@ export function likelyParts(parents: Parents, whole: Songs, others: readonly Son
     .filter((c) => c.shared >= LIKELY_PART * c.size)
     .sort((a, b) => b.shared / b.size - a.shared / a.size || b.size - a.size);
 }
+
+/**
+ * Playlists among `others` that `part` looks like a part of: bigger than it, already holding at least LIKELY_PART of
+ * its songs. Most of it held first, then the smaller (closer-fitting) playlist. What it's already part of, and its
+ * own parts, are left out. `shared` and `size` are still about `part`'s songs.
+ */
+export function likelyWholes(parents: Parents, part: Songs, others: readonly Songs[]): Candidate[] {
+  if (part.trackIds.length < MIN_CANDIDATE) return [];
+  const above = new Set(ancestors(parents, part.id));
+  const sizes = new Map(others.map((p) => [p.id, p.trackIds.length]));
+  return others
+    .filter((p) => p.id !== part.id && !above.has(p.id) && !ancestors(parents, p.id).includes(part.id) && p.trackIds.length > part.trackIds.length)
+    .map((p) => {
+      const held = new Set(p.trackIds);
+      return { id: p.id, size: part.trackIds.length, shared: part.trackIds.filter((id) => held.has(id)).length };
+    })
+    .filter((c) => c.shared >= LIKELY_PART * c.size)
+    .sort((a, b) => b.shared - a.shared || sizes.get(a.id)! - sizes.get(b.id)!);
+}

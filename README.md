@@ -106,11 +106,13 @@ The address names the tab you're on (`#playlists`), so a reload or a bookmark op
   tempo, genre, language and era; with an empty set the same filters pick 20 songs to start from. `⌘Z` undoes. Sets are kept in this browser;
   **Save to Spotify** creates a private playlist in this order that stays out of sorting, and later updates it.
 - **Playlists** (`P`): a workshop for one of your playlists, picked from the list on the left (biggest first, each
-  with its parts under it).
+  with its parts under it; an amber **+N** on a part counts its songs that the playlist above it lacks).
   **Split** divides it into 2–8 groups by sound, each named after what sets it apart from the rest of the playlist,
   or by **Lyrics**: the themes most of its songs are about, each holding the songs that carry that theme clearly
   (songs with no clear theme stay out of every group), or by **Genre**: the genres most of its songs lead with
-  (see `pnpm tags`), each holding the songs it fits best, with the rest left out.
+  (see `pnpm tags`), each holding the songs it fits best, with the rest left out. Click the count of left-out songs
+  to list them; they can be dragged into a group. Once a playlist has parts, **In no part** splits only the songs
+  none of them hold, to find the parts still missing.
   A group that mostly falls in a playlist you already have shows that playlist and the share of the group in it
   (artist playlists and hidden ones don't count).
   Rename a group, drop songs from it (×), drag a song to another group, divide it in two again, or open it in Build. **Save as playlist** creates
@@ -120,7 +122,9 @@ The address names the tab you're on (`#playlists`), so a reload or a bookmark op
   this one lacks (**Add** puts them in it), and offers playlists that already sit mostly inside it; any other can
   be added by name. Below, **In no part** lists this playlist's songs that are in none of its parts, the ones that
   sound most like a part first, each with the parts it sounds closest to (point at a row for the rest); click one to
-  put the song in it. Adding a song to a part anywhere in the app also adds it to what the part belongs to. **Missing** lists songs in your library the playlist probably should have; **Add** puts
+  put the song in it. Adding a song to a part anywhere in the app also adds it to what the part belongs to. At the
+  bottom, **Part of** lists the playlists this one is a part of, and bigger playlists that already hold most of it,
+  which it can be made a part of. **Missing** lists songs in your library the playlist probably should have; **Add** puts
   the checked ones in it on Spotify. **Doesn't fit** lists its songs least likely to belong; **Remove** takes one out of
   it on Spotify (it stays in your other playlists and in Everything), with **Undo** until you leave. A playlist with
   an artist rule is checked against the rule, not its sound: Missing is its artists' songs that aren't in it, and

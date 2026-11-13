@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Once a playlist has parts, **Split** can group only the songs that are in no part yet, to find the parts still missing.
+- The songs a split leaves out (no clear theme, none of the genres) can be listed and dragged into a group.
+- The Playlists list marks a part whose songs aren't all in the playlist it belongs to, and the **Parts** view suggests bigger playlists that a playlist could be made a part of.
 - The Playlists tab can split a playlist by **Genre**: its most common genres become groups (EDM into Drum n Bass, Breakcore, Hardcore and so on), ready to trim and save as playlists. Splits can now have up to 8 groups.
 - The sort screen shows how many times you've played the current song, and `⌘K` can order the queue most played first, so the songs you actually listen to get sorted before the rest.
 - The sort screen shows how many songs are in the all-songs playlist and in no other that counts, and one click lets them into the queue. They were never offered before because they aren't liked.

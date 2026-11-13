@@ -26,7 +26,8 @@ export const signature = (name: string, ids: string[]) => [name, ...ids].join("\
 export type By = "sound" | "lyrics" | "genre";
 
 /** `unplaced` are the songs in no group: no sound yet (by sound), no clear theme (by lyrics), or none of the genres (by genre). */
-export type Split = { by: By; k: number; groups: Group[]; unplaced: string[] };
+/** `rest` is set when only the playlist's songs in none of its parts were grouped. */
+export type Split = { by: By; k: number; rest?: boolean; groups: Group[]; unplaced: string[] };
 
 let nextKey = 0;
 
@@ -39,12 +40,16 @@ export const updateGroup = (split: Split, key: number, fn: (g: Group) => Partial
   groups: split.groups.map((g) => (g.key === key ? { ...g, ...fn(g) } : g)).filter((g) => g.ids.length > 0),
 });
 
-/** `split` with song `id` moved to the top of group `key`; a group it leaves empty is dropped. */
+/** `split` with song `id` moved to the top of group `key`, from another group or from the unplaced; a group it leaves empty is dropped. */
 export function moveSong(split: Split, id: string, key: number): Split {
   const to = split.groups.find((g) => g.key === key);
   if (!to || to.ids.includes(id)) return split;
   const without = (g: Group) => (g.ids.includes(id) ? { ...g, ids: g.ids.filter((x) => x !== id) } : g);
-  return { ...split, groups: split.groups.map((g) => (g.key === key ? { ...g, ids: [id, ...g.ids] } : without(g))).filter((g) => g.ids.length > 0) };
+  return {
+    ...split,
+    groups: split.groups.map((g) => (g.key === key ? { ...g, ids: [id, ...g.ids] } : without(g))).filter((g) => g.ids.length > 0),
+    unplaced: split.unplaced.filter((x) => x !== id),
+  };
 }
 
 /** `split` without the songs that have left the playlist (`members` is what it holds now); the same object when none have. */

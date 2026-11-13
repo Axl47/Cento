@@ -10,7 +10,7 @@ import { isArtistPlaylist, sortTargets, type Playlist, type Track } from "../cor
 import { genreGroups, soundGroups, themeGroups } from "../core/split.ts";
 import type { ThemeIndex } from "../core/themes.ts";
 import { closeTo, topArtists, traits, type TraitData } from "../core/traits.ts";
-import { partsOf } from "../core/family.ts";
+import { partsOf, strays, unplaced as inNoPart } from "../core/family.ts";
 import { PartsPane } from "./PartsPane.tsx";
 import { Empty, PAGE, ShowMore, SongButton } from "./rows.tsx";
 import { useSets } from "./sets.ts";
@@ -34,6 +34,8 @@ type Mode = "split" | "parts" | "missing" | "doubted";
 const MODES: Record<Mode, string> = { split: "Split", parts: "Parts", missing: "Missing", doubted: "Doesn't fit" };
 
 const BYS: Record<By, string> = { sound: "Sound", lyrics: "Lyrics", genre: "Genre" };
+type Scope = "all" | "rest";
+const SCOPES: Record<Scope, string> = { all: "All songs", rest: "In no part" };
 const UNPLACED: Record<By, string> = { sound: "no sound yet", lyrics: "no clear theme", genre: "none of these genres" };
 
 type Sound = NonNullable<Evidence["sound"]>;
@@ -103,10 +105,12 @@ export function PlaylistsView({ colors, onOpenBuild }: { colors: Map<string, str
   const tree = useMemo(() => {
     const byId = new Map(playlists.map((p) => [p.id, p]));
     const parts = partsOf(parents);
-    const rows: { playlist: Playlist; depth: number; key: string }[] = [];
+    // `behind` is how many of a part's songs the playlist it sits under lacks.
+    const rows: { playlist: Playlist; depth: number; key: string; behind: number }[] = [];
     // `path` is the ids above a row; a part already on it (a loop in a hand-edited file) isn't walked again.
     const walk = (p: Playlist, path: string[]) => {
-      rows.push({ playlist: p, depth: path.length, key: [...path, p.id].join("/") });
+      const above = byId.get(path.at(-1) ?? "");
+      rows.push({ playlist: p, depth: path.length, key: [...path, p.id].join("/"), behind: above ? strays(p, above).length : 0 });
       for (const child of playlists) if (parts.get(p.id)?.includes(child.id) && !path.includes(child.id)) walk(child, [...path, p.id]);
     };
     for (const p of playlists) if (!parents[p.id]?.some((id) => byId.has(id))) walk(p, []);
@@ -115,7 +119,7 @@ export function PlaylistsView({ colors, onOpenBuild }: { colors: Map<string, str
 
   if (!lib || !data) return null;
   const q = filter.trim().toLowerCase();
-  const shown = q ? playlists.filter((p) => p.name.toLowerCase().includes(q)).map((p) => ({ playlist: p, depth: 0, key: p.id })) : tree;
+  const shown = q ? playlists.filter((p) => p.name.toLowerCase().includes(q)).map((p) => ({ playlist: p, depth: 0, key: p.id, behind: 0 })) : tree;
   const partOf = playlist ? playlists.filter((p) => parents[playlist.id]?.includes(p.id)) : [];
 
   return (
@@ -128,7 +132,7 @@ export function PlaylistsView({ colors, onOpenBuild }: { colors: Map<string, str
           className="mb-2 w-full rounded-lg border border-white/10 bg-transparent px-2.5 py-1.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-white/30 focus:outline-none"
         />
         <ul className="max-h-64 overflow-y-auto md:max-h-none">
-          {shown.map(({ playlist: p, depth, key }) => (
+          {shown.map(({ playlist: p, depth, key, behind }) => (
             <li key={key}>
               <button
                 onClick={() => setSelected(p.id)}
@@ -137,6 +141,11 @@ export function PlaylistsView({ colors, onOpenBuild }: { colors: Map<string, str
               >
                 <span className="size-2 shrink-0 rounded-full" style={{ background: colors.get(p.id) }} />
                 <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                {behind > 0 && (
+                  <span title={`${behind} of its songs aren't in the playlist it's part of`} className="shrink-0 text-xs text-amber-200/80">
+                    +{behind}
+                  </span>
+                )}
                 <span className="shrink-0 text-xs text-zinc-500">{p.trackIds.length}</span>
               </button>
             </li>
@@ -165,7 +174,7 @@ export function PlaylistsView({ colors, onOpenBuild }: { colors: Map<string, str
             <Chips words={headerTraits} />
             <Segmented className="ml-auto" options={Object.keys(MODES) as Mode[]} value={mode} label={(m) => MODES[m]} onChange={setMode} />
           </header>
-          {mode === "split" && <SplitPane key={playlist.id} playlist={playlist} sound={sound} themes={themes} data={data} others={soundPlaylists} colors={colors} onOpenBuild={onOpenBuild} />}
+          {mode === "split" && <SplitPane key={playlist.id} playlist={playlist} parts={playlists.filter((p) => parents[p.id]?.includes(playlist.id))} sound={sound} themes={themes} data={data} others={soundPlaylists} colors={colors} onOpenBuild={onOpenBuild} />}
           {mode === "parts" && <PartsPane key={playlist.id} playlist={playlist} playlists={playlists} sound={sound} colors={colors} onOpen={setSelected} />}
           {mode === "missing" && <MissingPane key={playlist.id} playlist={playlist} all={all} evidence={evidence} memberOf={memberOf} colors={colors} />}
           {mode === "doubted" && <DoubtedPane key={playlist.id} playlist={playlist} evidence={evidence} memberOf={memberOf} colors={colors} />}
@@ -217,6 +226,7 @@ function Segmented<T extends string | number>({
 /** The playlist's groups, by sound, lyrics or genre, as cards to rename, trim, split further, and save. */
 function SplitPane({
   playlist,
+  parts,
   sound,
   themes,
   data,
@@ -225,6 +235,8 @@ function SplitPane({
   onOpenBuild,
 }: {
   playlist: Playlist;
+  /** The playlists that are parts of this one: a split can cover just the songs none of them hold. */
+  parts: Playlist[];
   sound: Sound | undefined;
   themes: ThemeIndex | null;
   data: TraitData;
@@ -258,20 +270,16 @@ function SplitPane({
     });
   }, [words, split?.groups, playlist.name]);
 
-  /** Groups the whole playlist anew into `k`, discarding edits. */
-  const regroup = (by: By, k: number) => {
-    if (by === "lyrics") {
-      if (!themes) return;
-      const { groups, names, unplaced } = themeGroups(themes, data.lib, playlist.trackIds, k);
-      change(playlist.id, () => ({ by, k, groups: groupsOf(groups, names), unplaced }));
-    } else if (by === "genre") {
-      if (!data.tags) return;
-      const { groups, names, unplaced } = genreGroups(data.tags, playlist.trackIds, k);
-      change(playlist.id, () => ({ by, k, groups: groupsOf(groups, names), unplaced }));
-    } else if (sound) {
-      const { groups, unplaced } = soundGroups(sound, playlist.trackIds, k);
-      change(playlist.id, () => ({ by, k, groups: groupsOf(groups), unplaced }));
-    }
+  /** Groups the playlist (or with `rest`, its songs in no part) anew into `k`, discarding edits. */
+  const regroup = (by: By, k: number, rest: boolean) => {
+    const ids = rest ? inNoPart(playlist, parts) : playlist.trackIds;
+    const made =
+      by === "lyrics"
+        ? themes && themeGroups(themes, data.lib, ids, k)
+        : by === "genre"
+          ? data.tags && genreGroups(data.tags, ids, k)
+          : sound && { ...soundGroups(sound, ids, k), names: undefined };
+    if (made) change(playlist.id, () => ({ by, k, rest, groups: groupsOf(made.groups, made.names), unplaced: made.unplaced }));
   };
   // Songs taken out of the playlist since it was split (in Doesn't fit, or on Spotify) leave their groups too.
   useEffect(() => {
@@ -279,7 +287,7 @@ function SplitPane({
     if (next && next !== split) change(playlist.id, () => next);
   }, [split, playlist.trackIds, playlist.id, change]);
   useEffect(() => {
-    if (!split && sound && big) regroup("sound", DEFAULT_K);
+    if (!split && sound && big) regroup("sound", DEFAULT_K, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [split, sound, big]);
 
@@ -295,13 +303,22 @@ function SplitPane({
   if (!sound || !split) return null;
 
   const edit = (fn: (s: Split) => Split) => change(playlist.id, (s) => fn(s!));
+  const rest = split.rest ?? false;
   // The ways to split that have their data.
   const ways = (Object.keys(BYS) as By[]).filter((by) => by === "sound" || (by === "lyrics" ? themes : data.tags));
   return (
     <div className="@container">
       <div className="mb-3 flex flex-wrap gap-2">
-        {ways.length > 1 && <Segmented options={ways} value={split.by} label={(by) => BYS[by]} onChange={(by) => by !== split.by && regroup(by, split.k)} />}
-        <Segmented options={KS} value={split.k} onChange={(k) => k !== split.k && regroup(split.by, k)} />
+        {ways.length > 1 && <Segmented options={ways} value={split.by} label={(by) => BYS[by]} onChange={(by) => by !== split.by && regroup(by, split.k, rest)} />}
+        <Segmented options={KS} value={split.k} onChange={(k) => k !== split.k && regroup(split.by, k, rest)} />
+        {(parts.length > 0 || rest) && (
+          <Segmented
+            options={Object.keys(SCOPES) as Scope[]}
+            value={rest ? "rest" : "all"}
+            label={(scope) => SCOPES[scope]}
+            onChange={(scope) => (scope === "rest") !== rest && regroup(split.by, split.k, scope === "rest")}
+          />
+        )}
       </div>
       <div className="grid gap-3 @2xl:grid-cols-2 @5xl:grid-cols-3">
         {split.groups.map((g, i) => (
@@ -327,16 +344,42 @@ function SplitPane({
         ))}
       </div>
       {split.unplaced.length > 0 && (
-        <p className="mt-3 text-xs text-zinc-500">
-          {split.unplaced.length === 1 ? "1 song has" : `${split.unplaced.length} songs have`} {UNPLACED[split.by]}
-        </p>
+        <details className="mt-3">
+          <summary className="cursor-pointer text-xs text-zinc-400 hover:text-zinc-100">
+            {split.unplaced.length === 1 ? "1 song has" : `${split.unplaced.length} songs have`} {UNPLACED[split.by]}
+          </summary>
+          <ul className="mt-2 max-h-80 overflow-y-auto rounded-xl bg-zinc-900 px-3 py-2">
+            {split.unplaced.map((id) => {
+              const t = data.lib.tracks[id];
+              return t ? (
+                <li key={id} className="flex py-0.5" {...draggedFrom(id, UNPLACED_KEY, t.name)}>
+                  <SongButton track={t} />
+                </li>
+              ) : null;
+            })}
+          </ul>
+        </details>
       )}
     </div>
   );
 }
 
-/** The song being dragged out of a group, and that group's key. */
+/** The song being dragged out of a group, and that group's key (`UNPLACED_KEY` from the songs in no group). */
 let dragged: { id: string; from: number } | null = null;
+const UNPLACED_KEY = -1;
+
+/** Props that make a song's row draggable onto a group card. */
+const draggedFrom = (id: string, from: number, name: string) => ({
+  draggable: true,
+  onDragStart: (e: React.DragEvent) => {
+    dragged = { id, from };
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", name);
+  },
+  onDragEnd: () => {
+    dragged = null;
+  },
+});
 
 /** One group: its name, what sets it apart, its songs, and what to do with it. A song can be dragged to another group. */
 function GroupCard({
@@ -417,17 +460,7 @@ function GroupCard({
           const t = data.lib.tracks[id];
           if (!t) return null;
           return (
-            <li
-              key={id}
-              className="group flex items-center gap-1 py-0.5"
-              draggable
-              onDragStart={(e) => {
-                dragged = { id, from: group.key };
-                e.dataTransfer.effectAllowed = "move";
-                e.dataTransfer.setData("text/plain", t.name);
-              }}
-              onDragEnd={() => (dragged = null)}
-            >
+            <li key={id} className="group flex items-center gap-1 py-0.5" {...draggedFrom(id, group.key, t.name)}>
               <SongButton track={t} />
               <button
                 aria-label={`Drop ${t.name}`}
