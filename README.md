@@ -126,7 +126,9 @@ The address names the tab you're on (`#playlists`), so a reload or a bookmark op
   likely to belong in one first, each with its likeliest part (point at a row for the others), ranked the way the
   sort screen ranks playlists; click one to put the song in it. Adding a song to a part anywhere in the app also adds it to what the part belongs to. At the
   bottom, **Part of** lists the playlists this one is a part of, and bigger playlists that already hold most of it,
-  which it can be made a part of. **Missing** lists songs in your library the playlist probably should have; **Add** puts
+  which it can be made a part of. **Likely parts**, above the list, shows the same for the whole library: each playlist
+  that is mostly inside a bigger one, under the smallest one that holds most of it. Artist playlists and ones that
+  don't count are left out. **Missing** lists songs in your library the playlist probably should have; **Add** puts
   the checked ones in it on Spotify. **Doesn't fit** lists its songs least likely to belong; **Remove** takes one out of
   it on Spotify (it stays in your other playlists and in Everything), with **Undo** until you leave. A playlist with
   an artist rule is checked against the rule, not its sound: Missing is its artists' songs that aren't in it, and

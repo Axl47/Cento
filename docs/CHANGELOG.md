@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- The Playlists tab has a **Likely parts** entry above the list: every playlist that is mostly inside a bigger one, grouped under it, with a bar for how much of it is already there and one click to make it a part.
 - A play of a different release of a song you have saved (its single, the album version) now counts toward the saved song's play count, in Spotify's Extended Streaming History too, where it is matched by title and artist.
 - On the sort screen, a checked playlist that has parts shows its two likeliest parts as the next tiles, so a song can go straight into the part it belongs in.
 - Once a playlist has parts, **Split** can group only the songs that are in no part yet, to find the parts still missing.

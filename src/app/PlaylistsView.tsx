@@ -10,7 +10,8 @@ import { isArtistPlaylist, sortTargets, type Playlist, type Track } from "../cor
 import { genreGroups, soundGroups, themeGroups } from "../core/split.ts";
 import type { ThemeIndex } from "../core/themes.ts";
 import { closeTo, topArtists, traits, type TraitData } from "../core/traits.ts";
-import { partsOf, strays, unplaced as inNoPart } from "../core/family.ts";
+import { likelyFamilies, partsOf, strays, unplaced as inNoPart } from "../core/family.ts";
+import { LikelyParts } from "./LikelyParts.tsx";
 import { PartsPane } from "./PartsPane.tsx";
 import { Empty, PAGE, ShowMore, SongButton } from "./rows.tsx";
 import { useSets } from "./sets.ts";
@@ -18,6 +19,8 @@ import { useApp } from "./store.ts";
 import { dropSong, groupsOf, moveSong, replaceGroup, savedIds, signature, synced, updateGroup, useWorkshop, type By, type Group, type Split } from "./workshop.ts";
 
 const SELECTED_KEY = "playlists-tab-selected";
+/** What `selected` holds while the likely parts are open instead of a playlist. */
+const LIKELY_PARTS = "likely-parts";
 const MODE_KEY = "playlists-tab-mode";
 const KS = [2, 3, 4, 5, 6, 7, 8] as const;
 const DEFAULT_K = 3;
@@ -53,7 +56,7 @@ function stored(key: string) {
 
 /** The tab. `onOpenBuild` switches to the Build tab after a group was opened there as a new set. */
 export function PlaylistsView({ colors, onOpenBuild }: { colors: Map<string, string>; onOpenBuild: () => void }) {
-  const { lib, audio, vectors, classifier, features, languages, tags, themes, rules, hidden, parents } = useApp();
+  const { lib, audio, vectors, classifier, features, languages, tags, themes, rules, hidden, uncounted, parents } = useApp();
   const [selected, setSelected] = useState(() => stored(SELECTED_KEY));
   const [filter, setFilter] = useState("");
   const [mode, setMode] = useState((): Mode => {
@@ -78,7 +81,7 @@ export function PlaylistsView({ colors, onOpenBuild }: { colors: Map<string, str
   const all = useMemo(() => lib?.playlists.find((p) => p.id === config.allPlaylistId)?.trackIds ?? [], [lib]);
   const sound = useMemo((): Sound | undefined => (audio && vectors ? { index: audio, vectors } : undefined), [audio, vectors]);
   // Until one is picked (or when the picked one is gone), the biggest playlist is open.
-  const playlist = playlists.find((p) => p.id === selected) ?? playlists[0];
+  const playlist = selected === LIKELY_PARTS ? undefined : (playlists.find((p) => p.id === selected) ?? playlists[0]);
   const rule = playlist && rules[playlist.id];
   const evidence = useMemo((): Evidence => {
     const artists = rule && new Set(rule.map((a) => a.id));
@@ -92,11 +95,13 @@ export function PlaylistsView({ colors, onOpenBuild }: { colors: Map<string, str
     return out;
   }, [playlists]);
 
-  // Playlists a split group can turn out to be close to: the ones about a sound, not artist compilations or hidden lists.
+  // The playlists about a sound, not an artist's catch-all or a list left out of sorting: what a split group can turn
+  // out to be close to, and what is worth being a part or having parts.
   const soundPlaylists = useMemo(
-    () => (lib ? playlists.filter((p) => !hidden.includes(p.id) && !rules[p.id] && !isArtistPlaylist(lib, p)) : []),
-    [lib, playlists, hidden, rules],
+    () => (lib ? playlists.filter((p) => !hidden.includes(p.id) && !uncounted.includes(p.id) && !rules[p.id] && !isArtistPlaylist(lib, p)) : []),
+    [lib, playlists, hidden, uncounted, rules],
   );
+  const families = useMemo(() => likelyFamilies(parents, soundPlaylists), [parents, soundPlaylists]);
 
   const headerTraits = useMemo(() => (data && playlist ? traits(data, playlist.trackIds, all) : []), [data, playlist, all]);
 
@@ -131,6 +136,16 @@ export function PlaylistsView({ colors, onOpenBuild }: { colors: Map<string, str
           className="mb-2 w-full rounded-lg border border-white/10 bg-transparent px-2.5 py-1.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-white/30 focus:outline-none"
         />
         <ul className="max-h-64 overflow-y-auto md:max-h-none">
+          {!q && (
+            <li>
+              <button
+                onClick={() => setSelected(LIKELY_PARTS)}
+                className={`mb-1 w-full rounded-md px-2 py-1 text-left text-sm ${selected === LIKELY_PARTS ? "bg-white/10 text-zinc-50" : "text-zinc-300 hover:bg-white/5"}`}
+              >
+                Likely parts
+              </button>
+            </li>
+          )}
           {shown.map(({ playlist: p, depth, key, behind }) => (
             <li key={key}>
               <button
@@ -152,6 +167,11 @@ export function PlaylistsView({ colors, onOpenBuild }: { colors: Map<string, str
         </ul>
       </aside>
 
+      {selected === LIKELY_PARTS && (
+        <main className="min-w-0">
+          <LikelyParts families={families} playlists={playlists} colors={colors} onOpen={setSelected} />
+        </main>
+      )}
       {playlist && (
         <main className="min-w-0">
           <header className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -174,7 +194,7 @@ export function PlaylistsView({ colors, onOpenBuild }: { colors: Map<string, str
             <Segmented className="ml-auto" options={Object.keys(MODES) as Mode[]} value={mode} label={(m) => MODES[m]} onChange={setMode} />
           </header>
           {mode === "split" && <SplitPane key={playlist.id} playlist={playlist} parts={playlists.filter((p) => parents[p.id]?.includes(playlist.id))} sound={sound} themes={themes} data={data} others={soundPlaylists} colors={colors} onOpenBuild={onOpenBuild} />}
-          {mode === "parts" && <PartsPane key={playlist.id} playlist={playlist} playlists={playlists} colors={colors} onOpen={setSelected} />}
+          {mode === "parts" && <PartsPane key={playlist.id} playlist={playlist} playlists={playlists} sounds={soundPlaylists} colors={colors} onOpen={setSelected} />}
           {mode === "missing" && <MissingPane key={playlist.id} playlist={playlist} all={all} evidence={evidence} memberOf={memberOf} colors={colors} />}
           {mode === "doubted" && <DoubtedPane key={playlist.id} playlist={playlist} evidence={evidence} memberOf={memberOf} colors={colors} />}
         </main>
