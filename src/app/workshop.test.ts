@@ -37,4 +37,7 @@ test("a song moved to another group leads it, and the group it emptied is droppe
 
   assert.deepEqual(next.groups.map((g) => g.ids), [["c", "a", "b"], ["d"]]);
   assert.equal(moveSong(next, "c", next.groups[0]!.key), next);
+
+  const taken = moveSong({ ...next, unplaced: ["x", "y"] }, "x", next.groups[1]!.key);
+  assert.deepEqual([taken.groups[1]!.ids, taken.unplaced], [["x", "d"], ["y"]]);
 });

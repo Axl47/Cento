@@ -1,8 +1,9 @@
 // The Parts pane of the Playlists tab: which playlists are parts of this one, their songs it's still missing,
-// playlists that look like parts, and its own songs that are in no part yet, each with the parts it sounds closest to.
+// playlists that look like parts, its own songs that are in no part yet, each with the parts it sounds closest to,
+// and the playlists it's part of or looks like a part of.
 import { useMemo, useState } from "react";
 import { placements, type Evidence, type Part } from "../core/belong.ts";
-import { ancestors, likelyParts, strays, unplaced } from "../core/family.ts";
+import { ancestors, likelyParts, likelyWholes, strays, unplaced } from "../core/family.ts";
 import type { Playlist } from "../core/library.ts";
 import { Empty, PAGE, ShowMore, SongButton } from "./rows.tsx";
 import { useApp, type Added } from "./store.ts";
@@ -48,6 +49,8 @@ export function PartsPane({
     ? playlists.filter((p) => p.id !== playlist.id && !parts.includes(p) && !above.includes(p.id) && p.name.toLowerCase().includes(q)).slice(0, FOUND)
     : likely.flatMap((c) => playlists.find((p) => p.id === c.id && !hidden.includes(p.id)) ?? []);
   const shared = new Map(likely.map((c) => [c.id, c.shared]));
+  const wholes = playlists.filter((p) => parents[playlist.id]?.includes(p.id));
+  const likelyOf = useMemo(() => likelyWholes(parents, playlist, playlists).filter((c) => !hidden.includes(c.id)), [parents, playlist, playlists, hidden]);
 
   // The songs in no part, and the parts as scored against, as they stood when the set of parts (or the sound data)
   // last changed: a placed song keeps its row (with Undo), and placing one doesn't reshuffle the rows under the pointer.
@@ -207,6 +210,58 @@ export function PartsPane({
           </ul>
           {rows.length === 0 && <Empty>Every song is in a part</Empty>}
           {rows.length > limit && <ShowMore onClick={() => setLimit(limit + PAGE)} />}
+        </div>
+      )}
+
+      {(wholes.length > 0 || likelyOf.length > 0) && (
+        <div className="rounded-xl bg-zinc-900 px-3 py-2">
+          <h3 className="py-1 text-sm font-semibold text-zinc-100">Part of</h3>
+          <ul>
+            {wholes.map((p) => {
+              const missing = strays(playlist, p);
+              return (
+                <li key={p.id} className="group flex items-center gap-2.5 py-1">
+                  <Dot color={colors.get(p.id)} />
+                  <button className="min-w-0 truncate text-left text-sm text-zinc-100 hover:underline" onClick={() => onOpen(p.id)}>
+                    {p.name}
+                  </button>
+                  <span className="flex-1" />
+                  {missing.length > 0 && (
+                    <>
+                      <span className="text-xs text-amber-200/80">{missing.length} not in it</span>
+                      <button className="btn px-2 py-0.5 text-xs" onClick={() => addToPlaylist(p.id, missing)}>
+                        Add {missing.length}
+                      </button>
+                    </>
+                  )}
+                  <button
+                    aria-label={`${playlist.name} is not a part of ${p.name}`}
+                    title="Not a part"
+                    className="invisible px-1 text-zinc-500 hover:text-zinc-100 group-hover:visible"
+                    onClick={() => setPart(playlist.id, p.id, false)}
+                  >
+                    ×
+                  </button>
+                </li>
+              );
+            })}
+            {likelyOf.map((c) => {
+              const p = playlists.find((x) => x.id === c.id);
+              return p ? (
+                <li key={p.id} className="flex items-center gap-2.5 py-1">
+                  <Dot color={colors.get(p.id)} />
+                  <span className="min-w-0 truncate text-sm text-zinc-300">{p.name}</span>
+                  <span className="text-xs text-zinc-500">
+                    · has {c.shared === c.size ? "all" : c.shared} of {playlist.name}'s {c.size}
+                  </span>
+                  <span className="flex-1" />
+                  <button className="btn px-2 py-0.5 text-xs" onClick={() => setPart(playlist.id, p.id, true)}>
+                    Make it a part
+                  </button>
+                </li>
+              ) : null;
+            })}
+          </ul>
         </div>
       )}
     </div>
