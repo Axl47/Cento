@@ -1,5 +1,5 @@
-// The daily data refresh the host runs: resync the library from Spotify, then `pnpm audio` (embeds new songs, rebuilds
-// the map), `pnpm edges` (how songs start and end), `pnpm features` and `pnpm tags` (tempo, key and loudness; genres and moods; each skipped
+// The daily data refresh the host runs: resync the library from Spotify, then `pnpm plays` (play counts per song), `pnpm audio`
+// (embeds new songs, rebuilds the map), `pnpm edges` (how songs start and end), `pnpm features` and `pnpm tags` (tempo, key and loudness; genres and moods; each skipped
 // until Stemma has written its file) and `pnpm classify` (retrains on the new sorts). Due once a day from 12:01 AM local time; the host checks
 // every minute and at startup, so a day the Mac slept through or was off for still gets its run as soon as it can.
 import { spawn } from "node:child_process";
@@ -48,6 +48,7 @@ export async function refreshIfDue(now = new Date()) {
   try {
     await save({ ...state, lastAttempt });
     await exportLibrary(spotify);
+    await pnpm("plays");
     await pnpm("audio");
     await pnpm("edges");
     await pnpm("features");
