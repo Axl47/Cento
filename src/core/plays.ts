@@ -8,7 +8,7 @@ export type PlaySource = "live" | "export" | "both";
 
 export type Play = {
   trackId: string;
-  /** Epoch ms. Live: Spotify's `played_at`. Export: `ts`, when the play ended. */
+  /** Epoch ms, when the play ended: Spotify's `played_at` live, `ts` in the export. */
   at: number;
   /** Export only; a live play has no length, but Spotify only reports plays past ~30 s. */
   msPlayed?: number;
@@ -16,10 +16,10 @@ export type Play = {
   skipped?: boolean;
   /** Live only: the playlist, album or artist URI the play came from. */
   context?: string;
-  /** Live only: the track's length, which bounds when its export row can end. */
-  durationMs?: number;
   /** Live only: identifies the recording across its releases, see `otherReleases`. */
   isrc?: string;
+  /** Export only: `songKey` of the title and album artist, which is all the export says about what the id was. */
+  song?: string;
   source: PlaySource;
 };
 
@@ -31,14 +31,14 @@ export type Play = {
 export const LISTEN_MS = 30_000;
 
 /**
- * How far an export row's `ts` may fall outside its live play's `played_at`..`played_at + duration` and still be the
- * same play. A guess: confirm it on the days both sources cover once the export arrives (issue #1, part 2).
+ * How far an export row's `ts` may be from its live play's `played_at`. They are the same moment, with `ts` cut to
+ * the second: on the 175 plays both sources had in November 2026, every row was within a second.
  */
-export const MATCH_TOLERANCE_MS = 2 * 60_000;
+export const MATCH_TOLERANCE_MS = 5_000;
 
 export const isListen = (play: Play) => (play.msPlayed ?? LISTEN_MS) >= LISTEN_MS;
 
-type LiveRow = { played_at?: unknown; track?: { id?: unknown; duration_ms?: unknown; external_ids?: { isrc?: unknown } | null } | null; context?: { uri?: unknown } | null };
+type LiveRow = { played_at?: unknown; track?: { id?: unknown; external_ids?: { isrc?: unknown } | null } | null; context?: { uri?: unknown } | null };
 
 /** One line of data/listening-history.jsonl, parsed. Null for anything that isn't a play of a track with an id (local files have none). */
 export function parseLive(value: unknown): Play | null {
@@ -46,20 +46,28 @@ export function parseLive(value: unknown): Play | null {
   const id = row?.track?.id;
   const at = typeof row?.played_at === "string" ? Date.parse(row.played_at) : NaN;
   if (typeof id !== "string" || Number.isNaN(at)) return null;
-  const duration = row?.track?.duration_ms;
   const context = row?.context?.uri;
   const isrc = row?.track?.external_ids?.isrc;
   return {
     trackId: id,
     at,
-    ...(typeof duration === "number" && { durationMs: duration }),
     ...(typeof context === "string" && { context }),
     ...(typeof isrc === "string" && { isrc: isrc.toUpperCase() }),
     source: "live",
   };
 }
 
-type ExportRow = { ts?: unknown; ms_played?: unknown; spotify_track_uri?: unknown; skipped?: unknown };
+type ExportRow = {
+  ts?: unknown;
+  ms_played?: unknown;
+  spotify_track_uri?: unknown;
+  skipped?: unknown;
+  master_metadata_track_name?: unknown;
+  master_metadata_album_artist_name?: unknown;
+};
+
+/** Names a song by its title and first artist, for matching a play to a saved song when the ids differ. */
+export const songKey = (title: string, artist: string) => `${title}\n${artist}`.toLowerCase();
 
 const TRACK_URI = "spotify:track:";
 
@@ -69,27 +77,38 @@ export function parseExport(value: unknown): Play | null {
   const uri = row?.spotify_track_uri;
   const at = typeof row?.ts === "string" ? Date.parse(row.ts) : NaN;
   if (typeof uri !== "string" || !uri.startsWith(TRACK_URI) || Number.isNaN(at) || typeof row?.ms_played !== "number") return null;
+  const [title, artist] = [row.master_metadata_track_name, row.master_metadata_album_artist_name];
   return {
     trackId: uri.slice(TRACK_URI.length),
     at,
     msPlayed: row.ms_played,
     ...(typeof row.skipped === "boolean" && { skipped: row.skipped }),
+    ...(typeof title === "string" && typeof artist === "string" && { song: songKey(title, artist) }),
     source: "export",
   };
 }
 
 /**
- * A song played from a release that isn't saved (its single, the album cut, a reissue) is the saved song with the
- * same ISRC. Returns those releases as merges for `resolveMerges`. Only live plays carry an ISRC, so an export row
- * is credited only for a release the host has also recorded.
+ * A song played from a release that isn't saved (its single, the album cut, a reissue) is the saved song: the one
+ * with the same ISRC for a live play, the one with the same title and first artist for an export row, which has no
+ * ISRC. A title two saved songs share matches neither. Returns those releases as merges for `resolveMerges`.
  */
-export function otherReleases(live: readonly Play[], tracks: Readonly<Record<string, { isrc: string | null }>>): Pick<Merge, "main" | "copies">[] {
-  const saved = new Map<string, string>();
-  for (const [id, track] of Object.entries(tracks)) if (track.isrc && !saved.has(track.isrc)) saved.set(track.isrc, id);
+export function otherReleases(
+  plays: readonly Play[],
+  tracks: Readonly<Record<string, { isrc: string | null; name: string; artists: readonly { name: string }[] }>>,
+): Pick<Merge, "main" | "copies">[] {
+  const byIsrc = new Map<string, string>();
+  const bySong = new Map<string, string | null>();
+  for (const [id, track] of Object.entries(tracks)) {
+    if (track.isrc && !byIsrc.has(track.isrc)) byIsrc.set(track.isrc, id);
+    const song = songKey(track.name, track.artists[0]?.name ?? "");
+    bySong.set(song, bySong.has(song) ? null : id);
+  }
   const mainOf = new Map<string, string>();
-  for (const play of live) {
-    const main = play.isrc && saved.get(play.isrc);
-    if (main && !(play.trackId in tracks)) mainOf.set(play.trackId, main);
+  for (const play of plays) {
+    if (play.trackId in tracks || mainOf.has(play.trackId)) continue;
+    const main = (play.isrc && byIsrc.get(play.isrc)) || (play.song && bySong.get(play.song));
+    if (main) mainOf.set(play.trackId, main);
   }
   return [...mainOf].map(([copy, main]) => ({ main, copies: [copy] }));
 }
@@ -109,10 +128,9 @@ export function resolveMerges(plays: readonly Play[], merges: readonly Pick<Merg
 }
 
 /**
- * Joins live and export plays without counting a play twice on the days both cover. Per track, in time order, each
- * live play takes the first unmatched export row that ended inside its window (preferring one long enough to be a
- * listen, since the live endpoint never reports shorter ones). Going in order keeps a song on repeat from pairing a
- * play with its neighbour's row. Returns every play, in time order, and how many live plays were found in the export.
+ * Joins live and export plays without counting a play twice on the days both cover: per track, in time order, each
+ * live play takes the first unmatched export row that ended when it did. Returns every play, in time order, and how
+ * many live plays were found in the export.
  */
 export function joinPlays(live: readonly Play[], exported: readonly Play[]): { plays: Play[]; matched: number } {
   const byTrack = new Map<string, Play[]>();
@@ -124,10 +142,7 @@ export function joinPlays(live: readonly Play[], exported: readonly Play[]): { p
   const taken = new Set<Play>();
   const joined: Play[] = [];
   for (const play of [...live].sort((a, b) => a.at - b.at)) {
-    const start = play.at - MATCH_TOLERANCE_MS;
-    const end = play.at + (play.durationMs ?? 0) + MATCH_TOLERANCE_MS;
-    const open = (byTrack.get(play.trackId) ?? []).filter((row) => !taken.has(row) && row.at >= start && row.at <= end);
-    const row = open.find(isListen) ?? open[0];
+    const row = byTrack.get(play.trackId)?.find((r) => !taken.has(r) && Math.abs(r.at - play.at) <= MATCH_TOLERANCE_MS);
     if (!row) {
       joined.push(play);
       continue;

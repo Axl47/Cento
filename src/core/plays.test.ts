@@ -19,6 +19,7 @@ const exportRow = (id: string | null, ts: number, ms_played = 3 * MIN) => ({
   ms_played,
   spotify_track_uri: id && `spotify:track:${id}`,
   master_metadata_track_name: "Song",
+  master_metadata_album_artist_name: "Artist",
   reason_start: "trackdone",
   reason_end: "trackdone",
   skipped: false,
@@ -28,37 +29,28 @@ const live = (...rows: ReturnType<typeof liveRow>[]) => rows.map(parseLive).filt
 const exported = (...rows: ReturnType<typeof exportRow>[]) => rows.map(parseExport).filter((p) => p !== null);
 
 test("parses both formats, and drops rows that aren't track plays", () => {
-  assert.deepEqual(parseLive(liveRow("a", T, "spotify:playlist:p")), { trackId: "a", at: T, durationMs: 3 * MIN, context: "spotify:playlist:p", isrc: "X", source: "live" });
-  assert.deepEqual(parseLive(liveRow("a", T)), { trackId: "a", at: T, durationMs: 3 * MIN, isrc: "X", source: "live" });
+  assert.deepEqual(parseLive(liveRow("a", T, "spotify:playlist:p")), { trackId: "a", at: T, context: "spotify:playlist:p", isrc: "X", source: "live" });
+  assert.deepEqual(parseLive(liveRow("a", T)), { trackId: "a", at: T, isrc: "X", source: "live" });
   assert.equal(parseLive({ ...liveRow("a", T), track: { id: null } }), null); // local file
-  assert.deepEqual(parseExport(exportRow("a", T, 12_000)), { trackId: "a", at: T, msPlayed: 12_000, skipped: false, source: "export" });
+  assert.deepEqual(parseExport(exportRow("a", T, 12_000)), { trackId: "a", at: T, msPlayed: 12_000, skipped: false, song: "song\nartist", source: "export" });
   assert.equal(parseExport(exportRow(null, T)), null); // podcast
   assert.equal(parseExport({ ...exportRow(null, T), spotify_track_uri: "spotify:episode:e" }), null);
 });
 
 test("a play in both sources counts once, with the export's numbers and the live context", () => {
-  // played_at could be the start or the end of the play; both line up.
-  for (const playedAt of [T - 3 * MIN, T]) {
-    const { plays, matched } = joinPlays(live(liveRow("a", playedAt, "spotify:playlist:p")), exported(exportRow("a", T + 4_000, 170_000)));
-    assert.equal(matched, 1);
-    assert.deepEqual(plays, [{ trackId: "a", at: T + 4_000, msPlayed: 170_000, skipped: false, context: "spotify:playlist:p", source: "both" }]);
-  }
-});
-
-test("a song on repeat pairs each play with its own row", () => {
-  const { plays, matched } = joinPlays(
-    live(liveRow("a", T), liveRow("a", T + 3 * MIN), liveRow("a", T + 6 * MIN)),
-    exported(exportRow("a", T + 3 * MIN), exportRow("a", T + 6 * MIN), exportRow("a", T + 9 * MIN)),
-  );
-  assert.equal(matched, 3);
-  assert.deepEqual(plays.map((p) => p.at), [T + 3 * MIN, T + 6 * MIN, T + 9 * MIN]);
-});
-
-test("a skip right before a play doesn't take the play's export row", () => {
-  // Restarted after 5 s: the skip's row ends where the real play starts, both inside the live play's window.
-  const { plays, matched } = joinPlays(live(liveRow("a", T)), exported(exportRow("a", T, 5_000), exportRow("a", T + 3 * MIN)));
+  // The export's ts is played_at cut to the second.
+  const { plays, matched } = joinPlays(live(liveRow("a", T + 400, "spotify:playlist:p")), exported(exportRow("a", T, 170_000)));
   assert.equal(matched, 1);
-  assert.deepEqual(plays.map((p) => [p.source, p.msPlayed]), [["export", 5_000], ["both", 3 * MIN]]);
+  assert.deepEqual(plays, [{ trackId: "a", at: T, msPlayed: 170_000, skipped: false, song: "song\nartist", context: "spotify:playlist:p", source: "both" }]);
+});
+
+test("a song on repeat pairs each play with its own row, and a skip before a play stays its own", () => {
+  const { plays, matched } = joinPlays(
+    live(liveRow("a", T), liveRow("a", T + 3 * MIN)),
+    exported(exportRow("a", T - 3 * MIN, 5_000), exportRow("a", T), exportRow("a", T + 3 * MIN)),
+  );
+  assert.equal(matched, 2);
+  assert.deepEqual(plays.map((p) => [p.source, p.at]), [["export", T - 3 * MIN], ["both", T], ["both", T + 3 * MIN]]);
 });
 
 test("plays outside the overlap, or of other songs, aren't joined", () => {
@@ -87,12 +79,19 @@ test("counts listens and skips per library song, and plays of other songs apart"
   assert.deepEqual([...decodePlays(file)], [["a", { plays: 2, skips: 1, last: iso(T + 20 * MIN) }]]);
 });
 
-test("a play of another release counts for the saved song with the same ISRC", () => {
-  const tracks = { saved: { isrc: "X" }, other: { isrc: "Y" } };
-  const plays = live(liveRow("single", T), liveRow("saved", T + MIN));
+test("a play of another release counts for the saved song", () => {
+  const artists = [{ name: "Artist" }];
+  const tracks = { saved: { isrc: "X", name: "Song", artists }, twin1: { isrc: "Y", name: "Twin", artists }, twin2: { isrc: "Z", name: "Twin", artists } };
+  const plays = [
+    ...live(liveRow("single", T)), // same ISRC
+    ...exported(exportRow("album", T), exportRow("saved", T)), // same title and artist
+    ...exported({ ...exportRow("twin", T), master_metadata_track_name: "Twin" }), // two saved songs share the title
+    ...exported({ ...exportRow("unknown", T), master_metadata_track_name: "Other" }),
+  ];
   const releases = otherReleases(plays, tracks);
-  assert.deepEqual(releases, [{ main: "saved", copies: ["single"] }]);
-  // The export has no ISRC: its rows of that release follow the live play's.
-  const all = resolveMerges([...plays, ...exported(exportRow("single", T - 60 * MIN), exportRow("unknown", T))], releases);
-  assert.deepEqual(all.map((p) => p.trackId), ["saved", "saved", "saved", "unknown"]);
+  assert.deepEqual(releases, [
+    { main: "saved", copies: ["single"] },
+    { main: "saved", copies: ["album"] },
+  ]);
+  assert.deepEqual(resolveMerges(plays, releases).map((p) => p.trackId), ["saved", "saved", "saved", "twin", "unknown"]);
 });

@@ -5,7 +5,7 @@
 // Joins the host's recording (data/listening-history.jsonl) with Spotify's Extended Streaming History, when its
 // Streaming_History_Audio_*.json files are in data/extended-history/, counting plays from days both cover once.
 // Plays of copies `pnpm merge-copies` replaced count for the copy it kept, and plays of another release of a saved
-// song (same ISRC) count for the saved one. Runs with either source alone.
+// song (same ISRC, or same title and artist in the export) count for the saved one. Runs with either source alone.
 import { existsSync } from "node:fs";
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -43,9 +43,10 @@ const exportRows = (await Promise.all(exportFiles.map((f) => readJson<unknown[]>
 
 const { tracks } = await readJson<Library>("data/library.json");
 const recorded = parseAll(liveRows, parseLive, "live");
-const merges = [...otherReleases(recorded, tracks), ...(existsSync("data/merges.json") ? await readJson<Merge[]>("data/merges.json") : [])];
+const history = parseAll(exportRows, parseExport, "export");
+const merges = [...otherReleases([...recorded, ...history], tracks), ...(existsSync("data/merges.json") ? await readJson<Merge[]>("data/merges.json") : [])];
 const live = resolveMerges(recorded, merges);
-const exported = resolveMerges(parseAll(exportRows, parseExport, "export"), merges);
+const exported = resolveMerges(history, merges);
 const { plays, matched } = joinPlays(live, exported);
 const { file, outside } = playsFile(plays, tracks, new Date());
 await writeFile(OUT, JSON.stringify(file));
