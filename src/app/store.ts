@@ -13,12 +13,13 @@ import { themeIndex, type ThemeData, type ThemeIndex } from "../core/themes.ts";
 import { buildModel, prechecked, suggest, type ArtistRules, type Model, type Neighbors } from "../core/suggest.ts";
 import type { Edges } from "../core/setlist.ts";
 import { decodeFeatures, type FeaturesFile, type SongFeatures } from "../core/features.ts";
+import { decodePlays, type PlaysFile, type SongPlays } from "../core/plays.ts";
 import { decodeTags, type Tags, type TagsFile } from "../core/tags.ts";
 import { addToPlaylist, createPlaylist, removeFromPlaylist, replacePlaylist, setLiked } from "../core/spotify.ts";
 import { client } from "./auth.ts";
 
 
-export type Order = "confident" | "similar" | "newest";
+export type Order = "confident" | "similar" | "newest" | "played";
 
 /** The songs an add put in each playlist that didn't have them yet. */
 export type Added = { playlistId: string; trackIds: string[] }[];
@@ -76,6 +77,9 @@ type State = {
   loadEdges: () => void;
   /** Fetches the song features once, for the Build tab. */
   loadFeatures: () => void;
+  /** How often each song was played (data/plays.json), loaded by `loadPlays`; null until then or if missing. */
+  plays: ReadonlyMap<string, SongPlays> | null;
+  loadPlays: () => void;
   /** Each song's genres and moods (data/tags.json), loaded by `loadTags`; null until then or if missing. */
   tags: Tags | null;
   /** Fetches the song tags once. */
@@ -144,8 +148,16 @@ function ownPicks(s: Pick<State, "lib" | "model" | "neighbors">, trackId: string
 export const initialPicks = (s: Pick<State, "lib" | "model" | "neighbors" | "parents">, trackId: string | undefined): string[] =>
   withAncestors(s.parents, ownPicks(s, trackId));
 
-/** Orders the inbox. "similar" chains each song to its nearest unsorted neighbor by sound. */
-function buildQueue(lib: Library, model: Model, neighbors: Neighbors | undefined, order: Order, hidden: string[], uncounted: string[]): string[] {
+/** Orders the inbox. "similar" chains each song to its nearest unsorted neighbor by sound; "played" puts the songs you play most first. */
+function buildQueue(
+  lib: Library,
+  model: Model,
+  neighbors: Neighbors | undefined,
+  order: Order,
+  hidden: string[],
+  uncounted: string[],
+  plays: ReadonlyMap<string, SongPlays> | null,
+): string[] {
   const items = inbox(lib, hidden, uncounted);
   if (order === "newest") return items.toSorted((a, b) => b.addedAt.localeCompare(a.addedAt)).map((l) => l.id);
 
@@ -153,6 +165,8 @@ function buildQueue(lib: Library, model: Model, neighbors: Neighbors | undefined
     items.map((l) => [l.id, suggest(model, lib.tracks[l.id]!, [], neighbors)[0]?.score ?? 0] as const),
   );
   const byConfidence = items.map((l) => l.id).toSorted((a, b) => confidence.get(b)! - confidence.get(a)!);
+  // Songs played equally often (most, at first: never) stay most confident first.
+  if (order === "played" && plays) return byConfidence.toSorted((a, b) => (plays.get(b)?.plays ?? 0) - (plays.get(a)?.plays ?? 0));
   if (order === "confident" || !neighbors) return byConfidence;
 
   const remaining = new Set(byConfidence);
@@ -201,6 +215,7 @@ let writes: Promise<void> = Promise.resolve();
 let edgesRequested = false;
 let featuresRequested = false;
 let tagsRequested = false;
+let playsRequested = false;
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 
 /** Persists the library to data/library.json (debounced). */
@@ -261,7 +276,7 @@ export const useApp = create<State>()((set, get) => {
     const s = get();
     const model = modelOf(lib, s.rules, s.hidden, s.uncounted, s.classifier);
     const stillInbox = new Set(inbox(lib, s.hidden, s.uncounted).map((l) => l.id));
-    const queue = keepQueue ? s.queue.filter((id) => stillInbox.has(id)) : buildQueue(lib, model, s.neighbors, s.order, s.hidden, s.uncounted);
+    const queue = keepQueue ? s.queue.filter((id) => stillInbox.has(id)) : buildQueue(lib, model, s.neighbors, s.order, s.hidden, s.uncounted, s.plays);
     set({ lib, model, queue });
     persist(lib);
   };
@@ -273,7 +288,7 @@ export const useApp = create<State>()((set, get) => {
     const model = modelOf(s.lib, s.rules, hidden, uncounted, s.classifier);
     // The inbox can change (songs only in such a playlist count as unsorted); keep the current song up.
     const current = s.queue[0];
-    const rebuilt = buildQueue(s.lib, model, s.neighbors, s.order, hidden, uncounted);
+    const rebuilt = buildQueue(s.lib, model, s.neighbors, s.order, hidden, uncounted, s.plays);
     const queue = current && rebuilt.includes(current) ? [current, ...rebuilt.filter((id) => id !== current)] : rebuilt;
     const picked = queue[0] === current ? s.picked.filter((p) => p !== dropped) : initialPicks({ ...s, model }, queue[0]);
     set({ hidden, uncounted, model, queue, picked });
@@ -316,6 +331,7 @@ export const useApp = create<State>()((set, get) => {
     vectors: null,
     edges: null,
     features: null,
+    plays: null,
     tags: null,
     classifier: undefined,
     themes: null,
@@ -358,6 +374,15 @@ export const useApp = create<State>()((set, get) => {
         .catch(console.error);
     },
 
+    loadPlays: () => {
+      if (playsRequested) return;
+      playsRequested = true;
+      fetch("/api/plays")
+        .then((res) => (res.ok ? (res.json() as Promise<PlaysFile>) : null))
+        .then((file) => file && set({ plays: decodePlays(file) }))
+        .catch(console.error);
+    },
+
     loadTags: () => {
       if (tagsRequested) return;
       tagsRequested = true;
@@ -390,7 +415,7 @@ export const useApp = create<State>()((set, get) => {
       const classifier = trained ? classifierFrom(trained) : undefined;
       const model = modelOf(lib, rules, hidden, uncounted, classifier);
       const order: Order = audio ? "similar" : "confident";
-      const queue = buildQueue(lib, model, neighbors, order, hidden, uncounted);
+      const queue = buildQueue(lib, model, neighbors, order, hidden, uncounted, get().plays);
       set({ lib, model, audio, neighbors, classifier, rules, hidden, uncounted, shelf, parents, ledger, order, queue, picked: initialPicks({ lib, model, neighbors, parents }, queue[0]) });
     },
 
@@ -530,9 +555,9 @@ export const useApp = create<State>()((set, get) => {
     },
 
     setOrder: (order) => {
-      const { lib, model, neighbors, hidden, uncounted } = get();
+      const { lib, model, neighbors, hidden, uncounted, plays } = get();
       if (!lib || !model) return;
-      const queue = buildQueue(lib, model, neighbors, order, hidden, uncounted);
+      const queue = buildQueue(lib, model, neighbors, order, hidden, uncounted, plays);
       set({ order, queue, picked: initialPicks(get(), queue[0]) });
     },
 

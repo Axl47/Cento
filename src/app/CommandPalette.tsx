@@ -20,6 +20,7 @@ const ORDERS: Record<Order, string> = {
   similar: "Order: similar songs together",
   confident: "Order: most confident first",
   newest: "Order: newest liked first",
+  played: "Order: most played first",
 };
 
 export function CommandPalette({
@@ -31,7 +32,7 @@ export function CommandPalette({
   onClose: () => void;
   onEditRule: (playlistId: string) => void;
 }) {
-  const { lib, audio, picked, hidden, uncounted, rules, order, removeFromLikes } = useApp();
+  const { lib, audio, plays, picked, hidden, uncounted, rules, order, removeFromLikes } = useApp();
   const { togglePick, setHidden, setUncounted, createPlaylist, setOrder, setRemoveFromLikes } = useApp.getState();
   const { enabled: playerOn, setEnabled: setPlayerOn, devices, deviceId, setDevice } = usePlayer();
   const [query, setQuery] = useState("");
@@ -68,7 +69,7 @@ export function CommandPalette({
 
     const settings: Item[] = [
       ...(Object.entries(ORDERS) as [Order, string][])
-        .filter(([o]) => o !== "similar" || audio)
+        .filter(([o]) => (o !== "similar" || audio) && (o !== "played" || plays?.size))
         .map(([o, label]) => ({ key: o, label, hint: o === order ? "current" : "", run: () => setOrder(o) })),
       {
         key: "likes",
@@ -85,7 +86,7 @@ export function CommandPalette({
       .map((id) => ({ key: `hidden-${id}`, label: `Unhide ${name(id)}`, color: colors.get(id), run: () => setHidden(id, false) }));
 
     return ([["Playlists", playlists], ["Settings", settings], ["Hidden", unhide]] as const).filter(([, items]) => items.length > 0);
-  }, [lib, audio, query, picked, hidden, uncounted, rules, order, removeFromLikes, playerOn, setPlayerOn, devices, deviceId, colors, togglePick, setHidden, setUncounted, createPlaylist, setOrder, setRemoveFromLikes, setDevice, onEditRule]);
+  }, [lib, audio, plays, query, picked, hidden, uncounted, rules, order, removeFromLikes, playerOn, setPlayerOn, devices, deviceId, colors, togglePick, setHidden, setUncounted, createPlaylist, setOrder, setRemoveFromLikes, setDevice, onEditRule]);
 
   const items = groups.flatMap(([, xs]) => xs);
   const choose = (item: Item | undefined) => {

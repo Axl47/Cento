@@ -329,14 +329,20 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
   );
 }
 
-/** The song in a few words (genres, mood, tempo, key, release year), once the tags and features have loaded. */
+/** The song in a few words (genres, mood, tempo, key, release year, times played), once the tags, features and plays have loaded. */
 function SongSound({ track }: { track: Track }) {
-  const { tags, features } = useApp();
+  const { tags, features, plays } = useApp();
   useEffect(() => {
     useApp.getState().loadTags();
     useApp.getState().loadFeatures();
+    useApp.getState().loadPlays();
   }, []);
-  const words = [...songWords(tags?.get(track.id), features?.get(track.id)), ...(track.year ? [String(track.year)] : [])];
+  const played = plays?.get(track.id)?.plays ?? 0;
+  const words = [
+    ...songWords(tags?.get(track.id), features?.get(track.id)),
+    ...(track.year ? [String(track.year)] : []),
+    ...(played ? [played === 1 ? "1 play" : `${played} plays`] : []),
+  ];
   return words.length ? <p className="mt-1 truncate text-xs text-zinc-400">{words.join(" · ")}</p> : null;
 }
 
