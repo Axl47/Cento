@@ -54,6 +54,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- The **Parts** view picks each song's likeliest part the way the sort screen does (artist, sound and lyrics together) instead of by sound alone, and shows only that part on the row unless another is likely too.
 - Song names on the sound map appear by importance as you zoom in: highlighted songs and one song per tile first, then each tile fills in as it grows on screen, starting near the center or the selected song. Names fade in and out instead of popping or jumping aside at the edges, and songs around the pointer are named early.
 - The app is now called Cento.
 - With no playlist hovered, the sort screen's map shows the song's 15 nearest songs by name, each in its own playlist's color.

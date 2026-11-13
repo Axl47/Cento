@@ -121,9 +121,9 @@ The address names the tab you're on (`#playlists`), so a reload or a bookmark op
   split, which is left as it is. Change the group afterwards and the button becomes **Update playlist**.
   Splits are kept in this browser. **Parts** lists the playlists that are parts of this one, with the songs each has that
   this one lacks (**Add** puts them in it), and offers playlists that already sit mostly inside it; any other can
-  be added by name. Below, **In no part** lists this playlist's songs that are in none of its parts, the ones that
-  sound most like a part first, each with the parts it sounds closest to (point at a row for the rest); click one to
-  put the song in it. Adding a song to a part anywhere in the app also adds it to what the part belongs to. At the
+  be added by name. Below, **In no part** lists this playlist's songs that are in none of its parts, the ones most
+  likely to belong in one first, each with its likeliest part (point at a row for the others), ranked the way the
+  sort screen ranks playlists; click one to put the song in it. Adding a song to a part anywhere in the app also adds it to what the part belongs to. At the
   bottom, **Part of** lists the playlists this one is a part of, and bigger playlists that already hold most of it,
   which it can be made a part of. **Missing** lists songs in your library the playlist probably should have; **Add** puts
   the checked ones in it on Spotify. **Doesn't fit** lists its songs least likely to belong; **Remove** takes one out of
