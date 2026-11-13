@@ -29,7 +29,7 @@ const isTyping = (e: KeyboardEvent) => e.target instanceof HTMLInputElement || e
 export const fmt = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, "0")}`;
 
 export function SortView({ colors }: { colors: Map<string, string> }) {
-  const { lib, model, audio, neighbors, queue, picked, history, rules, hidden, togglePick, sort, skip, undo } = useApp();
+  const { lib, model, audio, neighbors, parents, queue, picked, history, rules, hidden, togglePick, sort, skip, undo } = useApp();
   const player = usePlayer();
   const [ruleFor, setRuleFor] = useState<string | null>(null); // playlist whose artist rule is being edited
   const [palette, setPalette] = useState(false);
@@ -63,7 +63,7 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
   const run = useMemo(() => {
     if (!lib || !model || !trackId) return [];
     const known = (id: string) => knownArtistSongs(model, lib.tracks[id]!).size > 0;
-    const key = (id: string) => initialPicks({ lib, model, neighbors }, id).toSorted().join();
+    const key = (id: string) => initialPicks({ lib, model, neighbors, parents }, id).toSorted().join();
     const mine = key(trackId);
     if (!mine || !known(trackId)) return [];
     const out: string[] = [];
@@ -72,7 +72,7 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
       out.push(id);
     }
     return out;
-  }, [lib, model, neighbors, queue, trackId]);
+  }, [lib, model, neighbors, parents, queue, trackId]);
 
   const inRows = (focus: typeof tile.current) => (focus && focus.track === trackId ? rows.find((r) => r.playlistId === focus.playlist)?.playlistId : undefined);
   const focused = inRows(tile.current);

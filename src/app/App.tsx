@@ -6,6 +6,7 @@ import { parseLanguages } from "../core/languages.ts";
 import type { ThemeData } from "../core/themes.ts";
 import type { ArtistRules } from "../core/suggest.ts";
 import { restoreDates, type Merge } from "../core/dedupe.ts";
+import type { Parents } from "../core/family.ts";
 import type { LedgerEntry } from "../core/ledger.ts";
 import { sortTargets, syncLibrary, type Library } from "../core/library.ts";
 import { client, completeLogin, logout, startLogin } from "./auth.ts";
@@ -64,16 +65,17 @@ export function App() {
       try {
         if (!(await completeLogin())) return setPhase({ kind: "login" });
         initPlayer();
-        const [library, audio, rules, hidden, ledger, classifier] = await Promise.all([
+        const [library, audio, rules, hidden, ledger, classifier, parents] = await Promise.all([
           getJson<Library>("/api/library"),
           getJson<AudioIndex>("/api/audio"),
           getJson<ArtistRules>("/api/rules"),
           getJson<string[]>("/api/hidden"),
           getJson<LedgerEntry[]>("/api/ledger"),
           getJson<ClassifierData>("/api/classifier"),
+          getJson<Parents>("/api/parents"),
         ]);
         if (!library) return setPhase({ kind: "needs-sync" });
-        load(library, audio, rules ?? {}, hidden ?? [], ledger ?? [], classifier);
+        load(library, audio, rules ?? {}, hidden ?? [], ledger ?? [], classifier, parents ?? {});
         setPhase({ kind: "ready" });
         if (audio) void loadVectors(audio);
       } catch (e) {
@@ -136,6 +138,7 @@ export function App() {
           (await getJson<string[]>("/api/hidden")) ?? [],
           (await getJson<LedgerEntry[]>("/api/ledger")) ?? [],
           await getJson<ClassifierData>("/api/classifier"),
+          (await getJson<Parents>("/api/parents")) ?? {},
         );
         if (audio) void loadVectors(audio);
 

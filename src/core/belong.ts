@@ -1,6 +1,6 @@
 // Checking a playlist against the rest of the library: sorted songs that probably belong in it but aren't
 // there, and songs in it that probably don't belong.
-import { positions, type AudioIndex, type Vectors } from "./audio.ts";
+import { positions, similarity, type AudioIndex, type Vectors } from "./audio.ts";
 import type { SoundClassifier } from "./classifier.ts";
 import type { Playlist } from "./library.ts";
 import { additions, fits } from "./setlist.ts";
@@ -67,4 +67,35 @@ export function doubted({ classifier, sound, byRule }: Evidence, playlist: Pick<
     scored = known.map((id, i) => ({ id, score: clamp((fit[i]! - baseline) / (1 - baseline)) }));
   }
   return scored.sort((a, b) => a.score - b.score);
+}
+
+/** How many of a part's songs a song is compared with: its closest few, so it can fit one corner of the part. */
+const CLOSEST = 3;
+
+/** One of a playlist's parts, as `placements` needs it: its songs, and its artist rule if it has one. */
+export type Part = Pick<Playlist, "id" | "trackIds"> & { byRule?: (id: string) => boolean };
+
+/**
+ * Where songs could go among a playlist's parts: for each of `ids`, the parts it sounds closest to, closest
+ * first. Every part is scored the same way (the song's closest few songs in it, 0 to 1 from the random-pair
+ * baseline), so the scores compare across parts whether or not a part is big enough to have a classifier.
+ * A part with an artist rule takes exactly its artists' songs. Songs with no sound yet get only rule matches.
+ */
+export function placements(sound: NonNullable<Evidence["sound"]>, parts: readonly Part[], ids: readonly string[]): Map<string, { partId: string; score: number }[]> {
+  const pos = positions(sound.index);
+  const { baseline } = sound.index;
+  const rows = parts.map((p) => p.trackIds.flatMap((id) => pos.get(id) ?? []));
+  return new Map(
+    ids.map((id) => {
+      const row = pos.get(id);
+      const scored = parts.flatMap((part, i) => {
+        if (part.byRule) return part.byRule(id) ? [{ partId: part.id, score: 1 }] : [];
+        if (row === undefined || rows[i]!.length === 0) return [];
+        const closest = rows[i]!.map((member) => similarity(sound.vectors, row, member)).sort((a, b) => b - a).slice(0, CLOSEST);
+        const mean = closest.reduce((sum, x) => sum + x, 0) / closest.length;
+        return [{ partId: part.id, score: clamp((mean - baseline) / (1 - baseline)) }];
+      });
+      return [id, scored.sort((a, b) => b.score - a.score)] as const;
+    }),
+  );
 }
