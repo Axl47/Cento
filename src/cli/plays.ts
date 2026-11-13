@@ -4,13 +4,14 @@
 //
 // Joins the host's recording (data/listening-history.jsonl) with Spotify's Extended Streaming History, when its
 // Streaming_History_Audio_*.json files are in data/extended-history/, counting plays from days both cover once.
-// Plays of copies `pnpm merge-copies` replaced count for the copy it kept. Runs with either source alone.
+// Plays of copies `pnpm merge-copies` replaced count for the copy it kept, and plays of another release of a saved
+// song (same ISRC) count for the saved one. Runs with either source alone.
 import { existsSync } from "node:fs";
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Merge } from "../core/dedupe.ts";
 import type { Library } from "../core/library.ts";
-import { joinPlays, parseExport, parseLive, playsFile, resolveMerges, type Play } from "../core/plays.ts";
+import { joinPlays, otherReleases, parseExport, parseLive, playsFile, resolveMerges, type Play } from "../core/plays.ts";
 
 const OUT = "data/plays.json";
 const HISTORY = "data/listening-history.jsonl";
@@ -40,11 +41,12 @@ const liveRows = liveLines.map((line): unknown => {
 const exportFiles = existsSync(EXPORT_DIR) ? (await readdir(EXPORT_DIR)).filter((f) => EXPORT_FILE.test(f)).sort() : [];
 const exportRows = (await Promise.all(exportFiles.map((f) => readJson<unknown[]>(join(EXPORT_DIR, f))))).flat();
 
-const merges = existsSync("data/merges.json") ? await readJson<Merge[]>("data/merges.json") : [];
-const live = resolveMerges(parseAll(liveRows, parseLive, "live"), merges);
+const { tracks } = await readJson<Library>("data/library.json");
+const recorded = parseAll(liveRows, parseLive, "live");
+const merges = [...otherReleases(recorded, tracks), ...(existsSync("data/merges.json") ? await readJson<Merge[]>("data/merges.json") : [])];
+const live = resolveMerges(recorded, merges);
 const exported = resolveMerges(parseAll(exportRows, parseExport, "export"), merges);
 const { plays, matched } = joinPlays(live, exported);
-const { tracks } = await readJson<Library>("data/library.json");
 const { file, outside } = playsFile(plays, tracks, new Date());
 await writeFile(OUT, JSON.stringify(file));
 
