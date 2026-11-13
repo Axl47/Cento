@@ -20,6 +20,9 @@ import { client } from "./auth.ts";
 
 export type Order = "confident" | "similar" | "newest";
 
+/** The songs an add put in each playlist that didn't have them yet. */
+export type Added = { playlistId: string; trackIds: string[] }[];
+
 type Sorted = {
   trackId: string;
   /** Everything that was checked, to restore on undo. */
@@ -106,11 +109,12 @@ type State = {
    */
   savePlaylist: (name: string, trackIds: string[], playlistId: string | undefined, on: { created: (id: string) => void; saved: () => void }) => void;
   /**
-   * Adds songs to one of your playlists and to every playlist it's part of, here and on Spotify, skipping ones
-   * already there. Recorded like a sort, so a resync that doesn't show them yet keeps them; if Spotify refuses,
-   * they're taken back out.
+   * Adds songs to one of your playlists and then to every playlist it's part of (not with `alone`, for putting back
+   * a song taken out of just this one), here and on Spotify, skipping ones already there. Returns what went where,
+   * which is what an undo has to take back. Recorded like a sort, so a resync that doesn't show them yet keeps
+   * them; if Spotify refuses a playlist, the songs are taken back out of it and of the ones not reached yet.
    */
-  addToPlaylist: (playlistId: string, trackIds: string[]) => void;
+  addToPlaylist: (playlistId: string, trackIds: string[], alone?: boolean) => Added;
   /**
    * Takes songs out of one of your playlists, here and on Spotify; they stay in your other playlists. If Spotify
    * refuses, they're put back.
@@ -129,12 +133,16 @@ type State = {
   setRemoveFromLikes: (on: boolean) => void;
 };
 
-/** Playlists checked when a song comes up: confident cold suggestions for known artists, and whatever those are part of. */
-export function initialPicks(s: Pick<State, "lib" | "model" | "neighbors" | "parents">, trackId: string | undefined): string[] {
+/** The playlists a song's own suggestions check: artist rules, and confident suggestions. */
+function ownPicks(s: Pick<State, "lib" | "model" | "neighbors">, trackId: string | undefined): string[] {
   const track = trackId ? s.lib?.tracks[trackId] : undefined;
   if (!track || !s.model) return [];
-  return withAncestors(s.parents, prechecked(s.model, track, suggest(s.model, track, [], s.neighbors)));
+  return prechecked(s.model, track, suggest(s.model, track, [], s.neighbors));
 }
+
+/** Playlists checked when a song comes up: its own suggestions, and whatever those are part of. */
+export const initialPicks = (s: Pick<State, "lib" | "model" | "neighbors" | "parents">, trackId: string | undefined): string[] =>
+  withAncestors(s.parents, ownPicks(s, trackId));
 
 /** Orders the inbox. "similar" chains each song to its nearest unsorted neighbor by sound. */
 function buildQueue(lib: Library, model: Model, neighbors: Neighbors | undefined, order: Order, hidden: string[], uncounted: string[]): string[] {
@@ -271,25 +279,33 @@ export const useApp = create<State>()((set, get) => {
     set({ hidden, uncounted, model, queue, picked });
   };
 
-  /** Adds songs to one playlist, here and on Spotify, skipping ones already in it; taken back out if Spotify refuses. */
-  const addTo = (playlistId: string, trackIds: string[]) => {
+  /**
+   * Adds songs to these playlists in order, here and on Spotify, skipping ones a playlist already has, and returns what
+   * went where. If Spotify refuses a playlist, it and the ones after it don't get the songs.
+   */
+  const addTo = (playlistIds: string[], trackIds: string[]): Added => {
     const lib = get().lib;
-    const fresh = membersOf(lib, playlistId, trackIds, false);
-    if (!lib || fresh.length === 0) return;
+    if (!lib) return [];
+    const steps = playlistIds.map((playlistId) => ({ playlistId, trackIds: membersOf(lib, playlistId, trackIds, false) })).filter((step) => step.trackIds.length > 0);
+    if (steps.length === 0) return [];
     const at = new Date().toISOString();
-    const entries = fresh.map((trackId): LedgerEntry => ({ trackId, added: [playlistId], unliked: false, at }));
-    setLedger([...get().ledger, ...entries]);
-    setLib(applyLedger(lib, entries), true);
+    const entries = steps.map((step) => step.trackIds.map((trackId): LedgerEntry => ({ trackId, added: [step.playlistId], unliked: false, at })));
+    setLedger([...get().ledger, ...entries.flat()]);
+    setLib(applyLedger(lib, entries.flat()), true);
     write("Adding to playlist", async () => {
-      try {
-        await addToPlaylist(client, playlistId, fresh);
-      } catch (e) {
-        setLedger(get().ledger.filter((entry) => !entries.includes(entry)));
-        const now = get().lib;
-        if (now) setLib(withMembers(now, playlistId, fresh, false), true);
-        throw e;
+      for (const [i, step] of steps.entries()) {
+        try {
+          await addToPlaylist(client, step.playlistId, step.trackIds);
+        } catch (e) {
+          const unsent = entries.slice(i).flat();
+          setLedger(get().ledger.filter((entry) => !unsent.includes(entry)));
+          const now = get().lib;
+          if (now) setLib(steps.slice(i).reduce((l, left) => withMembers(l, left.playlistId, left.trackIds, false), now), true);
+          throw e;
+        }
       }
     });
+    return steps;
   };
 
   return {
@@ -481,9 +497,7 @@ export const useApp = create<State>()((set, get) => {
         on.saved();
       }),
 
-    addToPlaylist: (playlistId, trackIds) => {
-      for (const id of [playlistId, ...ancestors(get().parents, playlistId)]) addTo(id, trackIds);
-    },
+    addToPlaylist: (playlistId, trackIds, alone = false) => addTo(alone ? [playlistId] : [playlistId, ...ancestors(get().parents, playlistId)], trackIds),
     removeFromPlaylist: (playlistId, trackIds) => {
       const lib = get().lib;
       const present = membersOf(lib, playlistId, trackIds, true);
@@ -522,7 +536,15 @@ export const useApp = create<State>()((set, get) => {
       set({ order, queue, picked: initialPicks(get(), queue[0]) });
     },
 
-    togglePick: (id) => set((s) => ({ picked: s.picked.includes(id) ? s.picked.filter((p) => p !== id) : withAncestors(s.parents, [...s.picked, id]) })),
+    togglePick: (id) =>
+      set((s) => {
+        if (!s.picked.includes(id)) return { picked: withAncestors(s.parents, [...s.picked, id]) };
+        // Unchecking a part also unchecks what it brought along, unless the song's own suggestions or another checked part call for it.
+        const rest = s.picked.filter((p) => p !== id);
+        const needed = new Set([...ownPicks(s, s.queue[0]), ...rest.flatMap((p) => ancestors(s.parents, p))]);
+        const brought = ancestors(s.parents, id).filter((p) => !needed.has(p));
+        return { picked: rest.filter((p) => !brought.includes(p)) };
+      }),
 
     sort: (trackIds) => {
       const { lib, picked, removeFromLikes } = get();

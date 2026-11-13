@@ -2,10 +2,10 @@
 // playlists that look like parts, and its own songs that are in no part yet, each with the parts it sounds closest to.
 import { useMemo, useState } from "react";
 import { placements, type Evidence, type Part } from "../core/belong.ts";
-import { likelyParts, strays, unplaced } from "../core/family.ts";
+import { ancestors, likelyParts, strays, unplaced } from "../core/family.ts";
 import type { Playlist } from "../core/library.ts";
 import { Empty, PAGE, ShowMore, SongButton } from "./rows.tsx";
-import { useApp } from "./store.ts";
+import { useApp, type Added } from "./store.ts";
 
 /** Parts offered on each song that's in none. */
 const OFFERED = 3;
@@ -43,27 +43,31 @@ export function PartsPane({
   const parts = useMemo(() => playlists.filter((p) => parents[p.id]?.includes(playlist.id)), [playlists, parents, playlist.id]);
   const likely = useMemo(() => likelyParts(parents, playlist, playlists), [parents, playlist, playlists]);
   const q = query.trim().toLowerCase();
+  const above = ancestors(parents, playlist.id);
   const found = q
-    ? playlists.filter((p) => p.id !== playlist.id && !parts.includes(p) && p.name.toLowerCase().includes(q)).slice(0, FOUND)
+    ? playlists.filter((p) => p.id !== playlist.id && !parts.includes(p) && !above.includes(p.id) && p.name.toLowerCase().includes(q)).slice(0, FOUND)
     : likely.flatMap((c) => playlists.find((p) => p.id === c.id && !hidden.includes(p.id)) ?? []);
   const shared = new Map(likely.map((c) => [c.id, c.shared]));
 
-  // The songs in no part as the parts stood when they last changed, so a placed song keeps its row (with Undo).
-  const partsKey = parts.map((p) => p.id).join();
-  const [open, setOpen] = useState({ key: partsKey, ids: unplaced(playlist, parts) });
-  if (open.key !== partsKey) setOpen({ key: partsKey, ids: unplaced(playlist, parts) });
-
-  const placed = useMemo(() => {
-    if (!sound || !lib) return new Map<string, { partId: string; score: number }[]>();
-    const scored = parts.map((p): Part => {
+  // The songs in no part, and the parts as scored against, as they stood when the set of parts (or the sound data)
+  // last changed: a placed song keeps its row (with Undo), and placing one doesn't reshuffle the rows under the pointer.
+  const snapshotKey = `${parts.map((p) => p.id).join()}/${sound ? "sound" : ""}`;
+  const snapshot = () => ({
+    key: snapshotKey,
+    ids: unplaced(playlist, parts),
+    parts: parts.map((p): Part => {
       const artists = rules[p.id] && new Set(rules[p.id]!.map((a) => a.id));
-      return { id: p.id, trackIds: p.trackIds, byRule: artists && ((id) => !!lib.tracks[id]?.artists.some((a) => artists.has(a.id))) };
-    });
-    return placements(sound, scored, open.ids);
-    // Scored once per set of parts: a song placed since then shouldn't reshuffle the rows under the pointer.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sound, lib, rules, open]);
-  const rows = useMemo(() => open.ids.toSorted((a, b) => (placed.get(b)?.[0]?.score ?? -1) - (placed.get(a)?.[0]?.score ?? -1)), [open.ids, placed]);
+      return { id: p.id, trackIds: p.trackIds, byRule: artists && ((id) => !!lib?.tracks[id]?.artists.some((a) => artists.has(a.id))) };
+    }),
+  });
+  const [open, setOpen] = useState(snapshot);
+  if (open.key !== snapshotKey) setOpen(snapshot());
+  /** songId -> what placing it from here added where, for Undo. */
+  const [placedHere, setPlacedHere] = useState<Record<string, Added>>({});
+
+  const scores = useMemo(() => (sound ? placements(sound, open.parts, open.ids) : new Map<string, { partId: string; score: number }[]>()), [sound, open]);
+  const rows = useMemo(() => open.ids.toSorted((a, b) => (scores.get(b)?.[0]?.score ?? -1) - (scores.get(a)?.[0]?.score ?? -1)), [open.ids, scores]);
+  const members = useMemo(() => new Set(playlist.trackIds), [playlist.trackIds]);
 
   if (!lib) return null;
   const left = unplaced(playlist, parts).length;
@@ -152,10 +156,12 @@ export function PartsPane({
           <ul>
             {rows.slice(0, limit).map((id) => {
               const t = lib.tracks[id];
-              if (!t) return null;
+              const added = placedHere[id];
+              // A song that has left the playlist since (a resync, or Doesn't fit) has no business in a part of it.
+              if (!t || (!members.has(id) && !added)) return null;
               const inParts = parts.filter((p) => p.trackIds.includes(id));
               // Weakest first, so the best part sits at the row's right edge and the hover-only ones open to its left.
-              const offers = (placed.get(id) ?? []).slice(0, OFFERED).toReversed();
+              const offers = (scores.get(id) ?? []).slice(0, OFFERED).toReversed();
               const best = offers.at(-1)?.score ?? 0;
               return (
                 <li key={id} className="group flex items-center gap-2 py-1">
@@ -168,15 +174,26 @@ export function PartsPane({
                         <Dot color={colors.get(inParts[0]!.id)} />
                         {inParts.map((p) => p.name).join(", ")}
                       </span>
-                      <button className="btn w-16 px-2 py-0.5 text-xs" onClick={() => inParts.forEach((p) => removeFromPlaylist(p.id, [id]))}>
-                        Undo
-                      </button>
+                      {added && (
+                        <button
+                          className="btn w-16 px-2 py-0.5 text-xs"
+                          onClick={() => {
+                            for (const step of added) removeFromPlaylist(step.playlistId, step.trackIds);
+                            setPlacedHere(({ [id]: _, ...rest }) => rest);
+                          }}
+                        >
+                          Undo
+                        </button>
+                      )}
                     </>
                   ) : (
                     offers.map(({ partId, score }) => (
                       <button
                         key={partId}
-                        onClick={() => addToPlaylist(partId, [id])}
+                        onClick={() => {
+                          const went = addToPlaylist(partId, [id]);
+                          setPlacedHere((was) => ({ ...was, [id]: went }));
+                        }}
                         className={`flex max-w-40 shrink-0 items-center gap-1.5 rounded-full border border-white/10 px-2 py-0.5 text-xs hover:border-white/30 hover:text-zinc-50 ${score >= LIKELY ? "text-zinc-200" : "text-zinc-500"} ${score >= best - CLOSE ? "" : "invisible group-hover:visible"}`}
                       >
                         <Dot color={colors.get(partId)} />

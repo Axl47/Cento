@@ -95,11 +95,12 @@ export function PlaylistsView({ colors, onOpenBuild }: { colors: Map<string, str
     const byId = new Map(playlists.map((p) => [p.id, p]));
     const parts = partsOf(parents);
     const rows: { playlist: Playlist; depth: number; key: string }[] = [];
-    const walk = (p: Playlist, depth: number, path: string) => {
-      rows.push({ playlist: p, depth, key: `${path}/${p.id}` });
-      for (const child of playlists) if (parts.get(p.id)?.includes(child.id)) walk(child, depth + 1, `${path}/${p.id}`);
+    // `path` is the ids above a row; a part already on it (a loop in a hand-edited file) isn't walked again.
+    const walk = (p: Playlist, path: string[]) => {
+      rows.push({ playlist: p, depth: path.length, key: [...path, p.id].join("/") });
+      for (const child of playlists) if (parts.get(p.id)?.includes(child.id) && !path.includes(child.id)) walk(child, [...path, p.id]);
     };
-    for (const p of playlists) if (!parents[p.id]?.some((id) => byId.has(id))) walk(p, 0, "");
+    for (const p of playlists) if (!parents[p.id]?.some((id) => byId.has(id))) walk(p, []);
     return rows;
   }, [playlists, parents]);
 
@@ -533,7 +534,7 @@ function DoubtedPane({ playlist, evidence, memberOf, colors }: RowsProps) {
             <PlaylistChips of={memberOf.get(s.id)} except={playlist.id} colors={colors} />
             {!evidence.byRule && <ScoreBar score={s.score} />}
             {!members.has(s.id) ? (
-              <button className="btn w-20 px-2 py-0.5 text-xs opacity-100" onClick={() => addToPlaylist(playlist.id, [s.id])}>
+              <button className="btn w-20 px-2 py-0.5 text-xs opacity-100" onClick={() => addToPlaylist(playlist.id, [s.id], true)}>
                 Undo
               </button>
             ) : (
