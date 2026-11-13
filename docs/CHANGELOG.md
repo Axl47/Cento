@@ -71,6 +71,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- **Update playlist** on a saved split group no longer removes songs that were added to that playlist elsewhere since it was saved, or brings back ones taken out of it.
+- A split of the songs in no part drops songs that have gone into a part since, and a saved group whose playlist was deleted can be saved again.
+- Splits edited in one browser tab are no longer overwritten by another open tab.
+- **Part of** no longer suggests making a playlist a part of an artist's playlist or of one that's hidden or not counted.
+- A song dropped from a split group (×) stays listed with the songs in no group instead of vanishing from the split.
 - The same recording saved from different releases (a single, an EP and the album) now sits on one spot on the sound map instead of a few scattered dots. Run `pnpm audio` once to rebuild the map.
 - Song names on the sound map hold their place while zooming instead of hopping above and below their dots.
 - Log out now also signs the host out, so you can log in again to grant new permissions instead of being signed straight back in.

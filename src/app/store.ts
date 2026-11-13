@@ -17,6 +17,7 @@ import { decodePlays, type PlaysFile, type SongPlays } from "../core/plays.ts";
 import { decodeTags, type Tags, type TagsFile } from "../core/tags.ts";
 import { addToPlaylist, createPlaylist, removeFromPlaylist, replacePlaylist, setLiked } from "../core/spotify.ts";
 import { client } from "./auth.ts";
+import { merged } from "./workshop.ts";
 
 
 export type Order = "confident" | "similar" | "newest" | "played";
@@ -109,9 +110,17 @@ type State = {
   /**
    * Saves these songs, in order, as a private playlist that counts for sorting like any other. Without `playlistId`
    * it creates one and reports its id through `created` before filling it, so a failed upload can be retried into
-   * the same playlist; with one, that playlist is renamed and refilled. `saved` runs once Spotify has all of it.
+   * the same playlist; with one, that playlist is renamed and refilled. With `wasSaved` (the songs it was last
+   * filled with from here), what it gained or lost elsewhere since is kept that way. `saved` gets what it holds
+   * once Spotify has all of it.
    */
-  savePlaylist: (name: string, trackIds: string[], playlistId: string | undefined, on: { created: (id: string) => void; saved: () => void }) => void;
+  savePlaylist: (
+    name: string,
+    trackIds: string[],
+    playlistId: string | undefined,
+    on: { created: (id: string) => void; saved: (trackIds: string[]) => void },
+    wasSaved?: string[],
+  ) => void;
   /**
    * Adds songs to one of your playlists and then to every playlist it's part of (not with `alone`, for putting back
    * a song taken out of just this one), here and on Spotify, skipping ones already there. Returns what went where,
@@ -504,7 +513,7 @@ export const useApp = create<State>()((set, get) => {
         onSaved?.(id);
       }),
 
-    savePlaylist: (name, trackIds, playlistId, on) =>
+    savePlaylist: (name, groupIds, playlistId, on, wasSaved) =>
       write(`Saving "${name}"`, async () => {
         let id = playlistId;
         if (id) await client.request("PUT", `/playlists/${id}`, { name });
@@ -512,6 +521,9 @@ export const useApp = create<State>()((set, get) => {
           id = (await createPlaylist(client, name)).id;
           on.created(id);
         }
+        // The playlist may have changed since it was last saved from here (songs sorted into it, or taken out).
+        const now = get().lib?.playlists.find((p) => p.id === id)?.trackIds;
+        const trackIds = wasSaved && now ? merged(groupIds, wasSaved, now) : groupIds;
         await replacePlaylist(client, id, trackIds);
         const lib = get().lib;
         if (lib) {
@@ -519,7 +531,7 @@ export const useApp = create<State>()((set, get) => {
           const playlists = known ? lib.playlists.map((p) => (p.id === id ? { ...p, name, trackIds } : p)) : [...lib.playlists, { id, name, imageUrl: null, trackIds }];
           setLib({ ...lib, playlists }, true);
         }
-        on.saved();
+        on.saved(trackIds);
       }),
 
     addToPlaylist: (playlistId, trackIds, alone = false) => addTo(alone ? [playlistId] : [playlistId, ...ancestors(get().parents, playlistId)], trackIds),

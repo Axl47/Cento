@@ -15,7 +15,7 @@ import { PartsPane } from "./PartsPane.tsx";
 import { Empty, PAGE, ShowMore, SongButton } from "./rows.tsx";
 import { useSets } from "./sets.ts";
 import { useApp } from "./store.ts";
-import { groupsOf, moveSong, pruned, replaceGroup, signature, updateGroup, useWorkshop, type By, type Group, type Split } from "./workshop.ts";
+import { dropSong, groupsOf, moveSong, replaceGroup, savedIds, signature, synced, updateGroup, useWorkshop, type By, type Group, type Split } from "./workshop.ts";
 
 const SELECTED_KEY = "playlists-tab-selected";
 const MODE_KEY = "playlists-tab-mode";
@@ -36,7 +36,6 @@ const MODES: Record<Mode, string> = { split: "Split", parts: "Parts", missing: "
 const BYS: Record<By, string> = { sound: "Sound", lyrics: "Lyrics", genre: "Genre" };
 type Scope = "all" | "rest";
 const SCOPES: Record<Scope, string> = { all: "All songs", rest: "In no part" };
-const UNPLACED: Record<By, string> = { sound: "no sound yet", lyrics: "no clear theme", genre: "none of these genres" };
 
 type Sound = NonNullable<Evidence["sound"]>;
 
@@ -281,11 +280,22 @@ function SplitPane({
           : sound && { ...soundGroups(sound, ids, k), names: undefined };
     if (made) change(playlist.id, () => ({ by, k, rest, groups: groupsOf(made.groups, made.names), unplaced: made.unplaced }));
   };
-  // Songs taken out of the playlist since it was split (in Doesn't fit, or on Spotify) leave their groups too.
+  // Songs taken out of the playlist since it was split (in Doesn't fit, or on Spotify) leave their groups too. So do,
+  // in a split of the songs in no part, songs that have gone into a part since. A saved group keeps whatever its own
+  // playlist holds, and one whose playlist was deleted can be saved again.
   useEffect(() => {
-    const next = split && pruned(split, new Set(playlist.trackIds));
-    if (next && next !== split) change(playlist.id, () => next);
-  }, [split, playlist.trackIds, playlist.id, change]);
+    if (!split) return;
+    const members = new Set(playlist.trackIds);
+    const sets = new Map<string, Set<string>>();
+    const songsOf = (id: string) => sets.get(id) ?? sets.set(id, new Set(data.lib.playlists.find((p) => p.id === id)?.trackIds)).get(id)!;
+    const taken = split.rest ? parts.map((p) => p.id) : [];
+    const next = synced(
+      split,
+      (id, group) => (!!group?.playlistId && songsOf(group.playlistId).has(id)) || (members.has(id) && taken.every((part) => !songsOf(part).has(id))),
+      (id) => data.lib.playlists.some((p) => p.id === id),
+    );
+    if (next !== split) change(playlist.id, () => next);
+  }, [split, playlist.trackIds, playlist.id, parts, data.lib.playlists, change]);
   useEffect(() => {
     if (!split && sound && big) regroup("sound", DEFAULT_K, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -332,6 +342,7 @@ function SplitPane({
             data={data}
             onEdit={(fn) => edit((s) => updateGroup(s, g.key, fn))}
             onTake={(id) => edit((s) => moveSong(s, id, g.key))}
+            onDrop={(id) => edit((s) => dropSong(s, id))}
             onSplit={() =>
               edit((s) => {
                 const { groups, unplaced } = soundGroups(sound, g.ids, 2);
@@ -343,10 +354,11 @@ function SplitPane({
           />
         ))}
       </div>
+      {rest && split.groups.length === 0 && split.unplaced.length === 0 && <Empty>Every song is in a part</Empty>}
       {split.unplaced.length > 0 && (
         <details className="mt-3">
           <summary className="cursor-pointer text-xs text-zinc-400 hover:text-zinc-100">
-            {split.unplaced.length === 1 ? "1 song has" : `${split.unplaced.length} songs have`} {UNPLACED[split.by]}
+            {split.unplaced.length} in no group
           </summary>
           <ul className="mt-2 max-h-80 overflow-y-auto rounded-xl bg-zinc-900 px-3 py-2">
             {split.unplaced.map((id) => {
@@ -391,6 +403,7 @@ function GroupCard({
   data,
   onEdit,
   onTake,
+  onDrop,
   onSplit,
   onOpenBuild,
 }: {
@@ -408,6 +421,8 @@ function GroupCard({
   onEdit: (fn: (g: Group) => Partial<Group>) => void;
   /** Moves a song dropped on the card into this group. */
   onTake: (id: string) => void;
+  /** Takes a song out of the group, leaving it in no group. */
+  onDrop: (id: string) => void;
   onSplit: () => void;
   onOpenBuild: () => void;
 }) {
@@ -433,7 +448,10 @@ function GroupCard({
       onDrop={(e) => {
         e.preventDefault();
         setOver(false);
-        if (dragged) onTake(dragged.id);
+        // The row leaves this render, so its own dragend never arrives to clear it.
+        const id = dragged?.id;
+        dragged = null;
+        if (id) onTake(id);
       }}
     >
       <input
@@ -465,7 +483,7 @@ function GroupCard({
               <button
                 aria-label={`Drop ${t.name}`}
                 className="invisible px-1 text-zinc-500 hover:text-zinc-100 group-hover:visible"
-                onClick={() => onEdit((g) => ({ ids: g.ids.filter((x) => x !== id) }))}
+                onClick={() => onDrop(id)}
               >
                 ×
               </button>
@@ -499,13 +517,20 @@ function GroupCard({
           onClick={() => {
             const sent = signature(saveName, group.ids);
             onEdit(() => ({ saving: true }));
-            useApp.getState().savePlaylist(saveName, group.ids, group.playlistId, {
-              created: (playlistId) => {
-                onEdit(() => ({ playlistId }));
-                useApp.getState().setPart(playlistId, parentId, true);
+            useApp.getState().savePlaylist(
+              saveName,
+              group.ids,
+              group.playlistId,
+              {
+                created: (playlistId) => {
+                  onEdit(() => ({ playlistId }));
+                  useApp.getState().setPart(playlistId, parentId, true);
+                },
+                // Edits made while it was saving stand; otherwise the group takes what the playlist now holds.
+                saved: (ids) => onEdit((g) => (signature(saveName, g.ids) === sent ? { saving: false, ids, savedAs: signature(saveName, ids) } : { saving: false, savedAs: sent })),
               },
-              saved: () => onEdit(() => ({ saving: false, savedAs: sent })),
-            });
+              group.savedAs === undefined ? undefined : savedIds(group.savedAs),
+            );
           }}
         >
           {saving ? "Saving…" : saved ? "Saved" : group.savedAs ? "Update playlist" : "Save as playlist"}

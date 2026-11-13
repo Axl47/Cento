@@ -111,14 +111,15 @@ The address names the tab you're on (`#playlists`), so a reload or a bookmark op
   **Split** divides it into 2–8 groups by sound, each named after what sets it apart from the rest of the playlist,
   or by **Lyrics**: the themes most of its songs are about, each holding the songs that carry that theme clearly
   (songs with no clear theme stay out of every group), or by **Genre**: the genres most of its songs lead with
-  (see `pnpm tags`), each holding the songs it fits best, with the rest left out. Click the count of left-out songs
+  (see `pnpm tags`), each holding the songs it fits best, with the rest left out. Click the count of songs in no group
   to list them; they can be dragged into a group. Once a playlist has parts, **In no part** splits only the songs
   none of them hold, to find the parts still missing.
   A group that mostly falls in a playlist you already have shows that playlist and the share of the group in it
   (artist playlists and hidden ones don't count).
-  Rename a group, drop songs from it (×), drag a song to another group, divide it in two again, or open it in Build. **Save as playlist** creates
+  Rename a group, drop songs from it (×, which leaves them in no group), drag a song to another group, divide it in two again, or open it in Build. **Save as playlist** creates
   a private playlist from the group that counts for sorting like any other and becomes a part of the playlist you
-  split, which is left as it is. Change the group afterwards and the button becomes **Update playlist**.
+  split, which is left as it is. Change the group afterwards and the button becomes **Update playlist**, which keeps the songs the playlist has gained
+  elsewhere since (sorted into it, say) and leaves out the ones taken from it.
   Splits are kept in this browser. **Parts** lists the playlists that are parts of this one, with the songs each has that
   this one lacks (**Add** puts them in it), and offers playlists that already sit mostly inside it; any other can
   be added by name. Below, **In no part** lists this playlist's songs that are in none of its parts, the ones most
