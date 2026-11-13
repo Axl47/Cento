@@ -281,18 +281,17 @@ function SplitPane({
     if (made) change(playlist.id, () => ({ by, k, rest, groups: groupsOf(made.groups, made.names), unplaced: made.unplaced }));
   };
   // Songs taken out of the playlist since it was split (in Doesn't fit, or on Spotify) leave their groups too. So do,
-  // in a split of the songs in no part, songs that have gone into a part since. A saved group keeps whatever its own
-  // playlist holds, and one whose playlist was deleted can be saved again.
+  // in a split of the songs in no part, songs that have gone into a part since, other than the parts saved from
+  // this split. A saved group keeps whatever its own playlist holds.
   useEffect(() => {
     if (!split) return;
     const members = new Set(playlist.trackIds);
     const sets = new Map<string, Set<string>>();
     const songsOf = (id: string) => sets.get(id) ?? sets.set(id, new Set(data.lib.playlists.find((p) => p.id === id)?.trackIds)).get(id)!;
-    const taken = split.rest ? parts.map((p) => p.id) : [];
+    const taken = split.rest ? parts.map((p) => p.id).filter((id) => !split.groups.some((g) => g.playlistId === id)) : [];
     const next = synced(
       split,
       (id, group) => (!!group?.playlistId && songsOf(group.playlistId).has(id)) || (members.has(id) && taken.every((part) => !songsOf(part).has(id))),
-      (id) => data.lib.playlists.some((p) => p.id === id),
     );
     if (next !== split) change(playlist.id, () => next);
   }, [split, playlist.trackIds, playlist.id, parts, data.lib.playlists, change]);
@@ -526,8 +525,7 @@ function GroupCard({
                   onEdit(() => ({ playlistId }));
                   useApp.getState().setPart(playlistId, parentId, true);
                 },
-                // Edits made while it was saving stand; otherwise the group takes what the playlist now holds.
-                saved: (ids) => onEdit((g) => (signature(saveName, g.ids) === sent ? { saving: false, ids, savedAs: signature(saveName, ids) } : { saving: false, savedAs: sent })),
+                saved: () => onEdit(() => ({ saving: false, savedAs: sent })),
               },
               group.savedAs === undefined ? undefined : savedIds(group.savedAs),
             );

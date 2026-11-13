@@ -17,7 +17,7 @@ import { decodePlays, type PlaysFile, type SongPlays } from "../core/plays.ts";
 import { decodeTags, type Tags, type TagsFile } from "../core/tags.ts";
 import { addToPlaylist, createPlaylist, removeFromPlaylist, replacePlaylist, setLiked } from "../core/spotify.ts";
 import { client } from "./auth.ts";
-import { merged } from "./workshop.ts";
+import { changes } from "./workshop.ts";
 
 
 export type Order = "confident" | "similar" | "newest" | "played";
@@ -111,14 +111,15 @@ type State = {
    * Saves these songs, in order, as a private playlist that counts for sorting like any other. Without `playlistId`
    * it creates one and reports its id through `created` before filling it, so a failed upload can be retried into
    * the same playlist; with one, that playlist is renamed and refilled. With `wasSaved` (the songs it was last
-   * filled with from here), what it gained or lost elsewhere since is kept that way. `saved` gets what it holds
+   * saved with from here) only the difference is sent: songs new to the list are added and songs gone from it are
+   * removed, so whatever else the playlist gained or lost since, here or on Spotify, is left alone. `saved` runs
    * once Spotify has all of it.
    */
   savePlaylist: (
     name: string,
     trackIds: string[],
     playlistId: string | undefined,
-    on: { created: (id: string) => void; saved: (trackIds: string[]) => void },
+    on: { created: (id: string) => void; saved: () => void },
     wasSaved?: string[],
   ) => void;
   /**
@@ -513,7 +514,7 @@ export const useApp = create<State>()((set, get) => {
         onSaved?.(id);
       }),
 
-    savePlaylist: (name, groupIds, playlistId, on, wasSaved) =>
+    savePlaylist: (name, trackIds, playlistId, on, wasSaved) =>
       write(`Saving "${name}"`, async () => {
         let id = playlistId;
         if (id) await client.request("PUT", `/playlists/${id}`, { name });
@@ -521,17 +522,23 @@ export const useApp = create<State>()((set, get) => {
           id = (await createPlaylist(client, name)).id;
           on.created(id);
         }
-        // The playlist may have changed since it was last saved from here (songs sorted into it, or taken out).
-        const now = get().lib?.playlists.find((p) => p.id === id)?.trackIds;
-        const trackIds = wasSaved && now ? merged(groupIds, wasSaved, now) : groupIds;
-        await replacePlaylist(client, id, trackIds);
+        // This browser's copy of the playlist can be behind Spotify's, so a saved playlist is never rewritten from it.
+        const change = wasSaved && changes(trackIds, wasSaved);
+        if (change) {
+          const held = new Set(get().lib?.playlists.find((p) => p.id === id)?.trackIds);
+          if (change.removed.length) await removeFromPlaylist(client, id, change.removed);
+          await addToPlaylist(client, id, change.added.filter((t) => !held.has(t)));
+        } else await replacePlaylist(client, id, trackIds);
         const lib = get().lib;
         if (lib) {
+          const after = (was: string[]) => (change ? [...was.filter((t) => !change.removed.includes(t)), ...change.added.filter((t) => !was.includes(t))] : trackIds);
           const known = lib.playlists.some((p) => p.id === id);
-          const playlists = known ? lib.playlists.map((p) => (p.id === id ? { ...p, name, trackIds } : p)) : [...lib.playlists, { id, name, imageUrl: null, trackIds }];
+          const playlists = known
+            ? lib.playlists.map((p) => (p.id === id ? { ...p, name, trackIds: after(p.trackIds) } : p))
+            : [...lib.playlists, { id, name, imageUrl: null, trackIds }];
           setLib({ ...lib, playlists }, true);
         }
-        on.saved(trackIds);
+        on.saved();
       }),
 
     addToPlaylist: (playlistId, trackIds, alone = false) => addTo(alone ? [playlistId] : [playlistId, ...ancestors(get().parents, playlistId)], trackIds),

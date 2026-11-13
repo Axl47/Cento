@@ -71,8 +71,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
-- **Update playlist** on a saved split group no longer removes songs that were added to that playlist elsewhere since it was saved, or brings back ones taken out of it.
-- A split of the songs in no part drops songs that have gone into a part since, and a saved group whose playlist was deleted can be saved again.
+- **Update playlist** on a saved split group no longer removes songs that were added to that playlist elsewhere since it was saved (in the app or on Spotify), or brings back ones taken out of it: it only adds what was put in the group and removes what was taken out.
+- A split of the songs in no part drops songs that have gone into a part since.
 - Splits edited in one browser tab are no longer overwritten by another open tab.
 - **Part of** no longer suggests making a playlist a part of an artist's playlist or of one that's hidden or not counted.
 - A song dropped from a split group (×) stays listed with the songs in no group instead of vanishing from the split.
