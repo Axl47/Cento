@@ -22,6 +22,19 @@ export type Group = {
 
 /** A name and songs as one string, to tell whether a group still matches what was saved. */
 export const signature = (name: string, ids: string[]) => [name, ...ids].join("\n");
+/** The songs in a `signature`. */
+export const savedIds = (savedAs: string) => savedAs.split("\n").slice(1);
+
+/**
+ * What the playlist saved from a group should hold when the group is saved again: the group's songs, then the songs
+ * the playlist gained elsewhere since the last save (`saved`), without the ones it lost elsewhere. `now` is what it holds.
+ */
+export function merged(group: readonly string[], saved: readonly string[], now: readonly string[]): string[] {
+  const was = new Set(saved);
+  const has = new Set(now);
+  const mine = new Set(group);
+  return [...group.filter((id) => !was.has(id) || has.has(id)), ...now.filter((id) => !was.has(id) && !mine.has(id))];
+}
 
 export type By = "sound" | "lyrics" | "genre";
 
@@ -40,6 +53,13 @@ export const updateGroup = (split: Split, key: number, fn: (g: Group) => Partial
   groups: split.groups.map((g) => (g.key === key ? { ...g, ...fn(g) } : g)).filter((g) => g.ids.length > 0),
 });
 
+/** `split` with song `id` taken out of its group and left in no group; a group it leaves empty is dropped. */
+export const dropSong = (split: Split, id: string): Split => ({
+  ...split,
+  groups: split.groups.map((g) => ({ ...g, ids: g.ids.filter((x) => x !== id) })).filter((g) => g.ids.length > 0),
+  unplaced: split.unplaced.includes(id) ? split.unplaced : [...split.unplaced, id],
+});
+
 /** `split` with song `id` moved to the top of group `key`, from another group or from the unplaced; a group it leaves empty is dropped. */
 export function moveSong(split: Split, id: string, key: number): Split {
   const to = split.groups.find((g) => g.key === key);
@@ -52,12 +72,25 @@ export function moveSong(split: Split, id: string, key: number): Split {
   };
 }
 
-/** `split` without the songs that have left the playlist (`members` is what it holds now); the same object when none have. */
-export const pruned = (split: Split, members: ReadonlySet<string>): Split => {
-  const kept = (ids: string[]) => ids.filter((id) => members.has(id));
-  if ([...split.groups.flatMap((g) => g.ids), ...split.unplaced].every((id) => members.has(id))) return split;
-  return { ...split, groups: split.groups.map((g) => ({ ...g, ids: kept(g.ids) })).filter((g) => g.ids.length > 0), unplaced: kept(split.unplaced) };
-};
+/**
+ * `split` brought in line with the library: songs that no longer belong leave their groups (`belongs` gets the group
+ * a song is in, or none for an unplaced one), and a group whose saved playlist is gone (`exists`) is a draft again.
+ * The same object when nothing changed.
+ */
+export function synced(split: Split, belongs: (id: string, group?: Group) => boolean, exists: (playlistId: string) => boolean): Split {
+  const lost = (g: Group) => !!g.savedAs && !!g.playlistId && !exists(g.playlistId);
+  if (split.groups.every((g) => !lost(g) && g.ids.every((id) => belongs(id, g))) && split.unplaced.every((id) => belongs(id))) return split;
+  return {
+    ...split,
+    groups: split.groups
+      .map((g) => {
+        const { playlistId: _, savedAs: __, ...draft } = g;
+        return { ...(lost(g) ? draft : g), ids: g.ids.filter((id) => belongs(id, g)) };
+      })
+      .filter((g) => g.ids.length > 0),
+    unplaced: split.unplaced.filter((id) => belongs(id)),
+  };
+}
 
 /** `split` with group `key` replaced, in its place, by fresh groups for `parts`. */
 export const replaceGroup = (split: Split, key: number, parts: string[][]): Split => ({
@@ -76,6 +109,8 @@ type WorkshopState = {
 export const restored = (splits: Record<string, Split>): Record<string, Split> =>
   Object.fromEntries(Object.entries(splits).map(([id, split]) => [id, { ...split, groups: split.groups.map(({ saving: _, ...g }) => g) }]));
 
+const STORED = "playlists-tab-splits";
+
 export const useWorkshop = create<WorkshopState>()(
   persist(
     (set) => ({
@@ -83,7 +118,7 @@ export const useWorkshop = create<WorkshopState>()(
       change: (playlistId, fn) => set((s) => ({ splits: { ...s.splits, [playlistId]: fn(s.splits[playlistId]) } })),
     }),
     {
-      name: "playlists-tab-splits",
+      name: STORED,
       partialize: ({ splits }) => ({ splits }),
       merge: (saved, current) => {
         const splits = restored((saved as Partial<Pick<WorkshopState, "splits">> | undefined)?.splits ?? {});
@@ -94,3 +129,6 @@ export const useWorkshop = create<WorkshopState>()(
     },
   ),
 );
+
+// Another tab's changes replace this tab's copy, instead of being overwritten by it on the next edit here.
+if (typeof window !== "undefined") window.addEventListener("storage", (e) => e.key === STORED && void useWorkshop.persist.rehydrate());
