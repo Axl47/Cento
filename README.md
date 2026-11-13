@@ -171,7 +171,7 @@ Spotify shows them; entries older than a day are dropped too.
   the host's recording (`data/listening-history.jsonl`) and Spotify's Extended Streaming History once its
   `Streaming_History_Audio_*.json` files are in `data/extended-history/`. A play on a day both cover counts once. A play
   counts from 30 s; shorter ones in the export are skips. Plays of copies `pnpm merge-copies` replaced count for the copy
-  it kept, plays of another release of a saved song (same ISRC, seen in the host's recording) count for the saved one,
+  it kept, plays of another release of a saved song (same ISRC, or same title and first artist in the export) count for the saved one,
   and plays of songs not in the library are left out.
 - `pnpm classify` trains one sound classifier per playlist from your sorted songs (seconds, on the engine's vectors)
   and writes `data/classifier.json`. Run it after `pnpm audio`; a resync in the app also runs it. Its scores replace
