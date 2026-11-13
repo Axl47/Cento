@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { dropSong, groupsOf, merged, moveSong, replaceGroup, savedIds, signature, synced, updateGroup, type Split } from "./workshop.ts";
+import { changes, dropSong, groupsOf, moveSong, replaceGroup, savedIds, signature, synced, updateGroup, type Split } from "./workshop.ts";
 
 const split = (lists: string[][]): Split => ({ by: "sound", k: lists.length, groups: groupsOf(lists), unplaced: [] });
 
@@ -25,26 +25,19 @@ test("dropping a group's last song drops the group", () => {
 test("songs that left the playlist leave their groups, and a split nothing left stays the same object", () => {
   const s = { ...split([["a", "b"], ["c"]]), unplaced: ["d"] };
   const members = new Set(["a", "d"]);
-  const next = synced(s, (id) => members.has(id), () => true);
+  const next = synced(s, (id) => members.has(id));
 
   assert.deepEqual(next.groups.map((g) => g.ids), [["a"]]);
   assert.deepEqual(next.unplaced, ["d"]);
-  assert.equal(synced(s, () => true, () => true), s);
+  assert.equal(synced(s, () => true), s);
 });
 
-test("a group whose saved playlist was deleted can be saved again as a new one", () => {
-  const s = split([["a"], ["b"]]);
-  const saved = updateGroup(updateGroup(s, s.groups[0]!.key, () => ({ playlistId: "gone", savedAs: "x" })), s.groups[1]!.key, () => ({ playlistId: "here", savedAs: "y" }));
-  const next = synced(saved, () => true, (id) => id === "here");
-
-  assert.deepEqual(next.groups.map((g) => [g.playlistId, g.savedAs]), [[undefined, undefined], ["here", "y"]]);
-});
-
-test("saving a group again keeps what its playlist gained elsewhere and doesn't bring back what it lost", () => {
+test("saving a group again sends only what was put in it and taken out of it since the last save", () => {
   const saved = savedIds(signature("Name", ["a", "b", "c"]));
   assert.deepEqual(saved, ["a", "b", "c"]);
-  // Since the save: "b" was dropped from the group and "d" dragged in; elsewhere the playlist lost "c" and gained "e".
-  assert.deepEqual(merged(["d", "a", "c"], saved, ["a", "b", "e"]), ["d", "a", "e"]);
+  // "b" was dropped from the group and "d" dragged in. What the playlist gained or lost elsewhere isn't in either list.
+  assert.deepEqual(changes(["d", "a", "c"], saved), { added: ["d"], removed: ["b"] });
+  assert.deepEqual(changes(["a", "b", "c"], saved), { added: [], removed: [] });
 });
 
 test("a song dropped from its group is left in no group", () => {

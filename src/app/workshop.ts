@@ -26,14 +26,13 @@ export const signature = (name: string, ids: string[]) => [name, ...ids].join("\
 export const savedIds = (savedAs: string) => savedAs.split("\n").slice(1);
 
 /**
- * What the playlist saved from a group should hold when the group is saved again: the group's songs, then the songs
- * the playlist gained elsewhere since the last save (`saved`), without the ones it lost elsewhere. `now` is what it holds.
+ * What saving a group again changes in its playlist: the songs put in the group since it was last saved (with
+ * `saved`) are added and the ones taken out are removed. Whatever else the playlist holds is not the group's to touch.
  */
-export function merged(group: readonly string[], saved: readonly string[], now: readonly string[]): string[] {
+export function changes(group: readonly string[], saved: readonly string[]): { added: string[]; removed: string[] } {
   const was = new Set(saved);
-  const has = new Set(now);
   const mine = new Set(group);
-  return [...group.filter((id) => !was.has(id) || has.has(id)), ...now.filter((id) => !was.has(id) && !mine.has(id))];
+  return { added: group.filter((id) => !was.has(id)), removed: saved.filter((id) => !mine.has(id)) };
 }
 
 export type By = "sound" | "lyrics" | "genre";
@@ -73,21 +72,14 @@ export function moveSong(split: Split, id: string, key: number): Split {
 }
 
 /**
- * `split` brought in line with the library: songs that no longer belong leave their groups (`belongs` gets the group
- * a song is in, or none for an unplaced one), and a group whose saved playlist is gone (`exists`) is a draft again.
- * The same object when nothing changed.
+ * `split` without the songs that no longer belong (`belongs` gets the group a song is in, or none for an unplaced
+ * one); a group left empty is dropped. The same object when every song belongs.
  */
-export function synced(split: Split, belongs: (id: string, group?: Group) => boolean, exists: (playlistId: string) => boolean): Split {
-  const lost = (g: Group) => !!g.savedAs && !!g.playlistId && !exists(g.playlistId);
-  if (split.groups.every((g) => !lost(g) && g.ids.every((id) => belongs(id, g))) && split.unplaced.every((id) => belongs(id))) return split;
+export function synced(split: Split, belongs: (id: string, group?: Group) => boolean): Split {
+  if (split.groups.every((g) => g.ids.every((id) => belongs(id, g))) && split.unplaced.every((id) => belongs(id))) return split;
   return {
     ...split,
-    groups: split.groups
-      .map((g) => {
-        const { playlistId: _, savedAs: __, ...draft } = g;
-        return { ...(lost(g) ? draft : g), ids: g.ids.filter((id) => belongs(id, g)) };
-      })
-      .filter((g) => g.ids.length > 0),
+    groups: split.groups.map((g) => ({ ...g, ids: g.ids.filter((id) => belongs(id, g)) })).filter((g) => g.ids.length > 0),
     unplaced: split.unplaced.filter((id) => belongs(id)),
   };
 }
@@ -110,6 +102,8 @@ export const restored = (splits: Record<string, Split>): Record<string, Split> =
   Object.fromEntries(Object.entries(splits).map(([id, split]) => [id, { ...split, groups: split.groups.map(({ saving: _, ...g }) => g) }]));
 
 const STORED = "playlists-tab-splits";
+/** Whether the stored splits have been read once already (later reads follow another tab's changes). */
+let loaded = false;
 
 export const useWorkshop = create<WorkshopState>()(
   persist(
@@ -121,7 +115,10 @@ export const useWorkshop = create<WorkshopState>()(
       name: STORED,
       partialize: ({ splits }) => ({ splits }),
       merge: (saved, current) => {
-        const splits = restored((saved as Partial<Pick<WorkshopState, "splits">> | undefined)?.splits ?? {});
+        const stored = (saved as Partial<Pick<WorkshopState, "splits">> | undefined)?.splits ?? {};
+        // Only a reload ends this tab's saves; splits taken over from another tab keep theirs.
+        const splits = loaded ? stored : restored(stored);
+        loaded = true;
         // New groups take keys past the restored ones.
         nextKey = Math.max(nextKey, ...Object.values(splits).flatMap((split) => split.groups.map((g) => g.key + 1)));
         return { ...current, splits };

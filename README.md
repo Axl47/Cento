@@ -118,8 +118,8 @@ The address names the tab you're on (`#playlists`), so a reload or a bookmark op
   (artist playlists and hidden ones don't count).
   Rename a group, drop songs from it (×, which leaves them in no group), drag a song to another group, divide it in two again, or open it in Build. **Save as playlist** creates
   a private playlist from the group that counts for sorting like any other and becomes a part of the playlist you
-  split, which is left as it is. Change the group afterwards and the button becomes **Update playlist**, which keeps the songs the playlist has gained
-  elsewhere since (sorted into it, say) and leaves out the ones taken from it.
+  split, which is left as it is. Change the group afterwards and the button becomes **Update playlist**, which adds the songs you put in the group and
+  removes the ones you took out, and leaves the rest of the playlist as it is (songs sorted into it since, say).
   Splits are kept in this browser. **Parts** lists the playlists that are parts of this one, with the songs each has that
   this one lacks (**Add** puts them in it), and offers playlists that already sit mostly inside it; any other can
   be added by name. Below, **In no part** lists this playlist's songs that are in none of its parts, the ones most
