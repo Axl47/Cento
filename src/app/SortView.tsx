@@ -4,6 +4,7 @@
 // sits by sound: among its nearest songs, or against the tile being hovered (or chosen with ↑↓).
 import { useEffect, useMemo, useState } from "react";
 import { config } from "../core/config.ts";
+import { partsToOffer } from "../core/family.ts";
 import { inbox, sortTargets, type Track } from "../core/library.ts";
 import { LINE_BREAK } from "../core/lyrics.ts";
 import { knownArtistSongs, suggest, type Suggestion } from "../core/suggest.ts";
@@ -20,6 +21,8 @@ import { useHoverIntent } from "./useHoverIntent.ts";
 
 /** Tiles with a number key. */
 const KEYED = 8;
+/** Parts shown for each checked playlist that has none of its parts checked. */
+const PARTS_OFFERED = 2;
 /** How far ahead a run can reach. */
 const MAX_RUN = 8;
 /** Upcoming songs shown after the run. */
@@ -48,16 +51,26 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
     () => (model && track ? suggest(model, track, picked, neighbors) : []),
     [model, track, picked, neighbors],
   );
-  // Checked playlists first, then the best unchecked ones; number keys follow this order.
+  // Checked playlists first, then parts of those, then the best unchecked ones; number keys follow this order.
   // Picks the model doesn't suggest (hidden, or ruled out by an artist rule) still show, unscored.
   const rows = useMemo(() => {
     const checked = picked.map(
       (p): Suggestion =>
         suggestions.find((s) => s.playlistId === p) ?? { playlistId: p, score: 0, parts: { rule: 0, artist: 0, audio: 0, pairing: 0, prior: 0 } },
     );
-    const rest = suggestions.filter((s) => !picked.includes(s.playlistId));
+    const unchecked = suggestions.filter((s) => !picked.includes(s.playlistId));
+    // A checked playlist with parts gets its likeliest ones right after the checked tiles, so the song can go
+    // straight into the part it belongs in.
+    const offered = new Set(partsToOffer(parents, picked, unchecked.map((s) => s.playlistId), PARTS_OFFERED));
+    const rest = [...unchecked.filter((s) => offered.has(s.playlistId)), ...unchecked.filter((s) => !offered.has(s.playlistId))];
     return [...checked.toSorted((a, b) => b.score - a.score), ...rest.slice(0, Math.max(KEYED - checked.length, 2))];
-  }, [suggestions, picked]);
+  }, [suggestions, picked, parents]);
+
+  /** The checked playlist a tile's playlist is a part of. */
+  const partOf = (id: string) => {
+    const whole = byId.get(parents[id]?.find((p) => picked.includes(p)) ?? "");
+    return whole && { name: whole.name, color: colors.get(whole.id) };
+  };
 
   // A run: the songs right after this one that the model would precheck exactly the same way.
   // Only artists you've sorted before can be in one: a run is never sorted on sound alone.
@@ -222,6 +235,7 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
               focused={s.playlistId === focused}
               muted={hidden.includes(s.playlistId)}
               ruled={!!rules[s.playlistId]}
+              under={partOf(s.playlistId)}
               onToggle={() => togglePick(s.playlistId)}
               onHover={(on) => tile.hover(on && trackId ? { track: trackId, playlist: s.playlistId } : null)}
             />
@@ -390,6 +404,8 @@ function Tile(props: {
   /** Hidden playlists only show up here when picked from search. */
   muted: boolean;
   ruled: boolean;
+  /** The checked playlist this one is a part of: marked with a strip in its color. */
+  under: { name: string; color: string | undefined } | undefined;
   onToggle: () => void;
   onHover: (on: boolean) => void;
 }) {
@@ -399,7 +415,7 @@ function Tile(props: {
       onClick={props.onToggle}
       onMouseEnter={() => props.onHover(true)}
       onMouseLeave={() => props.onHover(false)}
-      title={props.ruled ? "Has an artist rule" : undefined}
+      title={[props.under && `Part of ${props.under.name}`, props.ruled && "Has an artist rule"].filter(Boolean).join(" · ") || undefined}
       className={`relative rounded-lg border py-2.5 pl-10 pr-3 text-left transition-colors ${
         checked ? "" : focused ? "border-white/20 bg-zinc-900" : "border-transparent bg-zinc-900"
       }`}
@@ -411,6 +427,7 @@ function Tile(props: {
       >
         {checked ? "✓" : index < KEYED ? index + 1 : ""}
       </span>
+      {props.under && <span className="absolute inset-y-2 left-0 w-[3px] rounded-full" style={{ background: props.under.color }} />}
       <span className={`block truncate font-medium ${props.muted ? "text-zinc-400" : "text-zinc-50"}`}>{name}</span>
       <span className="mt-2 block h-[3px] rounded-full bg-white/10">
         <span className="block h-full rounded-full" style={{ width: `${Math.min(score, 1) * 100}%`, background: color }} />

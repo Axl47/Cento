@@ -50,6 +50,15 @@ export function knownParents(parents: Parents, exists: (id: string) => boolean):
   return same ? parents : Object.fromEntries(entries);
 }
 
+/**
+ * The parts to offer next for a song: for each picked playlist with none of its parts picked, its first `each`
+ * parts in `ranked` (the playlists not picked, best first). In `ranked`'s order within each playlist.
+ */
+export function partsToOffer(parents: Parents, picked: readonly string[], ranked: readonly string[], each: number): string[] {
+  const open = picked.filter((whole) => !picked.some((p) => parents[p]?.includes(whole)));
+  return [...new Set(open.flatMap((whole) => ranked.filter((id) => parents[id]?.includes(whole)).slice(0, each)))];
+}
+
 type Songs = Pick<Playlist, "id" | "trackIds">;
 
 /** The songs of `part` that `whole` doesn't hold. */

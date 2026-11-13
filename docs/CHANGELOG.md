@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- On the sort screen, a checked playlist that has parts shows its two likeliest parts as the next tiles, so a song can go straight into the part it belongs in.
 - Once a playlist has parts, **Split** can group only the songs that are in no part yet, to find the parts still missing.
 - The songs a split leaves out (no clear theme, none of the genres) can be listed and dragged into a group.
 - The Playlists list marks a part whose songs aren't all in the playlist it belongs to, and the **Parts** view suggests bigger playlists that a playlist could be made a part of.
