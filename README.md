@@ -75,6 +75,8 @@ The address names the tab you're on (`#playlists`), so a reload or a bookmark op
   one later. In `⌘K`, search for a playlist and choose **Don't count**. It joins a row on the sort screen where a
   click switches it on or off. While on, its songs are back in the queue even if they're no longer liked, unless
   another playlist that counts already has them, and it isn't suggested. Nothing changes on Spotify, and the row is saved in this browser.
+  At the end of the row, **+N only in Everything** does the same for the all-songs playlist: it lets in the songs that
+  are in it and in no playlist that counts, which the queue otherwise never shows because they aren't liked.
 
 - **Sound map**: every song placed by sound, over hex tiles tinted by the playlist most of each tile's songs are
   in. Playlists not counted as sorted and playlists named after their own artist color no songs and tint no tiles, unless **Compilations** is on (gear, bottom right of the map; saved in this browser). Tints are stronger where that playlist clearly leads (see `src/core/hexTiles.ts`). Zoomed out, each playlist's

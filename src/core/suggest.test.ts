@@ -119,6 +119,11 @@ test("hidden playlists are never suggested, and songs only in them still need so
   };
   assert.deepEqual(inbox(pass).map((l) => l.id), []);
   assert.deepEqual(inbox(pass, [], ["artist"]).map((l) => l.id), ["new", "s4"]);
+
+  // The all-songs playlist never counts as sorted; uncounted, it brings in the songs that are in it and nowhere else.
+  const stray: Library = { ...lib, playlists: lib.playlists.map((p) => (p.id === config.allPlaylistId ? { ...p, trackIds: [...p.trackIds, "stranger"] } : p)) };
+  assert.deepEqual(inbox(stray).map((l) => l.id), []);
+  assert.deepEqual(inbox(stray, [], [config.allPlaylistId]).map((l) => l.id), ["stranger"]);
 });
 
 test("an empty rule is the same as no rule", () => {

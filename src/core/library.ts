@@ -61,6 +61,7 @@ export function primaryPlaylists(targets: readonly Playlist[]): Map<string, stri
  * The songs left to sort: liked songs plus every song in an uncounted playlist, minus anything
  * already in a playlist that counts. Hidden and uncounted playlists don't count as sorted, but only
  * uncounted ones bring their songs back, so a catch-all (say, one per artist) can be sorted properly in a later pass.
+ * The all-songs playlist never counts; uncounting it brings in the songs that are in it and nowhere else.
  */
 export function inbox(lib: Library, hidden: readonly string[] = [], uncounted: readonly string[] = []) {
   const sorted = new Set(sortTargets(lib, [...hidden, ...uncounted]).flatMap((p) => p.trackIds));
