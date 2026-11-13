@@ -18,6 +18,8 @@ export type Play = {
   context?: string;
   /** Live only: the track's length, which bounds when its export row can end. */
   durationMs?: number;
+  /** Live only: identifies the recording across its releases, see `otherReleases`. */
+  isrc?: string;
   source: PlaySource;
 };
 
@@ -36,7 +38,7 @@ export const MATCH_TOLERANCE_MS = 2 * 60_000;
 
 export const isListen = (play: Play) => (play.msPlayed ?? LISTEN_MS) >= LISTEN_MS;
 
-type LiveRow = { played_at?: unknown; track?: { id?: unknown; duration_ms?: unknown } | null; context?: { uri?: unknown } | null };
+type LiveRow = { played_at?: unknown; track?: { id?: unknown; duration_ms?: unknown; external_ids?: { isrc?: unknown } | null } | null; context?: { uri?: unknown } | null };
 
 /** One line of data/listening-history.jsonl, parsed. Null for anything that isn't a play of a track with an id (local files have none). */
 export function parseLive(value: unknown): Play | null {
@@ -46,11 +48,13 @@ export function parseLive(value: unknown): Play | null {
   if (typeof id !== "string" || Number.isNaN(at)) return null;
   const duration = row?.track?.duration_ms;
   const context = row?.context?.uri;
+  const isrc = row?.track?.external_ids?.isrc;
   return {
     trackId: id,
     at,
     ...(typeof duration === "number" && { durationMs: duration }),
     ...(typeof context === "string" && { context }),
+    ...(typeof isrc === "string" && { isrc: isrc.toUpperCase() }),
     source: "live",
   };
 }
@@ -74,8 +78,24 @@ export function parseExport(value: unknown): Play | null {
   };
 }
 
-/** Credits plays of a copy `pnpm merge-copies` replaced to the copy it kept, following merges of merges. */
-export function resolveMerges(plays: readonly Play[], merges: readonly Merge[]): Play[] {
+/**
+ * A song played from a release that isn't saved (its single, the album cut, a reissue) is the saved song with the
+ * same ISRC. Returns those releases as merges for `resolveMerges`. Only live plays carry an ISRC, so an export row
+ * is credited only for a release the host has also recorded.
+ */
+export function otherReleases(live: readonly Play[], tracks: Readonly<Record<string, { isrc: string | null }>>): Pick<Merge, "main" | "copies">[] {
+  const saved = new Map<string, string>();
+  for (const [id, track] of Object.entries(tracks)) if (track.isrc && !saved.has(track.isrc)) saved.set(track.isrc, id);
+  const mainOf = new Map<string, string>();
+  for (const play of live) {
+    const main = play.isrc && saved.get(play.isrc);
+    if (main && !(play.trackId in tracks)) mainOf.set(play.trackId, main);
+  }
+  return [...mainOf].map(([copy, main]) => ({ main, copies: [copy] }));
+}
+
+/** Credits plays of a copy `pnpm merge-copies` replaced to the copy it kept, following merges of merges. On a conflict the later merge wins. */
+export function resolveMerges(plays: readonly Play[], merges: readonly Pick<Merge, "main" | "copies">[]): Play[] {
   const keptFor = new Map(merges.flatMap((m) => m.copies.map((copy) => [copy, m.main] as const)));
   const kept = (id: string) => {
     const seen = new Set<string>();

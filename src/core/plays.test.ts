@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { decodePlays, joinPlays, parseExport, parseLive, playsFile, resolveMerges, type Play } from "./plays.ts";
+import { decodePlays, joinPlays, otherReleases, parseExport, parseLive, playsFile, resolveMerges, type Play } from "./plays.ts";
 
 const T = Date.parse("2026-11-12T20:00:00Z");
 const MIN = 60_000;
@@ -28,8 +28,8 @@ const live = (...rows: ReturnType<typeof liveRow>[]) => rows.map(parseLive).filt
 const exported = (...rows: ReturnType<typeof exportRow>[]) => rows.map(parseExport).filter((p) => p !== null);
 
 test("parses both formats, and drops rows that aren't track plays", () => {
-  assert.deepEqual(parseLive(liveRow("a", T, "spotify:playlist:p")), { trackId: "a", at: T, durationMs: 3 * MIN, context: "spotify:playlist:p", source: "live" });
-  assert.deepEqual(parseLive(liveRow("a", T)), { trackId: "a", at: T, durationMs: 3 * MIN, source: "live" });
+  assert.deepEqual(parseLive(liveRow("a", T, "spotify:playlist:p")), { trackId: "a", at: T, durationMs: 3 * MIN, context: "spotify:playlist:p", isrc: "X", source: "live" });
+  assert.deepEqual(parseLive(liveRow("a", T)), { trackId: "a", at: T, durationMs: 3 * MIN, isrc: "X", source: "live" });
   assert.equal(parseLive({ ...liveRow("a", T), track: { id: null } }), null); // local file
   assert.deepEqual(parseExport(exportRow("a", T, 12_000)), { trackId: "a", at: T, msPlayed: 12_000, skipped: false, source: "export" });
   assert.equal(parseExport(exportRow(null, T)), null); // podcast
@@ -85,4 +85,14 @@ test("counts listens and skips per library song, and plays of other songs apart"
   assert.equal(file.from, iso(T));
   assert.equal(file.to, iso(T + 30 * MIN));
   assert.deepEqual([...decodePlays(file)], [["a", { plays: 2, skips: 1, last: iso(T + 20 * MIN) }]]);
+});
+
+test("a play of another release counts for the saved song with the same ISRC", () => {
+  const tracks = { saved: { isrc: "X" }, other: { isrc: "Y" } };
+  const plays = live(liveRow("single", T), liveRow("saved", T + MIN));
+  const releases = otherReleases(plays, tracks);
+  assert.deepEqual(releases, [{ main: "saved", copies: ["single"] }]);
+  // The export has no ISRC: its rows of that release follow the live play's.
+  const all = resolveMerges([...plays, ...exported(exportRow("single", T - 60 * MIN), exportRow("unknown", T))], releases);
+  assert.deepEqual(all.map((p) => p.trackId), ["saved", "saved", "saved", "unknown"]);
 });
