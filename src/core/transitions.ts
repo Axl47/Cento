@@ -1,25 +1,8 @@
 // What makes the user skip the next song, measured on shuffle, where the next song is picked at random from the
 // playlist: a song's fit with what came before can't have chosen it, so comparing the same song after close and
 // distant songs isolates the effect of the transition. `pnpm transitions` prints the results; pure code.
-import { LISTEN_MS, parseExport, type Play } from "./plays.ts";
-
-/** An export play with the fields that say how it started and ended. */
-export type ShufflePlay = Play & { msPlayed: number; shuffle: boolean; reasonStart: string; reasonEnd: string; platform: string };
-
-/** One row of a `Streaming_History_Audio_*.json` file with its shuffle flag and start and end reasons, or null (see `parseExport`). */
-export function parseShufflePlay(value: unknown): ShufflePlay | null {
-  const play = parseExport(value);
-  const row = value as { shuffle?: unknown; reason_start?: unknown; reason_end?: unknown; platform?: unknown };
-  if (!play || play.msPlayed === undefined) return null;
-  return {
-    ...play,
-    msPlayed: play.msPlayed,
-    shuffle: row.shuffle === true,
-    reasonStart: typeof row.reason_start === "string" ? row.reason_start : "",
-    reasonEnd: typeof row.reason_end === "string" ? row.reason_end : "",
-    platform: typeof row.platform === "string" ? row.platform : "",
-  };
-}
+import { LISTEN_MS } from "./plays.ts";
+import type { ExportPlay } from "./skips.ts";
 
 /** One song coming up on its own after another on shuffle, and whether the user skipped it. */
 export type Seam = {
@@ -38,19 +21,19 @@ export const SESSION_GAP_MS = 30 * 60_000;
 export const FOLLOW_MS = 15_000;
 export const RECENT = 5;
 
-const isSkip = (play: ShufflePlay) => play.reasonEnd === "fwdbtn" && play.msPlayed < LISTEN_MS;
+const isSkip = (play: ExportPlay) => play.reasonEnd === "fwdbtn" && play.msPlayed < LISTEN_MS;
 
 /**
  * The seams in time-ordered plays where the second song came up by itself on shuffle: after the first played through,
  * or after the user skipped the first. A song that was neither skipped nor listened to (playback stopped) is left out.
  */
-export function shuffleSeams(plays: readonly ShufflePlay[]): Seam[] {
+export function shuffleSeams(plays: readonly ExportPlay[]): Seam[] {
   const seams: Seam[] = [];
   let recent: string[] = [];
   for (let i = 1; i < plays.length; i++) {
     const [a, b] = [plays[i - 1]!, plays[i]!];
     const gap = b.at - b.msPlayed - a.at;
-    if (gap > SESSION_GAP_MS || a.platform !== b.platform) recent = [];
+    if (gap > SESSION_GAP_MS || a.device !== b.device) recent = [];
     if (a.msPlayed >= LISTEN_MS) recent = [...recent, a.trackId].slice(-RECENT);
     if (Math.abs(gap) > FOLLOW_MS || !a.shuffle || !b.shuffle || a.trackId === b.trackId) continue;
     const afterListen = a.reasonEnd === "trackdone" && b.reasonStart === "trackdone";
