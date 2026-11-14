@@ -14,6 +14,7 @@ import { buildModel, prechecked, suggest, type ArtistRules, type Model, type Nei
 import type { Edges } from "../core/setlist.ts";
 import { decodeFeatures, type FeaturesFile, type SongFeatures } from "../core/features.ts";
 import { decodePlays, decodeYearTotals, type PlaysFile, type SongPlays, type YearTotals } from "../core/plays.ts";
+import { decodeMidSkips, type MidSkips, type SkipsFile } from "../core/skips.ts";
 import { decodeTags, type Tags, type TagsFile } from "../core/tags.ts";
 import { addToPlaylist, createPlaylist, removeFromPlaylist, replacePlaylist, setLiked } from "../core/spotify.ts";
 import { client } from "./auth.ts";
@@ -82,6 +83,8 @@ type State = {
   plays: ReadonlyMap<string, SongPlays> | null;
   /** Every library song's plays per year, loaded with `plays`. */
   playYears: readonly YearTotals[] | null;
+  /** Each song's skips past 30 s against what its familiarity predicts (data/skips.json), loaded with `plays`; null until then or if missing. */
+  midSkips: ReadonlyMap<string, MidSkips> | null;
   loadPlays: () => void;
   /** Each song's genres and moods (data/tags.json), loaded by `loadTags`; null until then or if missing. */
   tags: Tags | null;
@@ -345,6 +348,7 @@ export const useApp = create<State>()((set, get) => {
     features: null,
     plays: null,
     playYears: null,
+    midSkips: null,
     tags: null,
     classifier: undefined,
     themes: null,
@@ -393,6 +397,10 @@ export const useApp = create<State>()((set, get) => {
       fetch("/api/plays")
         .then((res) => (res.ok ? (res.json() as Promise<PlaysFile>) : null))
         .then((file) => file && set({ plays: decodePlays(file), playYears: decodeYearTotals(file) }))
+        .catch(console.error);
+      fetch("/api/skips")
+        .then((res) => (res.ok ? (res.json() as Promise<SkipsFile>) : null))
+        .then((file) => file && set({ midSkips: decodeMidSkips(file) }))
         .catch(console.error);
     },
 
