@@ -20,6 +20,8 @@ export type Play = {
   isrc?: string;
   /** Export only: `songKey` of the title and album artist, which is all the export says about what the id was. */
   song?: string;
+  /** Export only: whether shuffle was on. */
+  shuffle?: boolean;
   source: PlaySource;
 };
 
@@ -62,6 +64,7 @@ type ExportRow = {
   ms_played?: unknown;
   spotify_track_uri?: unknown;
   skipped?: unknown;
+  shuffle?: unknown;
   master_metadata_track_name?: unknown;
   master_metadata_album_artist_name?: unknown;
 };
@@ -83,6 +86,7 @@ export function parseExport(value: unknown): Play | null {
     at,
     msPlayed: row.ms_played,
     ...(typeof row.skipped === "boolean" && { skipped: row.skipped }),
+    ...(typeof row.shuffle === "boolean" && { shuffle: row.shuffle }),
     ...(typeof title === "string" && typeof artist === "string" && { song: songKey(title, artist) }),
     source: "export",
   };
@@ -154,21 +158,34 @@ export function joinPlays(live: readonly Play[], exported: readonly Play[]): { p
   return { plays: [...joined, ...unmatched].sort((a, b) => a.at - b.at), matched: taken.size };
 }
 
-export type SongPlays = { plays: number; skips: number; last: string };
+/** One calendar year (UTC) of a song's plays. `shuffled` counts listens and skips with shuffle on. */
+export type YearPlays = { year: number; plays: number; skips: number; shuffled: number };
 
-/** data/plays.json: per library track id its listens, skips, and when it last played (ISO, listen or skip). `from`/`to` span every play read. */
+/** One calendar year of every library song's plays, for comparing a song with how skippy that year was overall. */
+export type YearTotals = YearPlays & { shuffledSkips: number };
+
+export type SongPlays = { plays: number; skips: number; last: string; years: readonly YearPlays[] };
+
+/**
+ * data/plays.json: per library track id its listens, skips, when it last played (ISO, listen or skip), and the same
+ * counts per year as `[year, listens, skips, shuffled]`. `years` totals every library song per year, as
+ * `[year, listens, skips, shuffled, shuffledSkips]`. `from`/`to` span every play read. Files from before the per-year
+ * counts lack both; they decode with no years.
+ */
 export type PlaysFile = {
   generatedAt: string;
   from: string | null;
   to: string | null;
-  songs: Record<string, [plays: number, skips: number, last: string]>;
+  songs: Record<string, [plays: number, skips: number, last: string, years?: [year: number, plays: number, skips: number, shuffled: number][]]>;
+  years?: [year: number, plays: number, skips: number, shuffled: number, shuffledSkips: number][];
 };
 
 const iso = (ms: number) => new Date(ms).toISOString();
 
-/** Counts plays per library song. Plays of songs not in the library are left out of `songs` and counted in `outside`. */
+/** Counts plays per library song, overall and per year. Plays of songs not in the library are left out of `songs` and counted in `outside`. */
 export function playsFile(plays: readonly Play[], library: Readonly<Record<string, unknown>>, generatedAt: Date): { file: PlaysFile; outside: number } {
   const songs: PlaysFile["songs"] = {};
+  const totals = new Map<number, NonNullable<PlaysFile["years"]>[number]>();
   let outside = 0;
   const sorted = [...plays].sort((a, b) => a.at - b.at);
   for (const play of sorted) {
@@ -176,8 +193,23 @@ export function playsFile(plays: readonly Play[], library: Readonly<Record<strin
       outside++;
       continue;
     }
-    const [listens, skips] = songs[play.trackId] ?? [0, 0];
-    songs[play.trackId] = isListen(play) ? [listens + 1, skips, iso(play.at)] : [listens, skips + 1, iso(play.at)];
+    const listen = isListen(play);
+    const [listens, skips, , years = []] = songs[play.trackId] ?? [0, 0, ""];
+    const year = new Date(play.at).getUTCFullYear();
+    // Plays come in time order, so a song's current year is always its last.
+    let row = years.at(-1);
+    if (row?.[0] !== year) years.push((row = [year, 0, 0, 0]));
+    row[listen ? 1 : 2]++;
+    if (play.shuffle) row[3]++;
+    songs[play.trackId] = [listens + (listen ? 1 : 0), skips + (listen ? 0 : 1), iso(play.at), years];
+
+    const total = totals.get(year) ?? [year, 0, 0, 0, 0];
+    totals.set(year, total);
+    total[listen ? 1 : 2]++;
+    if (play.shuffle) {
+      total[3]++;
+      if (!listen) total[4]++;
+    }
   }
   const [first, last] = [sorted[0], sorted.at(-1)];
   return {
@@ -186,10 +218,20 @@ export function playsFile(plays: readonly Play[], library: Readonly<Record<strin
       from: first ? iso(first.at) : null,
       to: last ? iso(last.at) : null,
       songs,
+      years: [...totals.values()],
     },
     outside,
   };
 }
 
 export const decodePlays = (file: PlaysFile): ReadonlyMap<string, SongPlays> =>
-  new Map(Object.entries(file.songs).map(([id, [plays, skips, last]]) => [id, { plays, skips, last }]));
+  new Map(
+    Object.entries(file.songs).map(([id, [plays, skips, last, years = []]]) => [
+      id,
+      { plays, skips, last, years: years.map(([year, plays, skips, shuffled]) => ({ year, plays, skips, shuffled })) },
+    ]),
+  );
+
+/** The library's per-year totals from data/plays.json, oldest first; empty for files without them. */
+export const decodeYearTotals = (file: PlaysFile): readonly YearTotals[] =>
+  (file.years ?? []).map(([year, plays, skips, shuffled, shuffledSkips]) => ({ year, plays, skips, shuffled, shuffledSkips }));

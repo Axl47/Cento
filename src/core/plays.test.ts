@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { decodePlays, joinPlays, otherReleases, parseExport, parseLive, playsFile, resolveMerges, type Play } from "./plays.ts";
+import { decodePlays, decodeYearTotals, joinPlays, otherReleases, parseExport, parseLive, playsFile, resolveMerges, type Play, type PlaysFile } from "./plays.ts";
 
 const T = Date.parse("2026-11-12T20:00:00Z");
 const MIN = 60_000;
@@ -14,7 +14,7 @@ const liveRow = (id: string, at: number, context: string | null = null) => ({
 });
 
 /** An export row: `ts` is when the play ended. */
-const exportRow = (id: string | null, ts: number, ms_played = 3 * MIN) => ({
+const exportRow = (id: string | null, ts: number, ms_played = 3 * MIN): Record<string, unknown> => ({
   ts: iso(ts),
   ms_played,
   spotify_track_uri: id && `spotify:track:${id}`,
@@ -76,7 +76,32 @@ test("counts listens and skips per library song, and plays of other songs apart"
   assert.equal(outside, 1);
   assert.equal(file.from, iso(T));
   assert.equal(file.to, iso(T + 30 * MIN));
-  assert.deepEqual([...decodePlays(file)], [["a", { plays: 2, skips: 1, last: iso(T + 20 * MIN) }]]);
+  assert.deepEqual([...decodePlays(file)], [["a", { plays: 2, skips: 1, last: iso(T + 20 * MIN), years: [{ year: 2026, plays: 2, skips: 1, shuffled: 0 }] }]]);
+});
+
+test("counts each year apart, with shuffled plays, for each song and the whole library", () => {
+  const NEXT = Date.parse("2027-02-01T00:00:00Z");
+  const plays = exported(
+    { ...exportRow("a", T), shuffle: true },
+    { ...exportRow("a", T + MIN, 5_000), shuffle: true },
+    { ...exportRow("b", T + 2 * MIN, 5_000), shuffle: false },
+    exportRow("a", NEXT),
+  );
+  const { file } = playsFile(plays, { a: {}, b: {} }, new Date(NEXT));
+  assert.deepEqual(decodePlays(file).get("a")?.years, [
+    { year: 2026, plays: 1, skips: 1, shuffled: 2 },
+    { year: 2027, plays: 1, skips: 0, shuffled: 0 },
+  ]);
+  assert.deepEqual(decodeYearTotals(file), [
+    { year: 2026, plays: 1, skips: 2, shuffled: 2, shuffledSkips: 1 },
+    { year: 2027, plays: 1, skips: 0, shuffled: 0, shuffledSkips: 0 },
+  ]);
+});
+
+test("a file from before the yearly counts still decodes", () => {
+  const old: PlaysFile = { generatedAt: iso(T), from: null, to: null, songs: { a: [3, 1, iso(T)] } };
+  assert.deepEqual(decodePlays(old).get("a"), { plays: 3, skips: 1, last: iso(T), years: [] });
+  assert.deepEqual(decodeYearTotals(old), []);
 });
 
 test("a play of another release counts for the saved song", () => {
