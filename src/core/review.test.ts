@@ -39,12 +39,33 @@ test("fading: a song skipped more than it was, beyond what the library and shuff
     // Skipped a lot lately, but on too few plays to tell.
     ["thin", song("2026-10-01T00:00:00Z", year(2023, 27, 3), year(2026, 1, 3))],
   ]);
-  const found = fading(plays, totals, saved, NOW);
+  const found = fading(plays, totals, null, saved, NOW);
   assert.deepEqual(found.map((f) => f.id), ["tired"]);
-  const [tired] = found;
-  assert.deepEqual([tired!.then.plays, tired!.then.skips, tired!.now.plays, tired!.now.skips], [27, 3, 10, 10]);
-  assert.ok(Math.abs(tired!.then.expected - 3) < 1e-9);
-  assert.ok(tired!.now.ratio > 1.5 * tired!.then.ratio);
+  const { then, now } = found[0]!.rise!;
+  assert.deepEqual([then.plays, then.skips, now.plays, now.skips], [27, 3, 10, 10]);
+  assert.ok(Math.abs(then.expected - 3) < 1e-9);
+  assert.ok(now.ratio > 1.5 * then.ratio);
+});
+
+test("fading: a song still played but skipped mid-song far more than songs heard as often", () => {
+  const steady = (last: string) => song(last, year(2023, 27, 3), year(2025, 18, 2));
+  const plays = new Map([
+    ["worn", steady("2026-10-01T00:00:00Z")],
+    ["quiet", steady("2024-01-01T00:00:00Z")], // worn out too, but no longer played: Rediscover's, not Fading's
+    ["usual", steady("2026-10-01T00:00:00Z")],
+    ["thin", steady("2026-10-01T00:00:00Z")],
+    // Skipped mid-song years ago, never lately.
+    ["recovered", song("2026-10-01T00:00:00Z", year(2023, 20, 10), year(2025, 20, 0))],
+  ]);
+  const mid = new Map([
+    ["worn", { skips: 30, expected: 5 }],
+    ["quiet", { skips: 30, expected: 5 }],
+    ["usual", { skips: 12, expected: 10 }],
+    ["thin", { skips: 4, expected: 0.5 }],
+    ["recovered", { skips: 30, expected: 5 }],
+  ]);
+  const found = fading(plays, totals, mid, new Set(plays.keys()), NOW);
+  assert.deepEqual(found.map((f) => [f.id, f.rise, f.mid]), [["worn", null, { skips: 30, expected: 5 }]]);
 });
 
 test("neverPlayed: unheard songs, skipped or not, oldest arrival first, with the playlists holding them", () => {

@@ -135,7 +135,9 @@ The address names the tab you're on (`#playlists`), so a reload or a bookmark op
   Doesn't fit is its songs by anyone else.
 - **Revisit** (`R`): songs to look at again, from `pnpm plays`. **Rediscover** is songs played 30+ times but not in the
   last year, most loved first. **Fading** is songs skipped more since last year than before, beyond what the library's
-  skip rate those years (on shuffle or off) explains, with plays per year and the counts behind it; clicking a playlist
+  skip rate those years (on shuffle or off) explains, or, once `pnpm skips` has run, songs still played and skipped lately
+  that are skipped after 30 s far more than songs you've heard as often. Each shows its plays per year and the counts
+  behind it; clicking a playlist
   takes the song out of it, with **Undo** until you leave. **Never played** is saved songs never listened to, oldest first.
 
 Spotify writes run in order in the background; the header shows pending/failed writes. The app saves its

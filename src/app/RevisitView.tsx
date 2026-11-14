@@ -1,10 +1,10 @@
 // Revisit tab: saved songs worth another look, from play history (see src/core/review.ts). Rediscover is favorites
-// gone quiet, Fading is songs skipped more and more (each can be taken out of the playlists holding it, with Undo
-// until you leave the tab), and Never played is songs saved but never heard.
+// gone quiet, Fading is songs being tired of: skipped more than they were, or mid-song more than songs heard as often
+// (each can be taken out of the playlists holding it, with Undo until you leave the tab), and Never played is songs saved but never heard.
 import { useEffect, useMemo, useState } from "react";
 import { sortTargets, type Playlist } from "../core/library.ts";
 import type { YearPlays } from "../core/plays.ts";
-import { fading, neverPlayed, rediscover, type Stretch } from "../core/review.ts";
+import { fading, neverPlayed, rediscover, type Fade, type Stretch } from "../core/review.ts";
 import { Empty, PAGE, ShowMore, SongButton } from "./rows.tsx";
 import { useApp } from "./store.ts";
 
@@ -26,7 +26,7 @@ function storedList(): List {
 const month = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: "short", year: "numeric" });
 
 export function RevisitView({ colors }: { colors: Map<string, string> }) {
-  const { lib, plays, playYears } = useApp();
+  const { lib, plays, playYears, midSkips } = useApp();
   const [list, setList] = useState(storedList);
   const [limit, setLimit] = useState(PAGE);
   useEffect(() => useApp.getState().loadPlays(), []);
@@ -44,8 +44,8 @@ export function RevisitView({ colors }: { colors: Map<string, string> }) {
     if (!lib || !plays || !playYears) return null;
     const saved = new Set(Object.keys(lib.tracks));
     const now = new Date();
-    return { rediscover: rediscover(plays, saved, now), fading: fading(plays, playYears, saved, now), never: neverPlayed(plays, lib) };
-  }, [lib, plays, playYears]);
+    return { rediscover: rediscover(plays, saved, now), fading: fading(plays, playYears, midSkips, saved, now), never: neverPlayed(plays, lib) };
+  }, [lib, plays, playYears, midSkips]);
 
   const choose = (next: List) => {
     setList(next);
@@ -86,7 +86,7 @@ export function RevisitView({ colors }: { colors: Map<string, string> }) {
           lists.fading.slice(0, limit).map((s) => (
             <Row key={s.id} id={s.id}>
               <YearBars years={s.years} />
-              <Rise then={s.then} now={s.now} />
+              <Evidence fade={s} />
               <RemoveChips id={s.id} of={holders.get(s.id)} colors={colors} />
             </Row>
           ))}
@@ -141,9 +141,26 @@ function YearBars({ years }: { years: readonly YearPlays[] }) {
 
 const share = (s: Stretch) => `${Math.round((100 * s.skips) / (s.plays + s.skips))}%`;
 
-/** The share of plays skipped before last year, then since, with the counts behind each. */
+/**
+ * Why a song is fading: the share of plays skipped before last year, then since, with the counts behind each, and/or
+ * its skips past 30 s against how many songs heard as often get.
+ */
+const Evidence = ({ fade: { rise, mid } }: { fade: Fade }) => (
+  <span className="w-36 shrink-0 font-mono text-[11px] leading-tight text-zinc-400">
+    {rise && <Rise {...rise} />}
+    {rise && mid && <br />}
+    {mid && (
+      <span title="Skipped after 30 s, against songs played as often">
+        mid-song skips <span className="text-rose-400">{mid.skips}</span>
+        <br />
+        {Math.round(mid.expected)} expected
+      </span>
+    )}
+  </span>
+);
+
 const Rise = ({ then, now }: { then: Stretch; now: Stretch }) => (
-  <span className="w-36 shrink-0 font-mono text-[11px] leading-tight text-zinc-400" title="Skipped, before last year → since">
+  <span title="Skipped, before last year → since">
     skips {share(then)} → <span className="text-rose-400">{share(now)}</span>
     <br />
     {then.skips}/{then.plays + then.skips} → {now.skips}/{now.plays + now.skips}

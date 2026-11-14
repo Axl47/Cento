@@ -344,3 +344,9 @@ export type SkipsFile = {
   generatedAt: string;
   songs: Record<string, [plays: number, early: number, earlyExpected: number, mid: number, midExpected: number, peakSecond: number | null]>;
 };
+
+/** A song's skips past the first 30 s, against how many its strata (familiarity, year, device, shuffle) predict. */
+export type MidSkips = { skips: number; expected: number };
+
+export const decodeMidSkips = (file: SkipsFile): ReadonlyMap<string, MidSkips> =>
+  new Map(Object.entries(file.songs).map(([id, [, , , skips, expected]]) => [id, { skips, expected }]));

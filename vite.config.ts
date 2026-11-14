@@ -22,6 +22,7 @@ import { config } from "./src/core/config.ts";
  *   GET     /api/features -> data/features.json (tempo, key, loudness per song; 404 until `pnpm features` has run)
  *   GET     /api/tags     -> data/tags.json (genres and moods per song; 404 until `pnpm tags` has run)
  *   GET     /api/plays    -> data/plays.json (plays, skips and last play per song; 404 until `pnpm plays` has run)
+ *   GET     /api/skips    -> data/skips.json (mid-song skips against familiarity; 404 until `pnpm skips` has run)
  *   GET     /api/classifier -> data/classifier.json (404 until `pnpm classify` has run)
  *   POST    /api/classifier -> retrains it, replying once it's done
  *   GET     /api/themes   -> data/themes.json (what songs are about; 404 until `pnpm lyrics` has run)
@@ -74,6 +75,7 @@ function localData(): Plugin {
     "/api/features": "data/features.json",
     "/api/tags": "data/tags.json",
     "/api/plays": "data/plays.json",
+    "/api/skips": "data/skips.json",
     "/api/classifier": "data/classifier.json",
     "/api/themes": "data/themes.json",
     "/api/languages": "data/languages.jsonl",
