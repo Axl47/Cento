@@ -180,6 +180,10 @@ Spotify shows them; entries older than a day are dropped too.
   and which kinds of song are skipped more than familiarity, year, device and shuffle predict. It writes
   `data/skips.json`: per song, skips in the first 30 s and mid-song against that prediction, and the second its mid-song
   skips crowd around when they do.
+- `pnpm transitions` prints what makes you skip the next song on shuffle, from the Extended Streaming History: the same
+  song's skip rate after a closer or farther fit with what came before (its sound, the end of one against the start of
+  the next, Build's handoff score, tempo, loudness at the seam, key), and how much the song itself matters. Shuffle picks
+  the next song at random, so the fit can't have chosen it. Needs `pnpm audio`, `pnpm edges` and `pnpm features` first.
 - `pnpm classify` trains one sound classifier per playlist from your sorted songs (seconds, on the engine's vectors)
   and writes `data/classifier.json`. Run it after `pnpm audio`; a resync in the app also runs it. Its scores replace
   the nearest-neighbor vote where available, and it can check one playlist from sound alone when it's confident and that
