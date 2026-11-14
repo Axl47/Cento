@@ -179,6 +179,10 @@ Spotify shows them; entries older than a day are dropped too.
   counts from 30 s; shorter ones in the export are skips. Plays of copies `pnpm merge-copies` replaced count for the copy
   it kept, plays of another release of a saved song (same ISRC, or same title and first artist in the export) count for the saved one,
   and plays of songs not in the library are left out.
+- `pnpm eras` writes `data/eras.json` for the Eras tab (`E`): the play history split where its sound and lyric themes
+  shifted, each era with its artists, defining songs (played most then and least at other times) and what rose or fell
+  against all-time listening. The written story per era comes from `data/eras-chronicle.json`, keyed by the era's first
+  month; the script lists eras that have none. Rerun after `pnpm plays`, `pnpm tags` or `pnpm lyrics`.
 - `pnpm skips` prints where in a song the export's forward-button skips land, which moments of a song they gather at
   (from Stemma's per-second loudness, vocal span and 2 s patch vectors in `~/.cache/audio-embed-engine`, or `ENGINE_CACHE`),
   and which kinds of song are skipped more than familiarity, year, device and shuffle predict. It writes

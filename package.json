@@ -21,6 +21,7 @@
     "features": "tsx --env-file=.env src/cli/features.ts",
     "tags": "tsx --env-file=.env src/cli/tags.ts",
     "plays": "tsx src/cli/plays.ts",
+    "eras": "tsx src/cli/eras.ts",
     "skips": "tsx src/cli/skips.ts",
     "transitions": "tsx src/cli/transitions.ts"
   },

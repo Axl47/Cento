@@ -26,6 +26,7 @@ import { config } from "./src/core/config.ts";
  *   POST    /api/classifier -> retrains it, replying once it's done
  *   GET     /api/themes   -> data/themes.json (what songs are about; 404 until `pnpm lyrics` has run)
  *   GET     /api/languages -> data/languages.jsonl (each song's lyric language; 404 until the engine has made it)
+ *   GET     /api/eras     -> data/eras.json (musical eras; 404 until `pnpm eras` has run)
  *   GET     /api/lyrics?q=  -> best lyric passage per song for the search (404 until `pnpm lyrics` has run)
  */
 /** Vite serves any file under the root (also via /@fs/); keep .cache/ and data/ private. */
@@ -76,6 +77,7 @@ function localData(): Plugin {
     "/api/classifier": "data/classifier.json",
     "/api/themes": "data/themes.json",
     "/api/languages": "data/languages.jsonl",
+    "/api/eras": "data/eras.json",
   };
   const writable = new Set(["data/library.json", "data/rules.json", "data/hidden.json", "data/ledger.json", "data/parents.json"]);
 
