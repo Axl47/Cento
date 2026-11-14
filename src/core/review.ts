@@ -21,7 +21,8 @@ export function rediscover(
   const cutoff = now.getTime() - quietYears * YEAR_MS;
   const loved = (p: SongPlays) => (p.plays * p.plays) / (p.plays + p.skips);
   return [...plays]
-    .filter(([id, p]) => saved.has(id) && p.plays >= minPlays && Date.parse(p.last) < cutoff)
+    // A plays.json from before per-year counts has no years to find a peak in; `pnpm plays` rebuilds it.
+    .filter(([id, p]) => saved.has(id) && p.plays >= minPlays && Date.parse(p.last) < cutoff && p.years.length > 0)
     .toSorted(([, a], [, b]) => loved(b) - loved(a))
     .map(([id, p]) => ({ id, plays: p.plays, skips: p.skips, last: p.last, peak: p.years.reduce((a, b) => (b.plays > a.plays ? b : a)) }));
 }
