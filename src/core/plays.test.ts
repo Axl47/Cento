@@ -14,7 +14,7 @@ const liveRow = (id: string, at: number, context: string | null = null) => ({
 });
 
 /** An export row: `ts` is when the play ended. */
-const exportRow = (id: string | null, ts: number, ms_played = 3 * MIN) => ({
+const exportRow = (id: string | null, ts: number, ms_played = 3 * MIN): Record<string, unknown> => ({
   ts: iso(ts),
   ms_played,
   spotify_track_uri: id && `spotify:track:${id}`,
