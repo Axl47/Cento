@@ -11,6 +11,7 @@ import type { LedgerEntry } from "../core/ledger.ts";
 import { sortTargets, syncLibrary, type Library } from "../core/library.ts";
 import { client, completeLogin, logout, startLogin } from "./auth.ts";
 import { BuildView } from "./BuildView.tsx";
+import { ErasView } from "./ErasView.tsx";
 import { usePlaylistColors } from "./colors.ts";
 import { LyricsView } from "./LyricsView.tsx";
 import { MapView } from "./MapView.tsx";
@@ -22,22 +23,23 @@ import { ThemesView } from "./ThemesView.tsx";
 import { useApp } from "./store.ts";
 
 const TABS = {
-  sort: { label: "Sort", hint: "Switch with M, B, P, L, T or N" },
+  sort: { label: "Sort", hint: "Switch with M, B, P, L, T, N or E" },
   map: { label: "Sound map", hint: "Switch with M" },
   build: { label: "Build", hint: "Switch with B (except on the map)" },
   playlists: { label: "Playlists", hint: "Switch with P" },
   lyrics: { label: "Lyrics", hint: "Switch with L" },
   themes: { label: "Themes", hint: "Switch with T" },
   now: { label: "Now playing", hint: "Switch with N" },
+  eras: { label: "Eras", hint: "Switch with E" },
 };
 
 type Tab = keyof typeof TABS;
 
 const isTab = (name: string): name is Tab => Object.hasOwn(TABS, name);
 
-/** The tab the URL names (`#playlists`), so a reload or a bookmark opens where you were. Sort has no name. */
+/** The tab the URL names (`#playlists`, or `#eras/2021-10` for a place in it), so a reload or a bookmark opens where you were. Sort has no name. */
 const tabInUrl = (): Tab => {
-  const name = location.hash.slice(1);
+  const name = location.hash.slice(1).split("/")[0]!;
   return isTab(name) ? name : "sort";
 };
 
@@ -115,6 +117,7 @@ export function App() {
       if (key === "l") setTab((t) => (t === "lyrics" ? "sort" : "lyrics"));
       if (key === "t") setTab((t) => (t === "themes" ? "sort" : "themes"));
       if (key === "n") setTab((t) => (t === "now" ? "sort" : "now"));
+      if (key === "e") setTab((t) => (t === "eras" ? "sort" : "eras"));
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -264,6 +267,7 @@ export function App() {
       {tab === "lyrics" && <LyricsView colors={colors} onSortSong={() => setTab("sort")} />}
       {tab === "themes" && <ThemesView colors={colors} />}
       {tab === "now" && <NowTab colors={colors} />}
+      {tab === "eras" && <ErasView />}
     </div>
   );
 }
