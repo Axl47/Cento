@@ -1,27 +1,19 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseShufflePlay, shuffleSeams, withinSong, type ShufflePlay } from "./transitions.ts";
+import type { ExportPlay } from "./skips.ts";
+import { shuffleSeams, withinSong } from "./transitions.ts";
 
 const T = Date.parse("2026-01-01T20:00:00Z");
 const MIN = 60_000;
 
 /** Plays one after another with no gap: each starts when the one before ended. */
-function session(...specs: [id: string, ms: number, start: string, end: string, shuffle?: boolean][]): ShufflePlay[] {
+function session(...specs: [id: string, ms: number, start: string, end: string, shuffle?: boolean][]): ExportPlay[] {
   let at = T;
   return specs.map(([id, ms, start, end, shuffle = true]) => {
     at += ms;
-    return { trackId: id, at, msPlayed: ms, shuffle, reasonStart: start, reasonEnd: end, platform: "osx", source: "export" };
+    return { trackId: id, at, msPlayed: ms, shuffle, reasonStart: start, reasonEnd: end, device: "desktop", source: "export" };
   });
 }
-
-test("parseShufflePlay keeps how a play started and ended", () => {
-  const row = { ts: "2026-01-01T20:03:00Z", ms_played: 5000, spotify_track_uri: "spotify:track:a", shuffle: true, reason_start: "trackdone", reason_end: "fwdbtn", platform: "osx" };
-  assert.deepEqual(
-    { ...parseShufflePlay(row), at: undefined },
-    { trackId: "a", at: undefined, msPlayed: 5000, shuffle: true, reasonStart: "trackdone", reasonEnd: "fwdbtn", platform: "osx", source: "export" },
-  );
-  assert.equal(parseShufflePlay({ ...row, spotify_track_uri: null }), null);
-});
 
 test("shuffleSeams keeps songs that came up on their own, after a listen or a skip", () => {
   const seams = shuffleSeams(

@@ -11,7 +11,8 @@ import { positions, similarity, decodeVectors, type AudioIndex } from "../core/a
 import { camelotSteps, decodeFeatures, KEY_STRENGTH, tempoRatio, type FeaturesFile } from "../core/features.ts";
 import { otherReleases, resolveMerges } from "../core/plays.ts";
 import { handoff, type Sound } from "../core/setlist.ts";
-import { difference, parseShufflePlay, rate, shuffleSeams, songPersistence, withinSong, type Rate, type Seam } from "../core/transitions.ts";
+import { parseExportPlay } from "../core/skips.ts";
+import { difference, rate, shuffleSeams, songPersistence, withinSong, type Rate, type Seam } from "../core/transitions.ts";
 import { loadLibrary, loadMerges } from "./libraryFiles.ts";
 
 const EXPORT_DIR = "data/extended-history";
@@ -25,7 +26,7 @@ const readJson = async <T>(path: string) => JSON.parse(await readFile(path, "utf
 
 const files = (await readdir(EXPORT_DIR)).filter((f) => EXPORT_FILE.test(f)).sort();
 const rows = (await Promise.all(files.map((f) => readJson<unknown[]>(join(EXPORT_DIR, f))))).flat();
-const parsed = rows.map(parseShufflePlay).filter((p) => p !== null);
+const parsed = rows.map(parseExportPlay).filter((p) => p !== null);
 const library = await loadLibrary();
 // Plays of another release of a saved song, or of a merged copy, count as the saved song.
 const resolved = resolveMerges(parsed, [...otherReleases(parsed, library.tracks), ...(await loadMerges())]);

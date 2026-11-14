@@ -175,6 +175,11 @@ Spotify shows them; entries older than a day are dropped too.
   counts from 30 s; shorter ones in the export are skips. Plays of copies `pnpm merge-copies` replaced count for the copy
   it kept, plays of another release of a saved song (same ISRC, or same title and first artist in the export) count for the saved one,
   and plays of songs not in the library are left out.
+- `pnpm skips` prints where in a song the export's forward-button skips land, which moments of a song they gather at
+  (from Stemma's per-second loudness, vocal span and 2 s patch vectors in `~/.cache/audio-embed-engine`, or `ENGINE_CACHE`),
+  and which kinds of song are skipped more than familiarity, year, device and shuffle predict. It writes
+  `data/skips.json`: per song, skips in the first 30 s and mid-song against that prediction, and the second its mid-song
+  skips crowd around when they do.
 - `pnpm transitions` prints what makes you skip the next song on shuffle, from the Extended Streaming History: the same
   song's skip rate after a closer or farther fit with what came before (its sound, the end of one against the start of
   the next, Build's handoff score, tempo, loudness at the seam, key), and how much the song itself matters. Shuffle picks
