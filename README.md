@@ -175,6 +175,10 @@ Spotify shows them; entries older than a day are dropped too.
   counts from 30 s; shorter ones in the export are skips. Plays of copies `pnpm merge-copies` replaced count for the copy
   it kept, plays of another release of a saved song (same ISRC, or same title and first artist in the export) count for the saved one,
   and plays of songs not in the library are left out.
+- `pnpm transitions` prints what makes you skip the next song on shuffle, from the Extended Streaming History: the same
+  song's skip rate after a closer or farther fit with what came before (its sound, the end of one against the start of
+  the next, Build's handoff score, tempo, loudness at the seam, key), and how much the song itself matters. Shuffle picks
+  the next song at random, so the fit can't have chosen it. Needs `pnpm audio`, `pnpm edges` and `pnpm features` first.
 - `pnpm classify` trains one sound classifier per playlist from your sorted songs (seconds, on the engine's vectors)
   and writes `data/classifier.json`. Run it after `pnpm audio`; a resync in the app also runs it. Its scores replace
   the nearest-neighbor vote where available, and it can check one playlist from sound alone when it's confident and that
