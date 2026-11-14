@@ -48,7 +48,7 @@ test("fading: a song skipped more than it was, beyond what the library and shuff
 });
 
 test("neverPlayed: unheard songs, skipped or not, oldest arrival first, with the playlists holding them", () => {
-  const lib = {
+  const lib: Pick<Library, "tracks" | "liked" | "playlists"> = {
     tracks: { heard: {}, skipped: {}, untouched: {}, liked: {} } as unknown as Library["tracks"],
     liked: [{ id: "liked", addedAt: "2024-01-01T00:00:00Z" }],
     playlists: [
