@@ -133,6 +133,10 @@ The address names the tab you're on (`#playlists`), so a reload or a bookmark op
   it on Spotify (it stays in your other playlists and in Everything), with **Undo** until you leave. A playlist with
   an artist rule is checked against the rule, not its sound: Missing is its artists' songs that aren't in it, and
   Doesn't fit is its songs by anyone else.
+- **Revisit** (`R`): songs to look at again, from `pnpm plays`. **Rediscover** is songs played 30+ times but not in the
+  last year, most loved first. **Fading** is songs skipped more since last year than before, beyond what the library's
+  skip rate those years (on shuffle or off) explains, with plays per year and the counts behind it; clicking a playlist
+  takes the song out of it, with **Undo** until you leave. **Never played** is saved songs never listened to, oldest first.
 
 Spotify writes run in order in the background; the header shows pending/failed writes. The app saves its
 view of the library to `data/library.json` (shared with the scripts) through the dev server. Each sort is
@@ -169,7 +173,7 @@ Spotify shows them; entries older than a day are dropped too.
   and vocals, from Stemma's per-song features (`FEATURES_FILE`, default `~/.cache/audio-embed-engine/features/features.jsonl`).
   New songs get features only after rerunning Stemma's `bench/extract_features.py`, which is resumable. Skipped when
   that file doesn't exist.
-- `pnpm plays` writes `data/plays.json`: how many times each song was played and skipped, and when it last played, from
+- `pnpm plays` writes `data/plays.json`: how many times each song was played and skipped, overall and per year (with how many were on shuffle), and when it last played, from
   the host's recording (`data/listening-history.jsonl`) and Spotify's Extended Streaming History once its
   `Streaming_History_Audio_*.json` files are in `data/extended-history/`. A play on a day both cover counts once. A play
   counts from 30 s; shorter ones in the export are skips. Plays of copies `pnpm merge-copies` replaced count for the copy

@@ -17,18 +17,20 @@ import { MapView } from "./MapView.tsx";
 import { NowTab } from "./NowView.tsx";
 import { usePlayer } from "./player.ts";
 import { PlaylistsView } from "./PlaylistsView.tsx";
+import { RevisitView } from "./RevisitView.tsx";
 import { SortView } from "./SortView.tsx";
 import { ThemesView } from "./ThemesView.tsx";
 import { useApp } from "./store.ts";
 
 const TABS = {
-  sort: { label: "Sort", hint: "Switch with M, B, P, L, T or N" },
+  sort: { label: "Sort", hint: "Switch with M, B, P, L, T, N or R" },
   map: { label: "Sound map", hint: "Switch with M" },
   build: { label: "Build", hint: "Switch with B (except on the map)" },
   playlists: { label: "Playlists", hint: "Switch with P" },
   lyrics: { label: "Lyrics", hint: "Switch with L" },
   themes: { label: "Themes", hint: "Switch with T" },
   now: { label: "Now playing", hint: "Switch with N" },
+  revisit: { label: "Revisit", hint: "Switch with R" },
 };
 
 type Tab = keyof typeof TABS;
@@ -115,6 +117,7 @@ export function App() {
       if (key === "l") setTab((t) => (t === "lyrics" ? "sort" : "lyrics"));
       if (key === "t") setTab((t) => (t === "themes" ? "sort" : "themes"));
       if (key === "n") setTab((t) => (t === "now" ? "sort" : "now"));
+      if (key === "r") setTab((t) => (t === "revisit" ? "sort" : "revisit"));
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -264,6 +267,7 @@ export function App() {
       {tab === "lyrics" && <LyricsView colors={colors} onSortSong={() => setTab("sort")} />}
       {tab === "themes" && <ThemesView colors={colors} />}
       {tab === "now" && <NowTab colors={colors} />}
+      {tab === "revisit" && <RevisitView colors={colors} />}
     </div>
   );
 }

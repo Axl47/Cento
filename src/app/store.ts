@@ -13,7 +13,7 @@ import { themeIndex, type ThemeData, type ThemeIndex } from "../core/themes.ts";
 import { buildModel, prechecked, suggest, type ArtistRules, type Model, type Neighbors } from "../core/suggest.ts";
 import type { Edges } from "../core/setlist.ts";
 import { decodeFeatures, type FeaturesFile, type SongFeatures } from "../core/features.ts";
-import { decodePlays, type PlaysFile, type SongPlays } from "../core/plays.ts";
+import { decodePlays, decodeYearTotals, type PlaysFile, type SongPlays, type YearTotals } from "../core/plays.ts";
 import { decodeTags, type Tags, type TagsFile } from "../core/tags.ts";
 import { addToPlaylist, createPlaylist, removeFromPlaylist, replacePlaylist, setLiked } from "../core/spotify.ts";
 import { client } from "./auth.ts";
@@ -80,6 +80,8 @@ type State = {
   loadFeatures: () => void;
   /** How often each song was played (data/plays.json), loaded by `loadPlays`; null until then or if missing. */
   plays: ReadonlyMap<string, SongPlays> | null;
+  /** Every library song's plays per year, loaded with `plays`. */
+  playYears: readonly YearTotals[] | null;
   loadPlays: () => void;
   /** Each song's genres and moods (data/tags.json), loaded by `loadTags`; null until then or if missing. */
   tags: Tags | null;
@@ -342,6 +344,7 @@ export const useApp = create<State>()((set, get) => {
     edges: null,
     features: null,
     plays: null,
+    playYears: null,
     tags: null,
     classifier: undefined,
     themes: null,
@@ -389,7 +392,7 @@ export const useApp = create<State>()((set, get) => {
       playsRequested = true;
       fetch("/api/plays")
         .then((res) => (res.ok ? (res.json() as Promise<PlaysFile>) : null))
-        .then((file) => file && set({ plays: decodePlays(file) }))
+        .then((file) => file && set({ plays: decodePlays(file), playYears: decodeYearTotals(file) }))
         .catch(console.error);
     },
 
