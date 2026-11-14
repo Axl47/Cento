@@ -78,7 +78,7 @@ export const KEY_STRENGTH = 0.75;
 const MAX_REASONS = 2;
 
 /** `b / a` folded into [1/√2, √2] by doubling or halving, so half and double time count as the same tempo. */
-function tempoRatio(a: number, b: number) {
+export function tempoRatio(a: number, b: number) {
   let r = b / a;
   while (r > Math.SQRT2) r /= 2;
   while (r < Math.SQRT1_2) r *= 2;
@@ -86,7 +86,7 @@ function tempoRatio(a: number, b: number) {
 }
 
 /** Steps apart on the Camelot wheel (0–6), ignoring the letter: 5 or 6 means a semitone or tritone apart. */
-function camelotSteps(a: string, b: string) {
+export function camelotSteps(a: string, b: string) {
   const d = Math.abs(parseInt(a) - parseInt(b)) % 12;
   return Math.min(d, 12 - d);
 }
