@@ -133,6 +133,10 @@ The address names the tab you're on (`#playlists`), so a reload or a bookmark op
   it on Spotify (it stays in your other playlists and in Everything), with **Undo** until you leave. A playlist with
   an artist rule is checked against the rule, not its sound: Missing is its artists' songs that aren't in it, and
   Doesn't fit is its songs by anyone else.
+- **Revisit** (`R`): songs to look at again, from `pnpm plays`. **Rediscover** is songs played 30+ times but not in the
+  last year, most loved first. **Fading** is songs skipped more since last year than before, beyond what the library's
+  skip rate those years (on shuffle or off) explains, with plays per year and the counts behind it; clicking a playlist
+  takes the song out of it, with **Undo** until you leave. **Never played** is saved songs never listened to, oldest first.
 
 Spotify writes run in order in the background; the header shows pending/failed writes. The app saves its
 view of the library to `data/library.json` (shared with the scripts) through the dev server. Each sort is
@@ -169,7 +173,7 @@ Spotify shows them; entries older than a day are dropped too.
   and vocals, from Stemma's per-song features (`FEATURES_FILE`, default `~/.cache/audio-embed-engine/features/features.jsonl`).
   New songs get features only after rerunning Stemma's `bench/extract_features.py`, which is resumable. Skipped when
   that file doesn't exist.
-- `pnpm plays` writes `data/plays.json`: how many times each song was played and skipped, and when it last played, from
+- `pnpm plays` writes `data/plays.json`: how many times each song was played and skipped, overall and per year (with how many were on shuffle), and when it last played, from
   the host's recording (`data/listening-history.jsonl`) and Spotify's Extended Streaming History once its
   `Streaming_History_Audio_*.json` files are in `data/extended-history/`. A play on a day both cover counts once. A play
   counts from 30 s; shorter ones in the export are skips. Plays of copies `pnpm merge-copies` replaced count for the copy
@@ -179,6 +183,15 @@ Spotify shows them; entries older than a day are dropped too.
   shifted, each era with its artists, defining songs (played most then and least at other times) and what rose or fell
   against all-time listening. The written story per era comes from `data/eras-chronicle.json`, keyed by the era's first
   month; the script lists eras that have none. Rerun after `pnpm plays`, `pnpm tags` or `pnpm lyrics`.
+- `pnpm skips` prints where in a song the export's forward-button skips land, which moments of a song they gather at
+  (from Stemma's per-second loudness, vocal span and 2 s patch vectors in `~/.cache/audio-embed-engine`, or `ENGINE_CACHE`),
+  and which kinds of song are skipped more than familiarity, year, device and shuffle predict. It writes
+  `data/skips.json`: per song, skips in the first 30 s and mid-song against that prediction, and the second its mid-song
+  skips crowd around when they do.
+- `pnpm transitions` prints what makes you skip the next song on shuffle, from the Extended Streaming History: the same
+  song's skip rate after a closer or farther fit with what came before (its sound, the end of one against the start of
+  the next, Build's handoff score, tempo, loudness at the seam, key), and how much the song itself matters. Shuffle picks
+  the next song at random, so the fit can't have chosen it. Needs `pnpm audio`, `pnpm edges` and `pnpm features` first.
 - `pnpm classify` trains one sound classifier per playlist from your sorted songs (seconds, on the engine's vectors)
   and writes `data/classifier.json`. Run it after `pnpm audio`; a resync in the app also runs it. Its scores replace
   the nearest-neighbor vote where available, and it can check one playlist from sound alone when it's confident and that
