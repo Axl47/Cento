@@ -11,6 +11,7 @@
     "merge-copies": "tsx --env-file=.env src/cli/dedupe.ts",
     "typecheck": "tsc --noEmit",
     "audio": "tsx --env-file=.env src/cli/audio.ts",
+    "full-tracks": "tsx --env-file=.env src/cli/fullTracks.ts",
     "edges": "tsx --env-file=.env src/cli/edges.ts",
     "classify": "tsx --env-file=.env src/cli/classify.ts",
     "lyrics": "tsx --env-file=.env src/cli/lyrics.ts",
