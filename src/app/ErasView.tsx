@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import type { Era, ErasFile, Shift } from "../core/eras.ts";
 import { openInSpotify, usePlayer } from "./player.ts";
 import { useApp } from "./store.ts";
+import { useTitle } from "./useTitle.ts";
 
 const COLORS = ["#e08a6d", "#c9a2e8", "#7fc8a9", "#8aa9f0", "#f0c35a", "#ef7fb0", "#a3c76a", "#f29b52", "#6fd0e0"];
 const colorOf = (i: number) => COLORS[i % COLORS.length]!;
@@ -114,6 +115,7 @@ function Timeline({ file, openIndex, onOpen }: { file: ErasFile; openIndex: numb
 function Chapter({ era, index, file, onOpen }: { era: Era; index: number; file: ErasFile; onOpen: (id: string | null) => void }) {
   const lib = useApp((s) => s.lib);
   const player = usePlayer();
+  const title = useTitle();
   const last = index === file.eras.length - 1;
   const [prev, next] = [file.eras[index - 1], file.eras[index + 1]];
   const play = (id: string) => {
@@ -151,7 +153,7 @@ function Chapter({ era, index, file, onOpen }: { era: Era; index: number; file: 
             {era.songs.slice(0, LIST).map((s) => (
               <li key={s.trackId}>
                 <button onClick={() => play(s.trackId)} className="text-left text-sm leading-snug text-zinc-200 hover:text-zinc-50">
-                  {s.name} <span className="text-zinc-500">· {s.artist}</span>
+                  {title(s.trackId, s.name)} <span className="text-zinc-500">· {s.artist}</span>
                 </button>
               </li>
             ))}

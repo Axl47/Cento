@@ -18,6 +18,7 @@ import { DEFAULT_NAME, useSets, type BuildSet, type Contents } from "./sets.ts";
 import { SoundMap } from "./SoundMap.tsx";
 import { PauseIcon, PlayIcon } from "./SortView.tsx";
 import { useApp } from "./store.ts";
+import { useTitle } from "./useTitle.ts";
 import { songKey } from "./useBridge.ts";
 
 /**
@@ -51,6 +52,7 @@ const artistNames = (t: Track) => t.artists.map((a) => a.name).join(", ");
 
 export function BuildView({ colors }: { colors: Map<string, string> }) {
   const { lib, audio, vectors, edges, features, tags, languages, hidden } = useApp();
+  const title = useTitle();
   const { sets, currentId, change, undo, rename, split } = useSets();
   const current = sets.find((s) => s.id === currentId)!;
   const player = usePlayer();
@@ -331,7 +333,7 @@ export function BuildView({ colors }: { colors: Map<string, string> }) {
                   <span className="w-4 shrink-0 text-right text-xs text-zinc-500">{i + 1}</span>
                   <span className="size-2 shrink-0 rounded-full" style={{ background: colors.get(primary.get(id) ?? "") ?? UNSORTED }} />
                   <button className="min-w-0 flex-1 truncate text-left text-sm text-zinc-100" onClick={() => play(track)}>
-                    {track.name} <span className="text-xs text-zinc-400">{artistNames(track)}</span>
+                    {title(track.id, track.name)} <span className="text-xs text-zinc-400">{artistNames(track)}</span>
                     {misfit && <span className="text-xs" style={{ color: BAD }}> · doesn't fit</span>}
                   </button>
                   {after?.steady && after.bpm && (
@@ -376,7 +378,7 @@ export function BuildView({ colors }: { colors: Map<string, string> }) {
             onSplit={() => split(groups[1])}
           />
         )}
-        {features && span && <EnergyArc ids={ids} energy={energyArc(ids, features, span)} nameOf={(id) => trackOf(id)?.name ?? ""} marked={mark} />}
+        {features && span && <EnergyArc ids={ids} energy={energyArc(ids, features, span)} nameOf={(id) => title(id, trackOf(id)?.name ?? "")} marked={mark} />}
         {!audio ? null : !vectors ? (
           <p className="text-sm text-zinc-500">Loading the sound vectors…</p>
         ) : (
@@ -538,13 +540,14 @@ function FeelPicker({ feel, onChange, choices }: { feel: Feel; onChange: (feel: 
 }
 
 function Suggestion({ track, onPlay, onAdd }: { track: Track; onPlay: () => void; onAdd: () => void }) {
+  const title = useTitle();
   return (
     <div className="flex items-center gap-2 py-1 text-sm">
       <button aria-label={`Play ${track.name}`} className="text-zinc-500 hover:text-zinc-100" onClick={onPlay}>
         <PlayIcon />
       </button>
       <div className="min-w-0 flex-1 truncate text-zinc-100">
-        {track.name} <span className="text-xs text-zinc-400">{artistNames(track)}</span>
+        {title(track.id, track.name)} <span className="text-xs text-zinc-400">{artistNames(track)}</span>
       </div>
       <button aria-label={`Add ${track.name}`} className="grid size-5 shrink-0 place-items-center rounded-md border border-white/10 text-zinc-400 hover:bg-white/5 hover:text-zinc-100" onClick={onAdd}>
         +
@@ -554,11 +557,12 @@ function Suggestion({ track, onPlay, onAdd }: { track: Track; onPlay: () => void
 }
 
 function TwoGroups({ groups, trackOf, onKeep, onSplit }: { groups: [string[], string[]]; trackOf: (id: string) => Track | undefined; onKeep: () => void; onSplit: () => void }) {
+  const title = useTitle();
   const chips = (ids: string[]) => (
     <div className="flex flex-wrap gap-1">
       {ids.slice(0, CHIPS).map((id) => (
         <span key={id} className="max-w-48 truncate rounded-full bg-white/[0.07] px-2 py-0.5 text-xs text-zinc-200">
-          {trackOf(id)?.name}
+          {title(id, trackOf(id)?.name ?? "")}
         </span>
       ))}
       {ids.length > CHIPS && <span className="px-1 py-0.5 text-xs text-zinc-500">+{ids.length - CHIPS}</span>}
@@ -667,6 +671,7 @@ function AddSongs({
   onPlaylist: (p: { name: string; trackIds: string[] }) => void;
 }) {
   const [query, setQuery] = useState("");
+  const title = useTitle();
   const [cursor, setCursor] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -682,7 +687,7 @@ function AddSongs({
     const songs = [...pool.values()]
       .filter((t) => fresh(t) && `${t.name} ${t.artists.map((a) => a.name).join(" ")}`.toLowerCase().includes(q))
       .slice(0, SEARCH_RESULTS)
-      .map((t) => ({ key: t.id, label: t.name, detail: artistNames(t), run: () => onSongs([t.id], []) }));
+      .map((t) => ({ key: t.id, label: title(t.id, t.name), detail: artistNames(t), run: () => onSongs([t.id], []) }));
     return [...playlists, ...songs];
   })();
 
@@ -764,6 +769,7 @@ function AddSongs({
 
 /** The handoff playing: its two songs, and how far through it is, with the switch between them marked. */
 function SeamStrip({ from, to }: { from: Track; to: Track }) {
+  const title = useTitle();
   const { trackId, paused, position, duration, updatedAt, toggle } = usePlayer();
   const [, tick] = useState(0);
   useEffect(() => {
@@ -780,7 +786,7 @@ function SeamStrip({ from, to }: { from: Track; to: Track }) {
         {paused ? <PlayIcon /> : <PauseIcon />}
       </button>
       <span className="max-w-[55%] truncate">
-        {from.name} → {to.name}
+        {title(from.id, from.name)} → {title(to.id, to.name)}
       </span>
       <div className="relative h-[3px] flex-1 rounded-full bg-white/10">
         <div className="h-full rounded-full bg-zinc-100" style={{ width: `${share * 100}%` }} />

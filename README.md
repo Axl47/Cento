@@ -164,17 +164,21 @@ Spotify shows them; entries older than a day are dropped too.
 - `pnpm audio [--vectors <file>]` runs the engine (or reads its vectors) and writes `data/audio.json`:
   top-50 neighbors and a UMAP layout per track, plus `data/vectors.bin` (8-bit vectors, ~8 MB) so the app
   can rank any playlist's closest songs. Skipped when vectors and settings are unchanged.
+- `pnpm full-tracks [--limit N]` brings new songs' full-track data up to date through Stemma: fetches up to N (default 50)
+  full tracks from YouTube Music to the storage box, embeds each whole song and every ~2 s of it, extracts features for
+  songs whose stems Gaia has added to the box (its own nightly job), reruns the tags when there are new songs, and fetches
+  lyrics and their language. Each step resumes, so a run only does new songs; a failed step doesn't stop the others.
+  Needs the `audio-box` ssh alias and Stemma's `.venv`; YouTube needs a residential IP, so run it on this Mac.
 - `pnpm edges` writes `data/edges.bin`: the sound of each song's first and last ~16 s, from the engine's per-moment
   vectors (`PATCHES_DIR`, default `~/.cache/audio-embed-engine/patches`). Run it after `pnpm audio`. A song with no
   full track yet uses its whole-song vector instead.
 - `pnpm tags` writes `data/tags.json`: each song's likeliest genres and its moods (aggressive, relaxed, sad, party,
   acoustic, electronic), from Stemma's per-song tags (`TAGS_FILE`, default `~/.cache/audio-embed-engine/tags/tags.jsonl`).
-  New songs get tags only after rerunning Stemma's `bench/tags.py run`, which takes seconds. Skipped when that file
+  New songs get tags once `pnpm full-tracks` has embedded their full track. Skipped when that file
   doesn't exist. Genres and moods name the groups in Playlists, filter Build's suggestions, and show under the song in Sort.
 - `pnpm features` writes `data/features.json`: each song's tempo, key, loudness (overall, and of its first and last 10 s)
   and vocals, from Stemma's per-song features (`FEATURES_FILE`, default `~/.cache/audio-embed-engine/features/features.jsonl`).
-  New songs get features only after rerunning Stemma's `bench/extract_features.py`, which is resumable. Skipped when
-  that file doesn't exist.
+  New songs get features from `pnpm full-tracks` once Gaia has separated their stems. Skipped when that file doesn't exist.
 - `pnpm plays` writes `data/plays.json`: how many times each song was played and skipped, overall and per year (with how many were on shuffle), and when it last played, from
   the host's recording (`data/listening-history.jsonl`) and Spotify's Extended Streaming History once its
   `Streaming_History_Audio_*.json` files are in `data/extended-history/`. A play on a day both cover counts once. A play
@@ -209,7 +213,8 @@ Spotify shows them; entries older than a day are dropped too.
 - `pnpm host` builds the app and runs the host in the background as a login agent: it returns right away, starts again
   at every login and restarts if it crashes. Rerun it after changing the code; `pnpm host:stop` stops it until the next
   login, and its output goes to `data/host.log`. The host keeps Now Playing running with no tab open.
-  Once a day from 12:01 AM it refreshes the data: a resync from Spotify, then `pnpm plays`, `pnpm audio`, `pnpm edges`, `pnpm features`, `pnpm tags` and `pnpm classify`. A day
+  Once a day from 12:01 AM it refreshes the data: a resync from Spotify, then `pnpm plays`, `pnpm full-tracks`, `pnpm audio`, `pnpm edges`, `pnpm features`, `pnpm tags`, `pnpm lyrics` and `pnpm classify`
+(a failed `pnpm full-tracks` is kept as `warning` in the status and the rest still runs). A day
   it missed (Mac asleep or off) runs as soon as the host is up, before it starts serving; a failed run is retried an
   hour later. `GET /host/status` shows the last run, kept in `data/refresh.json`. It's on this Mac at `http://127.0.0.1:3001/now`
   and on your network at the address it prints (also under Settings on that screen). Open Cento once with the host

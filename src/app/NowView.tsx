@@ -9,6 +9,7 @@ import { SoundMap } from "./SoundMap.tsx";
 import { PauseIcon, PlayIcon, fmt } from "./SortView.tsx";
 import { usePlayer } from "./player.ts";
 import { useApp } from "./store.ts";
+import { useTitle } from "./useTitle.ts";
 
 export type NowControls = { toggle: () => void; next: () => void; previous: () => void; seekTo: (ms: number) => void };
 
@@ -58,6 +59,7 @@ export function NowView({
   onNeedMap?: () => void;
 }) {
   const { current, trackId, paused, panels: info } = state;
+  const title = useTitle();
   const [hiddenPanels, setHiddenPanels] = useState(readHidden);
   const [settings, setSettings] = useState(false);
   const show = (panel: Panel) => !hiddenPanels.includes(panel);
@@ -135,7 +137,7 @@ export function NowView({
             ) : (
               <div className="aspect-square w-full max-w-[56vh] rounded-lg bg-zinc-900" />
             )}
-            <h1 className="mt-[3vh] text-[clamp(2.25rem,5vw,6rem)] font-extrabold leading-[0.95] tracking-tight text-balance text-zinc-50">{current.name}</h1>
+            <h1 className="mt-[3vh] text-[clamp(2.25rem,5vw,6rem)] font-extrabold leading-[0.95] tracking-tight text-balance text-zinc-50">{title(trackId, current.name)}</h1>
             <p className="mt-2 text-[clamp(1.1rem,2vw,2.25rem)] font-medium text-zinc-100">{current.artists.join(", ")}</p>
             <p className="truncate text-[clamp(0.8rem,1.1vw,1.25rem)] text-zinc-400">{current.album}</p>
             <div className="mt-[3vh] flex max-w-3xl items-center gap-3">
@@ -188,8 +190,8 @@ export function NowView({
                   <p className="text-zinc-300">Sounds like</p>
                   <ul className="mt-1 space-y-0.5">
                     {info.similar.map((n) => (
-                      <li key={`${n.name}|${n.artist}`} className="truncate text-zinc-400">
-                        <span className="text-zinc-200">{n.name}</span> · {n.artist}
+                      <li key={n.id} className="truncate text-zinc-400">
+                        <span className="text-zinc-200">{title(n.id, n.name)}</span> · {n.artist}
                       </li>
                     ))}
                   </ul>

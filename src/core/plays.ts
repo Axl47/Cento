@@ -117,10 +117,10 @@ export function otherReleases(
   return [...mainOf].map(([copy, main]) => ({ main, copies: [copy] }));
 }
 
-/** Credits plays of a copy `pnpm merge-copies` replaced to the copy it kept, following merges of merges. On a conflict the later merge wins. */
-export function resolveMerges(plays: readonly Play[], merges: readonly Pick<Merge, "main" | "copies">[]): Play[] {
+/** Maps a track id to the copy merges kept in its place, following merges of merges; on a conflict the later merge wins. */
+function keptBy(merges: readonly Pick<Merge, "main" | "copies">[]) {
   const keptFor = new Map(merges.flatMap((m) => m.copies.map((copy) => [copy, m.main] as const)));
-  const kept = (id: string) => {
+  return (id: string) => {
     const seen = new Set<string>();
     for (let next = keptFor.get(id); next !== undefined && !seen.has(next); next = keptFor.get(id)) {
       seen.add(next);
@@ -128,7 +128,24 @@ export function resolveMerges(plays: readonly Play[], merges: readonly Pick<Merg
     }
     return id;
   };
+}
+
+/** Credits plays of a copy `pnpm merge-copies` replaced to the copy it kept. */
+export function resolveMerges(plays: readonly Play[], merges: readonly Pick<Merge, "main" | "copies">[]): Play[] {
+  const kept = keptBy(merges);
   return plays.map((play) => ({ ...play, trackId: kept(play.trackId) }));
+}
+
+/**
+ * A merged-away copy can stay in the library, in a playlist the merge couldn't edit. It's the same song, so it shows
+ * the kept copy's counts instead of none. Changes `file.songs` in place; the per-year totals still count each play once.
+ */
+export function shareWithCopies(file: PlaysFile, merges: readonly Pick<Merge, "main" | "copies">[], library: Readonly<Record<string, unknown>>) {
+  const kept = keptBy(merges);
+  for (const id of Object.keys(library)) {
+    const main = file.songs[kept(id)];
+    if (!(id in file.songs) && main) file.songs[id] = main;
+  }
 }
 
 /**

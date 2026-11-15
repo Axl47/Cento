@@ -51,7 +51,7 @@ export type NowPanels = {
   added: string | null;
   playlists: { id: string; name: string }[];
   about: { names: string[]; passage: string } | null;
-  similar: { name: string; artist: string }[];
+  similar: { id: string; name: string; artist: string }[];
   /** Whether the song has a place on the sound map. */
   mapped: boolean;
 };
@@ -73,7 +73,7 @@ export function nowPanels(lib: Library, audio: AudioIndex | null, neighbors: Nei
     about: about[0] ? { names: about.map((m) => m.name), passage: about[0].passage } : null,
     similar: (neighbors?.(trackId) ?? []).slice(0, SIMILAR).flatMap((n) => {
       const t = lib.tracks[n.id];
-      return t ? [{ name: t.name, artist: t.artists[0]?.name ?? "" }] : [];
+      return t ? [{ id: t.id, name: t.name, artist: t.artists[0]?.name ?? "" }] : [];
     }),
     mapped: !!audio?.ids.includes(trackId),
   };

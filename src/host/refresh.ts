@@ -1,7 +1,10 @@
-// The daily data refresh the host runs: resync the library from Spotify, then `pnpm plays` (play counts per song), `pnpm audio`
-// (embeds new songs, rebuilds the map), `pnpm edges` (how songs start and end), `pnpm features` and `pnpm tags` (tempo, key and loudness; genres and moods; each skipped
-// until Stemma has written its file) and `pnpm classify` (retrains on the new sorts). Due once a day from 12:01 AM local time; the host checks
+// The daily data refresh the host runs: resync the library from Spotify, then `pnpm plays` (play counts per song),
+// `pnpm full-tracks` (new songs' full audio, per-moment sound, features, tags and lyrics through Stemma; a failure there is
+// kept as a warning and doesn't stop the rest), `pnpm audio` (embeds new songs, rebuilds the map), `pnpm edges` (how songs
+// start and end), `pnpm features` and `pnpm tags` (tempo, key and loudness; genres and moods), `pnpm lyrics` (lyric search
+// and themes) and `pnpm classify` (retrains on the new sorts). Due once a day from 12:01 AM local time; the host checks
 // every minute and at startup, so a day the Mac slept through or was off for still gets its run as soon as it can.
+// Plays are also recounted every hour in between, so the host's recordings show up the same day.
 import { spawn } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { exportLibrary } from "../cli/libraryFiles.ts";
@@ -11,6 +14,7 @@ const STATE_FILE = "data/refresh.json";
 const RUN_AFTER_MINUTES = 1; // past midnight
 const RETRY_MS = 60 * 60 * 1000;
 const CHECK_MS = 60 * 1000;
+const RECOUNT_MS = 60 * 60 * 1000;
 
 export type RefreshState = {
   /** Local date (YYYY-MM-DD) of the last run that finished. */
@@ -18,6 +22,8 @@ export type RefreshState = {
   /** When the last run started (ISO), and why it failed if it did. */
   lastAttempt?: string;
   error?: string;
+  /** Why `pnpm full-tracks` failed in the last finished run; the rest of the refresh still ran. */
+  warning?: string;
 };
 
 const localDay = (d: Date) => d.toLocaleDateString("en-CA"); // YYYY-MM-DD
@@ -49,12 +55,17 @@ export async function refreshIfDue(now = new Date()) {
     await save({ ...state, lastAttempt });
     await exportLibrary(spotify);
     await pnpm("plays");
+    const warning = await pnpm("full-tracks").then(
+      () => undefined,
+      (e: unknown) => (console.error(`Data refresh: ${e}`), String(e)),
+    );
     await pnpm("audio");
     await pnpm("edges");
     await pnpm("features");
     await pnpm("tags");
+    await pnpm("lyrics");
     await pnpm("classify");
-    await save({ lastDay: localDay(now), lastAttempt });
+    await save({ lastDay: localDay(now), lastAttempt, warning });
     console.log("Data refresh: done");
   } catch (e) {
     const error = e instanceof Error ? e.message : String(e);
@@ -65,7 +76,19 @@ export async function refreshIfDue(now = new Date()) {
   }
 }
 
-/** Checks every minute from now on. */
-export const scheduleRefresh = () => setInterval(() => void refreshIfDue(), CHECK_MS);
+/** Recounts plays (`pnpm plays`) between daily refreshes, so new recordings show up within the hour; never throws. */
+let recounting = false;
+async function recountPlays() {
+  if (running || recounting) return; // the daily refresh counts them itself
+  recounting = true;
+  await pnpm("plays").catch((e: unknown) => console.error(`Play recount failed: ${e}`));
+  recounting = false;
+}
+
+/** Checks every minute from now on, and recounts plays every hour. */
+export const scheduleRefresh = () => {
+  setInterval(() => void refreshIfDue(), CHECK_MS);
+  setInterval(() => void recountPlays(), RECOUNT_MS);
+};
 
 export const refreshStatus = () => ({ ...state, running });

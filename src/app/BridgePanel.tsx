@@ -6,6 +6,7 @@ import { BRIDGE_COLORS } from "./SoundMap.tsx";
 import { PlayIcon } from "./SortView.tsx";
 import { openInSpotify, usePlayer } from "./player.ts";
 import { useApp } from "./store.ts";
+import { useTitle } from "./useTitle.ts";
 import type { Bridge } from "./useBridge.ts";
 
 const MIN_LENGTH = 5;
@@ -15,6 +16,7 @@ const ADVANCE_EARLY_MS = 300;
 
 export function BridgePanel({ bridge, onMark }: { bridge: Bridge; onMark: (id: string | null) => void }) {
   const { lib, audio, vectors, saveList } = useApp();
+  const title = useTitle();
   const player = usePlayer();
   const [listening, setListening] = useState(false); // playing through the list, rather than one song
   const [savedAs, setSavedAs] = useState<string | null>(null);
@@ -103,7 +105,7 @@ export function BridgePanel({ bridge, onMark }: { bridge: Bridge; onMark: (id: s
                   <div className={`flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-white/5 ${i === nowAt ? "bg-white/10" : ""}`}>
                     {track.album.imageUrl ? <img src={track.album.imageUrl} alt="" className="size-10 shrink-0 rounded" /> : <div className="size-10 shrink-0 rounded bg-zinc-800" />}
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-semibold text-zinc-100">{track.name}</div>
+                      <div className="truncate text-sm font-semibold text-zinc-100">{title(track.id, track.name)}</div>
                       <div className="truncate text-xs text-zinc-400">{track.artists.map((a) => a.name).join(", ")}</div>
                     </div>
                     <button className="btn px-2" aria-label={`Play ${track.name}`} title="Play" onClick={() => playAt(track)}>
@@ -126,10 +128,11 @@ export function BridgePanel({ bridge, onMark }: { bridge: Bridge; onMark: (id: s
 }
 
 function End({ color, track, action }: { color: string; track: Track | undefined; action?: React.ReactNode }) {
+  const title = useTitle();
   return (
     <div className="flex items-center gap-2">
       <span className="size-2.5 shrink-0 rounded-full" style={{ background: color }} />
-      <span className="min-w-0 flex-1 truncate text-zinc-100">{track?.name}</span>
+      <span className="min-w-0 flex-1 truncate text-zinc-100">{track && title(track.id, track.name)}</span>
       {action}
     </div>
   );

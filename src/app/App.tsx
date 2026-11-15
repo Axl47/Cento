@@ -170,6 +170,9 @@ export function App() {
 
         setPhase({ kind: "ready" });
       }
+      // New songs get their play counts; a failure leaves the previous counts in use.
+      setSyncing("Counting plays…");
+      if ((await fetch("/api/plays", { method: "POST" })).ok) useApp.getState().loadPlays(true);
       // The new sorts are training data. A failure here leaves the previous classifiers in use.
       setSyncing("Training classifiers…");
       const trained = await fetch("/api/classifier", { method: "POST" });
