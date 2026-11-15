@@ -1,6 +1,7 @@
 // `pnpm host`: the always-on half of the app. It alone talks to Spotify for Now Playing and serves the
 // screen at /now to the network, so a TV or spare monitor needs neither a Spotify login nor a tab open on
-// the Mac. Other devices can reach only /now, its data and the player commands, and only with the password.
+// the Mac. Other devices can reach only /now, its data (play counts included) and the player commands, and only
+// with the password.
 import { readFile, stat } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { networkInterfaces } from "node:os";
@@ -15,6 +16,7 @@ import { addScreen, isPlayerCommand, libraryData, poll, runCommand, seek } from 
 import { forgetToken, freshToken, setToken, spotify, type HostToken } from "./spotify.ts";
 
 const BUILD = resolve("dist");
+const PLAYS_FILE = "data/plays.json";
 const MAX_BODY = 64 * 1024;
 const MIN_PASSWORD = 4;
 const LOGIN_WAIT_MS = 1000;
@@ -135,6 +137,16 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     return json(res, 401, {});
   }
   if (path.startsWith("/host/")) return signedIn ? screenRoute(req, res, path) : json(res, 401, { passwordSet: !!secret });
+  // The screen shares the app's data loading, so it asks for /api/plays as the dev server serves it; no other
+  // /api/ data is served here, and a 404 keeps it from getting the page instead.
+  if (path.startsWith("/api/")) {
+    if (path !== "/api/plays" || req.method !== "GET") return json(res, 404, {});
+    if (!signedIn) return json(res, 401, {});
+    const plays = await readFile(PLAYS_FILE).catch(() => null);
+    if (!plays) return json(res, 404, {});
+    res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+    return res.end(plays);
+  }
   if (req.method !== "GET") return json(res, 404, {});
   return staticRoute(res, path);
 }
