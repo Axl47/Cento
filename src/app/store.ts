@@ -85,7 +85,8 @@ type State = {
   playYears: readonly YearTotals[] | null;
   /** Each song's skips past 30 s against what its familiarity predicts (data/skips.json), loaded with `plays`; null until then or if missing. */
   midSkips: ReadonlyMap<string, MidSkips> | null;
-  loadPlays: () => void;
+  /** `again` refetches the plays after a recount; the skips stay as they were. */
+  loadPlays: (again?: boolean) => void;
   /** Each song's genres and moods (data/tags.json), loaded by `loadTags`; null until then or if missing. */
   tags: Tags | null;
   /** Fetches the song tags once. */
@@ -391,13 +392,14 @@ export const useApp = create<State>()((set, get) => {
         .catch(console.error);
     },
 
-    loadPlays: () => {
-      if (playsRequested) return;
-      playsRequested = true;
+    loadPlays: (again = false) => {
+      if (playsRequested && !again) return;
       fetch("/api/plays")
         .then((res) => (res.ok ? (res.json() as Promise<PlaysFile>) : null))
         .then((file) => file && set({ plays: decodePlays(file), playYears: decodeYearTotals(file) }))
         .catch(console.error);
+      if (playsRequested) return;
+      playsRequested = true;
       fetch("/api/skips")
         .then((res) => (res.ok ? (res.json() as Promise<SkipsFile>) : null))
         .then((file) => file && set({ midSkips: decodeMidSkips(file) }))

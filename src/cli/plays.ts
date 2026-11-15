@@ -5,13 +5,14 @@
 // Joins the host's recording (data/listening-history.jsonl) with Spotify's Extended Streaming History, when its
 // Streaming_History_Audio_*.json files are in data/extended-history/, counting plays from days both cover once.
 // Plays of copies `pnpm merge-copies` replaced count for the copy it kept, and plays of another release of a saved
-// song (same ISRC, or same title and artist in the export) count for the saved one. Runs with either source alone.
+// song (same ISRC, or same title and artist in the export) count for the saved one; a replaced copy still in the
+// library shows the counts of the one kept. Runs with either source alone.
 import { existsSync } from "node:fs";
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Merge } from "../core/dedupe.ts";
 import type { Library } from "../core/library.ts";
-import { joinPlays, otherReleases, parseExport, parseLive, playsFile, resolveMerges, type Play } from "../core/plays.ts";
+import { joinPlays, otherReleases, parseExport, parseLive, playsFile, resolveMerges, shareWithCopies, type Play } from "../core/plays.ts";
 
 const OUT = "data/plays.json";
 const HISTORY = "data/listening-history.jsonl";
@@ -49,6 +50,7 @@ const live = resolveMerges(recorded, merges);
 const exported = resolveMerges(history, merges);
 const { plays, matched } = joinPlays(live, exported);
 const { file, outside } = playsFile(plays, tracks, new Date());
+shareWithCopies(file, merges, tracks);
 await writeFile(OUT, JSON.stringify(file));
 
 console.log(`${OUT}: ${plays.length} plays of ${Object.keys(file.songs).length} songs, ${file.from?.slice(0, 10) ?? "none"} to ${file.to?.slice(0, 10) ?? "none"}`);

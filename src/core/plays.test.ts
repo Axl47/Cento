@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { decodePlays, decodeYearTotals, joinPlays, otherReleases, parseExport, parseLive, playsFile, resolveMerges, type Play, type PlaysFile } from "./plays.ts";
+import { decodePlays, decodeYearTotals, joinPlays, otherReleases, parseExport, parseLive, playsFile, resolveMerges, shareWithCopies, type Play, type PlaysFile } from "./plays.ts";
 
 const T = Date.parse("2026-11-12T20:00:00Z");
 const MIN = 60_000;
@@ -65,6 +65,15 @@ test("plays of a replaced copy count for the kept one", () => {
     { main: "c", copies: ["b"], addedAt: {} },
   ];
   assert.deepEqual(resolveMerges(live(liveRow("a", T), liveRow("x", T)), merges).map((p) => p.trackId), ["c", "x"]);
+});
+
+test("a replaced copy still in the library shows the kept one's counts, and the year totals count each play once", () => {
+  const merges = [{ main: "b", copies: ["a"], addedAt: {} }];
+  const { file } = playsFile(resolveMerges(live(liveRow("a", T)), merges), { a: {}, b: {} }, new Date(T));
+  shareWithCopies(file, merges, { a: {}, b: {} });
+  assert.equal(decodePlays(file).get("a")?.plays, 1);
+  assert.equal(decodePlays(file).get("b")?.plays, 1);
+  assert.equal(decodeYearTotals(file)[0]?.plays, 1);
 });
 
 test("counts listens and skips per library song, and plays of other songs apart", () => {

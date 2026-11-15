@@ -2,6 +2,7 @@
 // (embeds new songs, rebuilds the map), `pnpm edges` (how songs start and end), `pnpm features` and `pnpm tags` (tempo, key and loudness; genres and moods; each skipped
 // until Stemma has written its file) and `pnpm classify` (retrains on the new sorts). Due once a day from 12:01 AM local time; the host checks
 // every minute and at startup, so a day the Mac slept through or was off for still gets its run as soon as it can.
+// Plays are also recounted every hour in between, so the host's recordings show up the same day.
 import { spawn } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { exportLibrary } from "../cli/libraryFiles.ts";
@@ -11,6 +12,7 @@ const STATE_FILE = "data/refresh.json";
 const RUN_AFTER_MINUTES = 1; // past midnight
 const RETRY_MS = 60 * 60 * 1000;
 const CHECK_MS = 60 * 1000;
+const RECOUNT_MS = 60 * 60 * 1000;
 
 export type RefreshState = {
   /** Local date (YYYY-MM-DD) of the last run that finished. */
@@ -65,7 +67,19 @@ export async function refreshIfDue(now = new Date()) {
   }
 }
 
-/** Checks every minute from now on. */
-export const scheduleRefresh = () => setInterval(() => void refreshIfDue(), CHECK_MS);
+/** Recounts plays (`pnpm plays`) between daily refreshes, so new recordings show up within the hour; never throws. */
+let recounting = false;
+async function recountPlays() {
+  if (running || recounting) return; // the daily refresh counts them itself
+  recounting = true;
+  await pnpm("plays").catch((e: unknown) => console.error(`Play recount failed: ${e}`));
+  recounting = false;
+}
+
+/** Checks every minute from now on, and recounts plays every hour. */
+export const scheduleRefresh = () => {
+  setInterval(() => void refreshIfDue(), CHECK_MS);
+  setInterval(() => void recountPlays(), RECOUNT_MS);
+};
 
 export const refreshStatus = () => ({ ...state, running });

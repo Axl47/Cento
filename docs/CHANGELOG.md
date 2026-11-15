@@ -10,6 +10,7 @@ All notable changes to this project are documented here. The format follows
 
 - Every song name shows its play count, like `Gravity (51)`: on the sound map, the sort screen, Build, Playlists, Lyrics, Themes, Eras, Revisit and Now playing. Songs in your library you've never played show (0).
 - The Now playing screen on another device (`/now` from the host) shows play counts too.
+- Play counts stay current: Resync recounts them, so newly added songs get their history right away, and the host recounts every hour instead of only overnight.
 - An **Eras** tab: your listening since 2018 by month, split into eras where the sound and lyric themes shifted. Click one to read its story, artists, defining songs and what changed.
 - The Playlists tab has a **Likely parts** entry above the list: every playlist that is mostly inside a bigger one, grouped under it, with a bar for how much of it is already there and one click to make it a part.
 - A play of a different release of a song you have saved (its single, the album version) now counts toward the saved song's play count, in Spotify's Extended Streaming History too, where it is matched by title and artist.
@@ -76,6 +77,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- A duplicate copy of a song left in a playlist the merge couldn't edit (like a Spotify "Top Tracks" list) no longer shows 0 plays; it shows the plays of the copy that was kept.
 - **Update playlist** on a saved split group no longer removes songs that were added to that playlist elsewhere since it was saved (in the app or on Spotify), or brings back ones taken out of it: it only adds what was put in the group and removes what was taken out.
 - A split of the songs in no part drops songs that have gone into a part since.
 - Splits edited in one browser tab are no longer overwritten by another open tab.
