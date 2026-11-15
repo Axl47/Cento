@@ -24,6 +24,7 @@ import { isArtistPlaylist, primaryPlaylists, sortTargets, type Library } from ".
 import { fitCamera, MIN_ZOOM, overlaps, placeLabel, revealZooms, type Box, type Camera, type NameCandidate, type Point, type Size } from "../core/mapLayout.ts";
 import { useMapSettings } from "./mapSettings.ts";
 import { useApp } from "./store.ts";
+import { useTitle } from "./useTitle.ts";
 
 export type MapScene =
   | { kind: "overview" }
@@ -117,6 +118,12 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
   const setColorBy = useMapSettings((s) => s.setColorBy);
   const tags = useApp((s) => s.tags);
   const features = useApp((s) => s.features);
+  const title = useTitle();
+  /** The `i`th mapped song's name with its plays. */
+  const songName = (i: number) => {
+    const t = lib.tracks[audio.ids[i]!];
+    return t ? title(t.id, t.name) : "";
+  };
   const [menu, setMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   // Per-point data, parallel to audio.ids. Hidden playlists never color songs; unless compilations are on, neither
@@ -250,12 +257,12 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
     // A tile's names grow with its area on screen, which grows with the square of zoom.
     const candidates = ranked.map(({ i, tier, turn }): NameCandidate => ({
       point: audio.xy[i]!,
-      width: measure.measureText(lib.tracks[audio.ids[i]!]?.name ?? "").width + 4,
+      width: measure.measureText(songName(i)).width + 4,
       floor: tier < 2 ? NAME_ZOOM : NAME_ZOOM * Math.sqrt(1 + turn * NAME_FILL),
     }));
     const zooms = revealZooms(candidates, base, NAME_ROOM);
     return ranked.map(({ i }, n) => ({ i, zoom: zooms[n]!, width: candidates[n]!.width }));
-  }, [tiled, paint, audio, lib, lit, highlighting, base]);
+  }, [tiled, paint, audio, lib, lit, highlighting, base, title]);
 
   const toScreen = (x: number, y: number): [number, number] => {
     const { k, cx, cy } = view.current;
@@ -493,7 +500,7 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
     }
     /** The song's name, cut short only if it's wider than the whole canvas. */
     const nameOf = (i: number) => {
-      const name = lib.tracks[audio.ids[i]!]?.name ?? "";
+      const name = songName(i);
       const room = width - 32;
       if (ctx.measureText(name).width <= room) return name;
       let cut = name;
@@ -582,7 +589,7 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
       taken.push(box);
       named.add(i);
       ctx.globalAlpha = (dimming ? 0.5 : 0.75) * fade * Math.min(edge, 1);
-      const name = lib.tracks[audio.ids[i]!]?.name ?? "";
+      const name = songName(i);
       ctx.lineWidth = 3;
       ctx.strokeStyle = BACKGROUND;
       ctx.strokeText(name, box[0] + 2, box[1] + 11);
@@ -788,7 +795,7 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
           className="pointer-events-none absolute z-10 max-w-64 rounded-lg border border-white/10 bg-zinc-900/95 px-3 py-2 text-xs shadow-xl"
           style={{ left: Math.min(hover.x + 14, width - 260), top: Math.min(hover.y + 14, height - 90) }}
         >
-          <div className="font-semibold text-zinc-100">{hoveredTrack.name}</div>
+          <div className="font-semibold text-zinc-100">{title(hoveredTrack.id, hoveredTrack.name)}</div>
           <div className="text-zinc-400">{hoveredTrack.artists.map((a) => a.name).join(", ")}</div>
           <div className="mt-1.5 flex flex-wrap gap-1">
             {data.playlistsOf[hover.i]!.length === 0 && <span className="text-zinc-500">Unsorted</span>}

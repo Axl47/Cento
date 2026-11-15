@@ -8,11 +8,13 @@ import { SongEvidence } from "./SongEvidence.tsx";
 import { SoundMap, type MapScene } from "./SoundMap.tsx";
 import { usePlayer } from "./player.ts";
 import { useApp } from "./store.ts";
+import { useTitle } from "./useTitle.ts";
 import { useBridge } from "./useBridge.ts";
 import { useHoverIntent } from "./useHoverIntent.ts";
 
 export function MapView({ colors, onSortSong }: { colors: Map<string, string>; onSortSong: (id: string) => void }) {
   const { lib, audio, hidden, uncounted } = useApp();
+  const title = useTitle();
   const play = usePlayer((s) => s.play);
   const [highlight, setHighlight] = useState<string[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -139,7 +141,7 @@ export function MapView({ colors, onSortSong }: { colors: Map<string, string>; o
         {bridge.picking && (
           <div className="flex items-center gap-2 rounded-lg bg-zinc-900 p-3 text-sm text-zinc-300">
             <span className="min-w-0 flex-1">
-              Bridging from <b className="font-semibold text-zinc-50">{lib.tracks[bridge.from ?? ""]?.name}</b>. Choose where it ends on the map or by searching.
+              Bridging from <b className="font-semibold text-zinc-50">{bridge.from && title(bridge.from, lib.tracks[bridge.from]?.name ?? "")}</b>. Choose where it ends on the map or by searching.
             </span>
             <button className="btn" onClick={bridge.close}>
               Cancel
@@ -152,7 +154,7 @@ export function MapView({ colors, onSortSong }: { colors: Map<string, string>; o
             <div className="flex gap-3">
               {track.album.imageUrl && <img src={track.album.imageUrl} alt="" className="size-14 rounded-md object-cover" />}
               <div className="min-w-0">
-                <div className="truncate font-semibold text-zinc-100">{track.name}</div>
+                <div className="truncate font-semibold text-zinc-100">{title(track.id, track.name)}</div>
                 <div className="truncate text-sm text-zinc-400">{track.artists.map((a) => a.name).join(", ")}</div>
               </div>
             </div>

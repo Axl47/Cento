@@ -5,6 +5,7 @@ import { sortTargets, type Track } from "../core/library.ts";
 import { LINE_BREAK, type LyricHit } from "../core/lyrics.ts";
 import { openInSpotify, usePlayer } from "./player.ts";
 import { useApp } from "./store.ts";
+import { useTitle } from "./useTitle.ts";
 
 const DEBOUNCE_MS = 300;
 const SHOWN = 60;
@@ -18,6 +19,7 @@ type Search =
 
 export function LyricsView({ colors, onSortSong }: { colors: Map<string, string>; onSortSong: () => void }) {
   const { lib, queue, jumpTo } = useApp();
+  const title = useTitle();
   const player = usePlayer();
   const [query, setQuery] = useState("");
   const [unsortedOnly, setUnsortedOnly] = useState(false);
@@ -75,9 +77,9 @@ export function LyricsView({ colors, onSortSong }: { colors: Map<string, string>
       // A song can have several Spotify releases: prefer the one waiting in the queue.
       const track = releases.find((t) => queued.has(t.id)) ?? releases[0];
       if (!track) continue;
-      const title = `${track.name}|${track.artists[0]?.id}`;
-      if (seen.has(title)) continue;
-      seen.add(title);
+      const dupe = `${track.name}|${track.artists[0]?.id}`;
+      if (seen.has(dupe)) continue;
+      seen.add(dupe);
       const unsorted = queued.has(track.id);
       if (!unsortedOnly || unsorted) rows.push({ hit, track, unsorted });
     }
@@ -115,7 +117,7 @@ export function LyricsView({ colors, onSortSong }: { colors: Map<string, string>
             )}
             <div className="min-w-0 flex-1">
               <div className="flex items-baseline gap-2">
-                <h3 className="truncate text-sm font-semibold text-zinc-100">{track.name}</h3>
+                <h3 className="truncate text-sm font-semibold text-zinc-100">{title(track.id, track.name)}</h3>
                 <span className="truncate text-xs text-zinc-400">{track.artists.map((a) => a.name).join(", ")}</span>
                 {hit.exact && <span className="shrink-0 text-[11px] text-emerald-400">exact words</span>}
               </div>

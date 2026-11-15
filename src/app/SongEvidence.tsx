@@ -7,6 +7,7 @@ import { primaryPlaylists, sortTargets, type Track } from "../core/library.ts";
 import { knownArtistSongs } from "../core/suggest.ts";
 import { usePlayer } from "./player.ts";
 import { useApp } from "./store.ts";
+import { useTitle } from "./useTitle.ts";
 
 const ARTIST_COVERS = 14;
 const CLOSEST = 5;
@@ -51,6 +52,7 @@ export function SongEvidence({
     const artistNames = track.artists.filter((a) => model.artistSongs.has(a.id)).map((a) => a.name).join(", ");
     return { artist, artistNames, nearest: nearest.map((n) => ({ id: n.id, inside: inScope(n.id) })), closest, hasAudio, floor, ceiling };
   }, [lib, model, audio, neighbors, vectors, playlist, track, primary]);
+  const title = useTitle();
 
   if (!lib || !evidence) return null;
   const colorOf = (id: string) => colors.get(playlist?.id ?? primary.get(id) ?? "") ?? NO_PLAYLIST;
@@ -73,7 +75,7 @@ export function SongEvidence({
                   key={id}
                   {...hoverProps(id)}
                   onClick={() => playSong(id)}
-                  title={t?.name}
+                  title={t && title(id, t.name)}
                   className={`size-7 rounded-[3px] bg-zinc-800 bg-cover bg-center transition ${inside ? "" : "opacity-30 grayscale"}`}
                   style={{ backgroundImage: t?.album.imageUrl ? `url(${t.album.imageUrl})` : undefined, boxShadow: inside ? `0 0 0 2px ${colorOf(id)}` : undefined }}
                 />
@@ -96,7 +98,7 @@ export function SongEvidence({
                   key={id}
                   {...hoverProps(id)}
                   onClick={() => playSong(id)}
-                  title={t ? `${t.name} · ${t.artists[0]?.name}` : undefined}
+                  title={t ? `${title(id, t.name)} · ${t.artists[0]?.name}` : undefined}
                   className={`h-4 flex-1 rounded-[2px] transition-transform hover:scale-y-150 ${id === mark ? "scale-y-150" : ""}`}
                   style={{ background: inside ? colorOf(id) : NO_PLAYLIST }}
                 />
@@ -129,7 +131,7 @@ export function SongEvidence({
                   style={{ backgroundImage: t.album.imageUrl ? `url(${t.album.imageUrl})` : undefined }}
                 />
                 <span className="relative min-w-0 flex-1">
-                  <span className="block truncate text-zinc-100">{t.name}</span>
+                  <span className="block truncate text-zinc-100">{title(n.id, t.name)}</span>
                   <span className="block truncate text-zinc-500">{t.artists[0]?.name}</span>
                 </span>
                 <span className="relative text-zinc-400">{Math.round(n.sim * 100)}%</span>

@@ -78,7 +78,7 @@ export function RevisitView({ colors }: { colors: Map<string, string> }) {
           lists.rediscover.slice(0, limit).map((s) => (
             <Row key={s.id} id={s.id}>
               <Stat>
-                {s.plays} plays · peak {s.peak.year} · last {month(s.last)}
+                peak {s.peak.year} · last {month(s.last)}
               </Stat>
             </Row>
           ))}

@@ -8,6 +8,7 @@ import { LINE_BREAK } from "../core/lyrics.ts";
 import { readPlaylist, soundWithoutMeaning, themeExamples } from "../core/themes.ts";
 import { openInSpotify, usePlayer } from "./player.ts";
 import { useApp } from "./store.ts";
+import { useTitle } from "./useTitle.ts";
 
 const EXAMPLES = 3;
 const MISMATCHES = 8;
@@ -98,6 +99,7 @@ export function ThemesView({ colors }: { colors: Map<string, string> }) {
 }
 
 function SongPassage({ track, passage, note }: { track: Track; passage: string; note?: string }) {
+  const title = useTitle();
   const player = usePlayer();
   return (
     <article className="flex gap-3 rounded-lg px-2 py-2">
@@ -108,7 +110,7 @@ function SongPassage({ track, passage, note }: { track: Track; passage: string; 
       )}
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
-          <h3 className="truncate text-sm font-semibold text-zinc-100">{track.name}</h3>
+          <h3 className="truncate text-sm font-semibold text-zinc-100">{title(track.id, track.name)}</h3>
           <span className="truncate text-xs text-zinc-400">{track.artists.map((a) => a.name).join(", ")}</span>
         </div>
         {note && <p className="mt-0.5 text-xs text-zinc-300">{note}</p>}

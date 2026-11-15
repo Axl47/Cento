@@ -18,6 +18,7 @@ import { SoundMap } from "./SoundMap.tsx";
 import { openInSpotify, usePlayer } from "./player.ts";
 import { initialPicks, useApp } from "./store.ts";
 import { useHoverIntent } from "./useHoverIntent.ts";
+import { useTitle } from "./useTitle.ts";
 
 /** Tiles with a number key. */
 const KEYED = 8;
@@ -34,6 +35,7 @@ export const fmt = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floo
 
 export function SortView({ colors }: { colors: Map<string, string> }) {
   const { lib, model, audio, neighbors, parents, queue, picked, history, rules, hidden, togglePick, sort, skip, undo } = useApp();
+  const title = useTitle();
   const player = usePlayer();
   const [ruleFor, setRuleFor] = useState<string | null>(null); // playlist whose artist rule is being edited
   const [palette, setPalette] = useState(false);
@@ -199,7 +201,7 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
             )}
           </a>
           <div className="min-w-0">
-            <h2 className="mb-2 text-4xl font-extrabold leading-[0.95] tracking-tight text-balance text-zinc-50 xl:text-5xl">{track.name}</h2>
+            <h2 className="mb-2 text-4xl font-extrabold leading-[0.95] tracking-tight text-balance text-zinc-50 xl:text-5xl">{title(track.id, track.name)}</h2>
             <p className="font-medium text-zinc-100">{track.artists.map((a) => a.name).join(", ")}</p>
             <p className="truncate text-xs text-zinc-400">{track.album.name}</p>
             <SongSound track={track} />
@@ -300,7 +302,7 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
                 {h.picked.slice(0, 3).map((p) => (
                   <span key={p} className="-mr-1 size-2 rounded-full" style={{ background: colors.get(p) }} />
                 ))}
-                <span className="ml-1 max-w-48 truncate">{lib.tracks[h.trackId]?.name}</span>
+                <span className="ml-1 max-w-48 truncate">{title(h.trackId, lib.tracks[h.trackId]?.name ?? "")}</span>
                 <button
                   onClick={() => undo(h.trackId)}
                   className="rounded-full px-2 py-0.5 text-zinc-500 hover:bg-white/10 hover:text-zinc-100"
@@ -343,20 +345,14 @@ export function SortView({ colors }: { colors: Map<string, string> }) {
   );
 }
 
-/** The song in a few words (genres, mood, tempo, key, release year, times played), once the tags, features and plays have loaded. */
+/** The song in a few words (genres, mood, tempo, key, release year), once the tags and features have loaded. */
 function SongSound({ track }: { track: Track }) {
-  const { tags, features, plays } = useApp();
+  const { tags, features } = useApp();
   useEffect(() => {
     useApp.getState().loadTags();
     useApp.getState().loadFeatures();
-    useApp.getState().loadPlays();
   }, []);
-  const played = plays?.get(track.id)?.plays ?? 0;
-  const words = [
-    ...songWords(tags?.get(track.id), features?.get(track.id)),
-    ...(track.year ? [String(track.year)] : []),
-    ...(played ? [played === 1 ? "1 play" : `${played} plays`] : []),
-  ];
+  const words = [...songWords(tags?.get(track.id), features?.get(track.id)), ...(track.year ? [String(track.year)] : [])];
   return words.length ? <p className="mt-1 truncate text-xs text-zinc-400">{words.join(" · ")}</p> : null;
 }
 
@@ -449,6 +445,7 @@ function Cover({
   onMark: (id: string | null) => void;
 }) {
   const t = useApp((s) => s.lib?.tracks[id]);
+  const title = useTitle();
   if (!t) return null;
   return (
     <button
@@ -456,7 +453,7 @@ function Cover({
       onMouseEnter={() => onMark(id)}
       onMouseLeave={() => onMark(null)}
       aria-disabled={!onClick}
-      title={state === "later" ? t.name : `${t.name} (${state === "in" ? "click to leave out" : "click to include"})`}
+      title={state === "later" ? title(t.id, t.name) : `${title(t.id, t.name)} (${state === "in" ? "click to leave out" : "click to include"})`}
       className={`w-16 shrink-0 text-left ${onClick ? "" : "cursor-default"}`}
     >
       <span
@@ -466,7 +463,7 @@ function Cover({
         style={{ backgroundImage: t.album.imageUrl ? `url(${t.album.imageUrl})` : undefined }}
       />
       <span className={`mt-2 block truncate text-[11px] ${state === "in" ? "text-zinc-100" : state === "out" ? "text-zinc-500 line-through" : "text-zinc-500"}`}>
-        {t.name}
+        {title(t.id, t.name)}
       </span>
     </button>
   );
