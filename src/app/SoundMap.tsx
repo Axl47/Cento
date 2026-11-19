@@ -7,9 +7,9 @@
 //   bridge    a route between two songs, in its own color with distinct ends; the rest gray
 //   set       a set being built (Build tab), drawn like a bridge: rough handoffs dashed red, songs that don't fit
 //             ringed red, and suggestions as dashed rings
-// Highlighting playlists colors only their songs, and focus lines then go to their closest songs. Clicking empty map
-// in a song scene releases that: the song's nearest songs show, undimmed. Any interaction with the song (hovering
-// its dot) or with the page around the map (the song's info, the lists below the map) brings the highlight back. A marked song
+// Highlighting playlists colors only their songs and the tiles they lead (faintly, tiles they are only in), and focus
+// lines then go to their closest songs. Clicking empty map in a song scene releases that: the song's nearest songs
+// show, undimmed. Any interaction with the song (hovering its dot) or with the page around the map (the song's info, the lists below the map) brings the highlight back. A marked song
 // (hovered elsewhere on the page) gets a ring, a line from the focused song and its name, and joins the fit.
 // Unless the Compilations setting is on, uncounted and artist playlists color no songs and tint no tiles.
 // Under every scene, hex tiles tint each area by the playlist most of its songs are colored by; a corner panel says
@@ -187,6 +187,26 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
     return m;
   }, [lib, highlight.join()]); // by content: callers pass fresh arrays
 
+  // Per tile, the highlighted playlist with the most of its songs: whether it leads the tile (ranks first among the
+  // playlists its songs are in, as the corner panel ranks them) and the share of the tile's songs in it.
+  const litTiles = useMemo(() => {
+    const m = new Map<string, { playlist: string; first: boolean; share: number }>();
+    if (lit.size === 0) return m;
+    for (const tile of tiled.tiles.values()) {
+      const all = new Map<string, number>();
+      const mine = new Map<string, number>();
+      for (const i of tile.songs) {
+        for (const p of data.playlistsOf[i]!) all.set(p, (all.get(p) ?? 0) + 1);
+        const p = lit.get(audio.ids[i]!);
+        if (p) mine.set(p, (mine.get(p) ?? 0) + 1);
+      }
+      if (mine.size === 0) continue;
+      const [playlist, n] = [...mine].reduce((best, e) => (e[1] > best[1] ? e : best));
+      m.set(tile.key, { playlist, first: n >= Math.max(0, ...all.values()), share: n / tile.songs.length });
+    }
+    return m;
+  }, [tiled, lit, data, audio]);
+
   const neighbors = useMemo(() => neighborsFrom(audio), [audio]);
   const focusId = scene.kind === "song" ? scene.id : null;
   const released = focusId !== null && releasedFor === `${focusId}|${highlight.join()}`;
@@ -320,7 +340,8 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
     };
 
     // Tiles, under everything: a tint as strong as the tile's lead is clear and its songs many, and stronger zoomed out,
-    // where they summarize the most. The hovered one is outlined.
+    // where they summarize the most. While highlighting, tiles a highlighted playlist leads take its color strongly and
+    // tiles it's only in take it faintly, by its share. The hovered one is outlined.
     const corner = TILE * base * k;
     const hex = (sx: number, sy: number, size: number) => {
       ctx.beginPath();
@@ -333,9 +354,15 @@ export function SoundMap({ audio, lib, colors, height, scene, highlight = [], on
     for (const tile of tiled.tiles.values()) {
       const [sx, sy] = toScreen(tile.x, tile.y);
       if (sx < -corner || sy < -corner || sx > width + corner || sy > height + corner) continue;
-      const strength = tile.share * Math.min(tile.songs.length / 8, 1);
-      ctx.globalAlpha = (0.07 + 0.33 * strength) * (1 + 0.6 * zoomedOut) * (dimming ? 0.5 : 1);
-      ctx.fillStyle = tile.top ? (paint.colors.get(tile.top) ?? UNSORTED) : UNSORTED;
+      const litTile = highlighting ? litTiles.get(tile.key) : undefined;
+      if (litTile) {
+        ctx.globalAlpha = litTile.first ? 0.55 : 0.08 + 0.3 * litTile.share;
+        ctx.fillStyle = colors.get(litTile.playlist) ?? UNSORTED;
+      } else {
+        const strength = tile.share * Math.min(tile.songs.length / 8, 1);
+        ctx.globalAlpha = (0.07 + 0.33 * strength) * (1 + 0.6 * zoomedOut) * (dimming ? (highlighting ? 0.3 : 0.5) : 1);
+        ctx.fillStyle = tile.top ? (paint.colors.get(tile.top) ?? UNSORTED) : UNSORTED;
+      }
       hex(sx, sy, corner * 0.94);
       ctx.fill();
     }

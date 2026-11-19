@@ -24,7 +24,7 @@ const TYPES: Record<string, string> = { ".html": "text/html", ".js": "text/javas
 
 let secret: Secret | null = await readSecret();
 let nextLoginAt = 0;
-const history = createRecorder(spotify, { file: HISTORY_FILE, gapsFile: GAPS_FILE, backup: rsyncBackup(config.historyBackup) });
+const history = createRecorder(spotify, { file: HISTORY_FILE, gapsFile: GAPS_FILE, backup: rsyncBackup(config.boxData) });
 
 const json = (res: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}) => {
   res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store", ...headers });
