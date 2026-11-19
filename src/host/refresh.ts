@@ -2,12 +2,14 @@
 // `pnpm full-tracks` (new songs' full audio, per-moment sound, features, tags and lyrics through Stemma; a failure there is
 // kept as a warning and doesn't stop the rest), `pnpm audio` (embeds new songs, rebuilds the map), `pnpm edges` (how songs
 // start and end), `pnpm features` and `pnpm tags` (tempo, key and loudness; genres and moods), `pnpm lyrics` (lyric search
-// and themes) and `pnpm classify` (retrains on the new sorts). Due once a day from 12:01 AM local time; the host checks
+// and themes) and `pnpm classify` (retrains on the new sorts), then uploads the analysis data to the storage box (a failure there is
+// kept as a warning too). Due once a day from 12:01 AM local time; the host checks
 // every minute and at startup, so a day the Mac slept through or was off for still gets its run as soon as it can.
 // Plays are also recounted every hour in between, so the host's recordings show up the same day.
 import { spawn } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { exportLibrary } from "../cli/libraryFiles.ts";
+import { uploadToBox } from "./box.ts";
 import { spotify } from "./spotify.ts";
 
 const STATE_FILE = "data/refresh.json";
@@ -22,7 +24,7 @@ export type RefreshState = {
   /** When the last run started (ISO), and why it failed if it did. */
   lastAttempt?: string;
   error?: string;
-  /** Why `pnpm full-tracks` failed in the last finished run; the rest of the refresh still ran. */
+  /** Why `pnpm full-tracks` or the upload to the storage box failed in the last finished run; the rest of the refresh still ran. */
   warning?: string;
 };
 
@@ -55,17 +57,16 @@ export async function refreshIfDue(now = new Date()) {
     await save({ ...state, lastAttempt });
     await exportLibrary(spotify);
     await pnpm("plays");
-    const warning = await pnpm("full-tracks").then(
-      () => undefined,
-      (e: unknown) => (console.error(`Data refresh: ${e}`), String(e)),
-    );
+    const warn = (e: unknown) => (console.error(`Data refresh: ${e}`), String(e));
+    const warnings = [await pnpm("full-tracks").then(() => undefined, warn)];
     await pnpm("audio");
     await pnpm("edges");
     await pnpm("features");
     await pnpm("tags");
     await pnpm("lyrics");
     await pnpm("classify");
-    await save({ lastDay: localDay(now), lastAttempt, warning });
+    warnings.push(await uploadToBox().then(() => undefined, warn));
+    await save({ lastDay: localDay(now), lastAttempt, warning: warnings.filter(Boolean).join("; ") || undefined });
     console.log("Data refresh: done");
   } catch (e) {
     const error = e instanceof Error ? e.message : String(e);

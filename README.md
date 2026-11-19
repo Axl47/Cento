@@ -213,8 +213,8 @@ Spotify shows them; entries older than a day are dropped too.
 - `pnpm host` builds the app and runs the host in the background as a login agent: it returns right away, starts again
   at every login and restarts if it crashes. Rerun it after changing the code; `pnpm host:stop` stops it until the next
   login, and its output goes to `data/host.log`. The host keeps Now Playing running with no tab open.
-  Once a day from 12:01 AM it refreshes the data: a resync from Spotify, then `pnpm plays`, `pnpm full-tracks`, `pnpm audio`, `pnpm edges`, `pnpm features`, `pnpm tags`, `pnpm lyrics` and `pnpm classify`
-(a failed `pnpm full-tracks` is kept as `warning` in the status and the rest still runs). A day
+  Once a day from 12:01 AM it refreshes the data: a resync from Spotify, then `pnpm plays`, `pnpm full-tracks`, `pnpm audio`, `pnpm edges`, `pnpm features`, `pnpm tags`, `pnpm lyrics` and `pnpm classify`, then uploads Stemma's `features.jsonl` and the changed `data/` files `edges.bin`, `audio.json`, `features.json`, `skips.json` and `plays.json` to the storage box's `data/`
+(a failed `pnpm full-tracks` or upload is kept as `warning` in the status and the rest still runs). A day
   it missed (Mac asleep or off) runs as soon as the host is up, before it starts serving; a failed run is retried an
   hour later. `GET /host/status` shows the last run, kept in `data/refresh.json`. It's on this Mac at `http://127.0.0.1:3001/now`
   and on your network at the address it prints (also under Settings on that screen). Open Cento once with the host
