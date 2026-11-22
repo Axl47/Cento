@@ -5,6 +5,7 @@
 // Scenarios:
 //   cold        nothing picked yet: rank all playlists
 //   first pick  one true playlist is revealed (you picked it): rank the rest
+// "most common" is the baseline: every song gets the playlists with the most training songs.
 import { readFile } from "node:fs/promises";
 import { loadLibrary } from "./libraryFiles.ts";
 import { neighborsFrom, type AudioIndex } from "../core/audio.ts";
@@ -57,6 +58,9 @@ for (let f = 0; f < FOLDS; f++) {
   const trainIds = new Set(shuffled.filter((_, i) => i % FOLDS !== f));
   const plain = buildModel(lib, { rules, hidden, trainIds });
   const withClassifier = buildModel(lib, { rules, hidden, trainIds, classifier });
+  const sizes = new Map<string, number>();
+  for (const id of trainIds) for (const p of full.membership.get(id)!) sizes.set(p, (sizes.get(p) ?? 0) + 1);
+  const mostCommon = [...sizes].sort((a, b) => b[1] - a[1]).map(([p]) => p);
 
   for (const id of test) {
     const track = lib.tracks[id]!;
@@ -64,6 +68,7 @@ for (let f = 0; f < FOLDS; f++) {
     const bucket = knownArtistSongs(plain, track).size > 0 ? "known" : "new";
     const picked = truth[Math.floor(rand() * truth.length)]!;
     const hasAudio = audio ? audio(id).length > 0 : false;
+    for (const k of [1, 3, 5]) for (const b of ["all", bucket]) record(`cold|most common|R@${k}|${b}`, recall(mostCommon, truth, k));
 
     for (const [name, nb] of variants) {
       if (nb && !hasAudio) continue; // compare like with like: only songs that have audio
@@ -118,7 +123,7 @@ console.log();
 
 for (const [scenario, title, ks] of [["cold", "COLD (nothing picked yet)", [1, 3, 5]], ["pick", "AFTER FIRST PICK (songs in 2+)", [2, 3]]] as const) {
   console.log(title.padEnd(28) + "all".padEnd(15) + "known".padEnd(15) + "new");
-  for (const [name] of variants)
+  for (const name of [...(scenario === "cold" ? ["most common"] : []), ...variants.map(([n]) => n)])
     for (const k of ks)
       console.log(`  ${name} R@${k}`.padEnd(28) + ["all", "known", "new"].map((b) => cell(`${scenario}|${name}|R@${k}|${b}`)).join(""));
   console.log();
