@@ -182,7 +182,8 @@ Spotify shows them; entries older than a day are dropped too.
 - `pnpm plays` writes `data/plays.json`: how many times each song was played and skipped, overall and per year (with how many were on shuffle), and when it last played, from
   the host's recording (`data/listening-history.jsonl`) and Spotify's Extended Streaming History once its
   `Streaming_History_Audio_*.json` files are in `data/extended-history/`. A play on a day both cover counts once. A play
-  counts from 30 s; shorter ones in the export are skips. Plays of copies `pnpm merge-copies` replaced count for the copy
+  counts from 30 s; shorter ones in the export are skips. Segue's plays (`data/segue.jsonl`) count too, matched by ISRC: a
+  play under 30 s is a skip when it ended by skipping or starting a new radio, and isn't counted when it ended any other way. Plays of copies `pnpm merge-copies` replaced count for the copy
   it kept, plays of another release of a saved song (same ISRC, or same title and first artist in the export) count for the saved one,
   and plays of songs not in the library are left out.
 - `pnpm eras` writes `data/eras.json` for the Eras tab (`E`): the play history split where its sound and lyric themes
@@ -223,6 +224,12 @@ Spotify shows them; entries older than a day are dropped too.
   It also records every play, with or without a screen open: every 5 minutes it adds new plays from Spotify's last-50
   list to `data/listening-history.jsonl`, one raw response item per line. If all 50 are newer than the last recorded
   play, some may be missing, and `data/listening-gaps.jsonl` says between when. Both files can't be regenerated, so they
-  are copied hourly to `config.historyBackup`, only ever adding to the copy. `GET /host/status` on this Mac shows the
+  are copied hourly to `config.boxData`, only ever adding to the copy. `GET /host/status` on this Mac shows the
   recorder's state, and it logs any problem, such as a login that lacks the `user-read-recently-played` permission.
+  It's also where [Segue](https://github.com/Axl47/segue) on the Omarchy desktop reports, through that machine's
+  bridge, as a signed-in screen. `POST /host/segue/events` adds Segue's transitions, grades, plays and rejected pairings
+  to `data/segue.jsonl`, once per `event_id`, backed up hourly like the listening history. `PUT /host/segue/now` puts
+  Segue on Now Playing (Spotify wins while it's playing; Segue drops off after 15 s without a report), and while it's
+  showing, the player controls and `POST /host/player/mark` (+/−) go to Segue through `GET /host/segue/commands`.
+  `GET /host/segue/context` gives Segue the songs heard in the last day, Revisit's Rediscover list and skip rates, by ISRC.
 - `pnpm test` runs the suggestion-model tests.

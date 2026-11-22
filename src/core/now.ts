@@ -2,6 +2,7 @@
 // host, which builds the same picture for screens that have no Spotify login or library of their own.
 import type { AudioIndex } from "./audio.ts";
 import { firstAdded, sortTargets, type Library } from "./library.ts";
+import type { PlanInfo } from "./segue.ts";
 import type { Neighbors } from "./suggest.ts";
 import { songThemes, type ThemeIndex } from "./themes.ts";
 
@@ -56,7 +57,11 @@ export type NowPanels = {
   mapped: boolean;
 };
 
-export type NowState = Playback & { panels: NowPanels | null; error: string | null };
+/** Segue's part of Now Playing: the song it blends in next (`in_ms` negative during the blend) and whether +/− would grade one. */
+export type SegueInfo = { next: { label: string; kind: PlanInfo["kind"]; in_ms: number | null } | null; markable: boolean };
+
+/** What a screen shows: the playback of `source`, which is Spotify or Segue (see `pickSource` in segue.ts). */
+export type NowState = Playback & { source: "spotify" | "segue" | null; segue: SegueInfo | null; panels: NowPanels | null; error: string | null };
 
 const SIMILAR = 5;
 

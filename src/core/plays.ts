@@ -1,22 +1,23 @@
-// How often each library song has been played, from two sources: the plays the host records live
-// (data/listening-history.jsonl, see src/host/history.ts) and Spotify's Extended Streaming History export.
+// How often each library song has been played, from three sources: the plays the host records live
+// (data/listening-history.jsonl, see src/host/history.ts), Spotify's Extended Streaming History export, and Segue's
+// plays (data/segue.jsonl, see src/core/segue.ts).
 // `pnpm plays` joins them into data/plays.json, which the app reads with `decodePlays`.
 import type { Merge } from "./dedupe.ts";
 
 /** "both" is a live play matched to its export row: the export's numbers with the live row's context. */
-export type PlaySource = "live" | "export" | "both";
+export type PlaySource = "live" | "export" | "both" | "segue";
 
 export type Play = {
   trackId: string;
   /** Epoch ms, when the play ended: Spotify's `played_at` live, `ts` in the export. */
   at: number;
-  /** Export only; a live play has no length, but Spotify only reports plays past ~30 s. */
+  /** Export and Segue; a live play has no length, but Spotify only reports plays past ~30 s. */
   msPlayed?: number;
-  /** Export only: Spotify's own skip flag. Kept, but `isListen` decides what counts. */
+  /** Export: Spotify's own skip flag. Segue: cut short by a skip. Kept, but `isListen` decides what counts. */
   skipped?: boolean;
   /** Live only: the playlist, album or artist URI the play came from. */
   context?: string;
-  /** Live only: identifies the recording across its releases, see `otherReleases`. */
+  /** Live and Segue: identifies the recording across its releases, see `otherReleases`. */
   isrc?: string;
   /** Export only: `songKey` of the title and album artist, which is all the export says about what the id was. */
   song?: string;
@@ -92,6 +93,13 @@ export function parseExport(value: unknown): Play | null {
   };
 }
 
+/** Library track id per ISRC; the first track wins when copies share one. */
+export function idsByIsrc(tracks: Readonly<Record<string, { isrc: string | null }>>) {
+  const ids = new Map<string, string>();
+  for (const [id, { isrc }] of Object.entries(tracks)) if (isrc && !ids.has(isrc)) ids.set(isrc, id);
+  return ids;
+}
+
 /**
  * A song played from a release that isn't saved (its single, the album cut, a reissue) is the saved song: the one
  * with the same ISRC for a live play, the one with the same title and first artist for an export row, which has no
@@ -101,10 +109,9 @@ export function otherReleases(
   plays: readonly Play[],
   tracks: Readonly<Record<string, { isrc: string | null; name: string; artists: readonly { name: string }[] }>>,
 ): Pick<Merge, "main" | "copies">[] {
-  const byIsrc = new Map<string, string>();
+  const byIsrc = idsByIsrc(tracks);
   const bySong = new Map<string, string | null>();
   for (const [id, track] of Object.entries(tracks)) {
-    if (track.isrc && !byIsrc.has(track.isrc)) byIsrc.set(track.isrc, id);
     const song = songKey(track.name, track.artists[0]?.name ?? "");
     bySong.set(song, bySong.has(song) ? null : id);
   }

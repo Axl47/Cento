@@ -17,6 +17,7 @@ const controls: NowControls = {
   next: () => command("next"),
   previous: () => command("previous"),
   seekTo: (ms) => command("seek", { ms }),
+  mark: (rating) => send("/host/player/mark", { rating }).then((res) => res.ok, () => false),
 };
 
 export function Screen() {
@@ -43,7 +44,7 @@ export function Screen() {
 }
 
 function Connected({ playlists, onLost }: { playlists: Playlist[]; onLost: () => void }) {
-  const [state, setState] = useState<NowState & { updatedAt: number }>({ ...NOTHING_PLAYING, panels: null, error: null, updatedAt: 0 });
+  const [state, setState] = useState<NowState & { updatedAt: number }>({ ...NOTHING_PLAYING, source: null, segue: null, panels: null, error: null, updatedAt: 0 });
   const [map, setMap] = useState<{ audio: AudioIndex; lib: Library } | null>(null);
   const colors = usePlaylistColors(useMemo(() => playlists, [playlists]));
 

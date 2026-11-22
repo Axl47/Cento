@@ -6,16 +6,19 @@
 // Streaming_History_Audio_*.json files are in data/extended-history/, counting plays from days both cover once.
 // Plays of copies `pnpm merge-copies` replaced count for the copy it kept, and plays of another release of a saved
 // song (same ISRC, or same title and artist in the export) count for the saved one; a replaced copy still in the
-// library shows the counts of the one kept. Runs with either source alone.
+// library shows the counts of the one kept. Segue's plays (data/segue.jsonl) count too, matched by ISRC. Runs with any
+// source alone.
 import { existsSync } from "node:fs";
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Merge } from "../core/dedupe.ts";
 import type { Library } from "../core/library.ts";
-import { joinPlays, otherReleases, parseExport, parseLive, playsFile, resolveMerges, shareWithCopies, type Play } from "../core/plays.ts";
+import { idsByIsrc, joinPlays, otherReleases, parseExport, parseLive, playsFile, resolveMerges, shareWithCopies, type Play } from "../core/plays.ts";
+import { parseSegue } from "../core/segue.ts";
 
 const OUT = "data/plays.json";
 const HISTORY = "data/listening-history.jsonl";
+const SEGUE = "data/segue.jsonl";
 const EXPORT_DIR = "data/extended-history";
 const EXPORT_FILE = /^Streaming_History_Audio_.*\.json$/;
 
@@ -31,14 +34,22 @@ function parseAll(rows: unknown[], parse: (row: unknown) => Play | null, what: s
   return byTime(plays);
 }
 
-const liveLines = existsSync(HISTORY) ? (await readFile(HISTORY, "utf8")).split("\n").filter(Boolean) : [];
-const liveRows = liveLines.map((line): unknown => {
-  try {
-    return JSON.parse(line);
-  } catch {
-    return null; // a half-written row; counted as skipped below
-  }
-});
+/** A JSONL file's rows; a half-written row is null, and counted as skipped. */
+async function jsonLines(path: string): Promise<unknown[]> {
+  if (!existsSync(path)) return [];
+  return (await readFile(path, "utf8"))
+    .split("\n")
+    .filter(Boolean)
+    .map((line): unknown => {
+      try {
+        return JSON.parse(line);
+      } catch {
+        return null;
+      }
+    });
+}
+
+const liveRows = await jsonLines(HISTORY);
 const exportFiles = existsSync(EXPORT_DIR) ? (await readdir(EXPORT_DIR)).filter((f) => EXPORT_FILE.test(f)).sort() : [];
 const exportRows = (await Promise.all(exportFiles.map((f) => readJson<unknown[]>(join(EXPORT_DIR, f))))).flat();
 
@@ -48,7 +59,11 @@ const history = parseAll(exportRows, parseExport, "export");
 const merges = [...otherReleases([...recorded, ...history], tracks), ...(existsSync("data/merges.json") ? await readJson<Merge[]>("data/merges.json") : [])];
 const live = resolveMerges(recorded, merges);
 const exported = resolveMerges(history, merges);
-const { plays, matched } = joinPlays(live, exported);
+// Segue's log also holds transitions and grades; only its plays of library songs count.
+const ids = idsByIsrc(tracks);
+const segue = resolveMerges(byTime((await jsonLines(SEGUE)).map((row) => parseSegue(row, ids)).filter((play) => play !== null)), merges);
+const { plays: spotifyPlays, matched } = joinPlays(live, exported);
+const plays = byTime([...spotifyPlays, ...segue]);
 const { file, outside } = playsFile(plays, tracks, new Date());
 shareWithCopies(file, merges, tracks);
 await writeFile(OUT, JSON.stringify(file));
@@ -60,6 +75,7 @@ console.log(
     ? `  export: ${exported.length} plays (${span(exported)}) from ${exportFiles.length} file(s); ${matched} live plays were already in it`
     : `  export: none yet (put its Streaming_History_Audio_*.json files in ${EXPORT_DIR}/)`,
 );
+console.log(`  segue: ${segue.length} plays (${span(segue)})`);
 console.log(`  not in the library: ${outside} plays`);
 const [exportEnd, liveStart] = [exported.at(-1)?.at, live[0]?.at];
 if (exportEnd !== undefined && liveStart !== undefined && liveStart > exportEnd) {
