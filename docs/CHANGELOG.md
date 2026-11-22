@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Songs played in Segue count in your play counts everywhere Cento shows them, merged with Spotify's; a short Segue play counts as a skip when you skipped it.
+- Now playing (on the Mac, your phone and the desktop widget) follows Segue when Spotify isn't playing, and its controls drive Segue then.
+- While Segue is playing, Now playing shows the next song and a countdown to when it blends in, plus + and − buttons (or keys) to grade the last transition.
+- Segue avoids songs you've heard anywhere in the last day, leans toward favorites gone quiet, and steers away from songs you often skip.
 - Every song name shows its play count, like `Gravity (51)`: on the sound map, the sort screen, Build, Playlists, Lyrics, Themes, Eras, Revisit and Now playing. Songs in your library you've never played show (0).
 - The Now playing screen on another device (`/now` from the host) shows play counts too.
 - Play counts stay current: Resync recounts them, so newly added songs get their history right away, and the host recounts every hour instead of only overnight.

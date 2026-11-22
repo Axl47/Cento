@@ -1,7 +1,7 @@
 // `pnpm host`: the always-on half of the app. It alone talks to Spotify for Now Playing and serves the
 // screen at /now to the network, so a TV or spare monitor needs neither a Spotify login nor a tab open on
-// the Mac. Other devices can reach only /now, its data (play counts included) and the player commands, and only
-// with the password.
+// the Mac. Other devices can reach only /now, its data (play counts included), the player commands and Segue's
+// routes (/host/segue/*, see segue.ts), and only with the password.
 import { readFile, stat } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { networkInterfaces } from "node:os";
@@ -10,33 +10,38 @@ import { config } from "../core/config.ts";
 import { mapLibrary } from "../core/now.ts";
 import { sortTargets } from "../core/library.ts";
 import { hasSession, isLocal, newSecret, passwordMatches, readSecret, saveSecret, sessionCookie, type Secret } from "./access.ts";
+import { isSegueNow } from "../core/segue.ts";
 import { createRecorder, GAPS_FILE, HISTORY_FILE, rsyncBackup } from "./history.ts";
 import { refreshIfDue, refreshStatus, scheduleRefresh } from "./refresh.ts";
-import { addScreen, isPlayerCommand, libraryData, poll, runCommand, seek } from "./playback.ts";
+import { addScreen, addSegueCommands, isPlayerCommand, libraryData, mark, poll, runCommand, seek, updateSegue } from "./playback.ts";
+import { createSegueStore, currentContext, MAX_EVENTS, SEGUE_FILE } from "./segue.ts";
 import { forgetToken, freshToken, setToken, spotify, type HostToken } from "./spotify.ts";
 
 const BUILD = resolve("dist");
 const PLAYS_FILE = "data/plays.json";
 const MAX_BODY = 64 * 1024;
+/** A batch of Segue's events can be larger: up to `MAX_EVENTS` of them. */
+const MAX_SEGUE_BODY = 512 * 1024;
 const MIN_PASSWORD = 4;
 const LOGIN_WAIT_MS = 1000;
 const TYPES: Record<string, string> = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".woff2": "font/woff2", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon" };
 
 let secret: Secret | null = await readSecret();
 let nextLoginAt = 0;
-const history = createRecorder(spotify, { file: HISTORY_FILE, gapsFile: GAPS_FILE, backup: rsyncBackup(config.boxData) });
+const history = createRecorder(spotify, { file: HISTORY_FILE, gapsFile: GAPS_FILE, backup: rsyncBackup([HISTORY_FILE, GAPS_FILE], config.boxData) });
+const segue = createSegueStore({ file: SEGUE_FILE, backup: rsyncBackup([SEGUE_FILE], config.boxData) });
 
 const json = (res: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}) => {
   res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store", ...headers });
   res.end(JSON.stringify(body));
 };
 
-async function readBody(req: IncomingMessage): Promise<unknown> {
+async function readBody(req: IncomingMessage, limit = MAX_BODY): Promise<unknown> {
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of req) {
     size += (chunk as Buffer).length;
-    if (size > MAX_BODY) throw new Error("Body too large");
+    if (size > limit) throw new Error("Body too large");
     chunks.push(chunk as Buffer);
   }
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
@@ -67,7 +72,7 @@ async function localRoute(req: IncomingMessage, res: ServerResponse, path: strin
     }
     if (req.method === "DELETE") return forgetToken().then(() => json(res, 200, {}));
   }
-  if (path === "/host/status" && req.method === "GET") return json(res, 200, { addresses: lanAddresses(), passwordSet: !!secret, history: history.status, refresh: refreshStatus() });
+  if (path === "/host/status" && req.method === "GET") return json(res, 200, { addresses: lanAddresses(), passwordSet: !!secret, history: history.status, segue: segue.status, refresh: refreshStatus() });
   if (path === "/host/password" && req.method === "PUT") {
     const { password } = (await readBody(req)) as { password?: unknown };
     if (typeof password !== "string" || password.length < MIN_PASSWORD) return json(res, 400, {});
@@ -92,16 +97,40 @@ async function screenRoute(req: IncomingMessage, res: ServerResponse, path: stri
   }
   if (req.method === "POST" && path.startsWith("/host/player/")) {
     const name = path.slice("/host/player/".length);
+    // 409: the command is for Segue, which isn't listening.
+    const done = (sent: boolean) => json(res, sent ? 200 : 409, {});
     if (name === "seek") {
       const { ms } = (await readBody(req)) as { ms?: unknown };
       if (typeof ms !== "number" || !Number.isFinite(ms) || ms < 0) return json(res, 400, {});
-      await seek(ms);
-      return json(res, 200, {});
+      return done(await seek(ms));
+    }
+    if (name === "mark") {
+      const { rating } = (await readBody(req)) as { rating?: unknown };
+      if (rating !== 1 && rating !== -1) return json(res, 400, {});
+      return done(mark(rating));
     }
     if (!isPlayerCommand(name)) return json(res, 404, {});
-    await runCommand(name);
+    return done(await runCommand(name));
+  }
+  if (path.startsWith("/host/segue/")) return segueRoute(req, res, path);
+  json(res, 404, {});
+}
+
+/** Segue on the Omarchy desktop, through its bridge: its event log, what it's playing, its commands and its context. */
+async function segueRoute(req: IncomingMessage, res: ServerResponse, path: string) {
+  if (req.method === "POST" && path === "/host/segue/events") {
+    const { events } = (await readBody(req, MAX_SEGUE_BODY)) as { events?: unknown };
+    if (!Array.isArray(events) || events.length > MAX_EVENTS) return json(res, 400, {});
+    return json(res, 200, { stored: await segue.add(events) });
+  }
+  if (req.method === "PUT" && path === "/host/segue/now") {
+    const body = await readBody(req);
+    if (!isSegueNow(body)) return json(res, 400, {});
+    await updateSegue(body);
     return json(res, 200, {});
   }
+  if (req.method === "GET" && path === "/host/segue/commands") return addSegueCommands(res);
+  if (req.method === "GET" && path === "/host/segue/context") return json(res, 200, await currentContext((await libraryData()).lib, segue));
   json(res, 404, {});
 }
 
@@ -166,4 +195,5 @@ createServer((req, res) => {
   for (const address of lanAddresses()) console.log(`On your network: ${address}`);
   if (!secret) console.log("Set a password from Settings on the Now Playing screen to let other devices in.");
   history.start();
+  segue.start().catch((e: unknown) => console.error(`Segue: ${e}`));
 });

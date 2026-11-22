@@ -4,14 +4,15 @@ import { useEffect, useMemo, useState } from "react";
 import type { AudioIndex } from "../core/audio.ts";
 import type { Library } from "../core/library.ts";
 import { LINE_BREAK } from "../core/lyrics.ts";
-import { nowPanels, type NowState } from "../core/now.ts";
+import { nowPanels, type NowState, type SegueInfo } from "../core/now.ts";
 import { SoundMap } from "./SoundMap.tsx";
 import { PauseIcon, PlayIcon, fmt } from "./SortView.tsx";
 import { usePlayer } from "./player.ts";
 import { useApp } from "./store.ts";
 import { useTitle } from "./useTitle.ts";
 
-export type NowControls = { toggle: () => void; next: () => void; previous: () => void; seekTo: (ms: number) => void };
+/** `mark` grades Segue's last transition and resolves whether the host took it; only the host's screen can send it. */
+export type NowControls = { toggle: () => void; next: () => void; previous: () => void; seekTo: (ms: number) => void; mark?: (rating: 1 | -1) => Promise<boolean> };
 
 const PANELS = { map: "Sound map", themes: "Lyrics", history: "History", similar: "Sounds like" };
 type Panel = keyof typeof PANELS;
@@ -33,7 +34,7 @@ export function NowTab({ colors }: { colors: Map<string, string> }) {
   const panels = useMemo(() => (lib && trackId ? nowPanels(lib, audio, neighbors, themes, trackId) : null), [lib, audio, neighbors, themes, trackId]);
   return (
     <NowView
-      state={{ trackId, paused, position, duration, current, updatedAt, error, panels }}
+      state={{ trackId, paused, position, duration, current, updatedAt, error, panels, source: current ? "spotify" : null, segue: null }}
       controls={{ toggle, next, previous, seekTo }}
       colors={colors}
       standalone={false}
@@ -59,6 +60,7 @@ export function NowView({
   onNeedMap?: () => void;
 }) {
   const { current, trackId, paused, panels: info } = state;
+  const markable = !!state.segue?.markable && !!controls.mark;
   const title = useTitle();
   const [hiddenPanels, setHiddenPanels] = useState(readHidden);
   const [settings, setSettings] = useState(false);
@@ -79,10 +81,12 @@ export function NowView({
       if (e.key === " ") (e.preventDefault(), controls.toggle());
       else if (e.key === "ArrowRight") controls.next();
       else if (e.key === "ArrowLeft") controls.previous();
+      else if (markable && (e.key === "+" || e.key === "=")) void controls.mark?.(1);
+      else if (markable && e.key === "-") void controls.mark?.(-1);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [controls]);
+  }, [controls, markable]);
 
   const wantsMap = show("map") && !map;
   useEffect(() => {
@@ -152,6 +156,9 @@ export function NowView({
               </button>
               <NowProgress state={state} onSeek={controls.seekTo} />
             </div>
+            {state.segue && (
+              <SegueNext segue={state.segue} paused={paused} updatedAt={state.updatedAt} onMark={markable ? controls.mark : undefined} />
+            )}
             {state.error && <p className="mt-2 text-xs text-rose-400">{state.error}</p>}
           </section>
 
@@ -228,6 +235,48 @@ function NowProgress({ state, onSeek }: { state: Pick<NowState, "position" | "du
         <div className="h-full rounded-full bg-zinc-100" style={{ width: `${(now / (duration || 1)) * 100}%` }} />
       </div>
       <span>{fmt(duration)}</span>
+    </div>
+  );
+}
+
+/** Segue's next song and when it blends in, counting down between the host's updates, and +/− to grade the last blend. */
+function SegueNext({ segue, paused, updatedAt, onMark }: { segue: SegueInfo; paused: boolean; updatedAt: number; onMark?: (rating: 1 | -1) => Promise<boolean> }) {
+  const { next } = segue;
+  const counting = !paused && next?.in_ms != null && next.in_ms > 0;
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (!counting) return;
+    const id = setInterval(() => tick((t) => t + 1), 250);
+    return () => clearInterval(id);
+  }, [counting]);
+  const left = next?.in_ms == null ? null : paused ? next.in_ms : next.in_ms - (performance.now() - updatedAt);
+  // Lights the button for a moment once the grade went through, so it isn't sent twice.
+  const [marked, setMarked] = useState<1 | -1 | null>(null);
+  useEffect(() => {
+    if (marked === null) return;
+    const id = setTimeout(() => setMarked(null), 1500);
+    return () => clearTimeout(id);
+  }, [marked]);
+  const grade = (rating: 1 | -1) => void onMark?.(rating).then((ok) => ok && setMarked(rating));
+  const lit = (rating: 1 | -1) => (marked === rating ? "btn bg-zinc-100! text-zinc-950!" : "btn");
+  return (
+    <div className="mt-[2vh] flex max-w-3xl items-center gap-3 text-[clamp(0.85rem,1.1vw,1.35rem)]">
+      {next && (
+        <p className="min-w-0 flex-1 truncate text-zinc-400">
+          Next <span className="text-zinc-100">{next.label}</span>
+        </p>
+      )}
+      {left !== null && <span className="shrink-0 tabular-nums text-zinc-400">{left > 0 ? fmt(left) : "Blending"}</span>}
+      {onMark && (
+        <span className={`flex shrink-0 gap-2 ${next ? "" : "ml-auto"}`}>
+          <button className={lit(1)} onClick={() => grade(1)} aria-label="Good transition">
+            +
+          </button>
+          <button className={lit(-1)} onClick={() => grade(-1)} aria-label="Off transition">
+            −
+          </button>
+        </span>
+      )}
     </div>
   );
 }

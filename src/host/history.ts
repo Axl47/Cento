@@ -48,7 +48,7 @@ function parseLine(line: string): Play | null {
  * Reads a file, creating it if missing. Only a missing file counts as empty: any other read error must not look like one.
  * A crash or full disk can leave half a row, so this ends that line to keep the next row from being glued to it.
  */
-async function readRepaired(path: string) {
+export async function readRepaired(path: string) {
   const text = await readFile(path, "utf8").catch((e: NodeJS.ErrnoException) => {
     if (e.code === "ENOENT") return "";
     throw e;
@@ -67,8 +67,8 @@ async function loadRecorded(file: string, gapsFile: string) {
   return { seen: new Set(plays.map(keyOf)), cursor: plays.length ? plays.reduce((latest, play) => Math.max(latest, playedAt(play)), 0) : null };
 }
 
-/** Copies both files to the backup. `--append` sends only bytes past the copy's end, so a damaged local file can't rewrite it. */
-export const rsyncBackup = (destination: string) => () => promisify(execFile)("rsync", ["--append", HISTORY_FILE, GAPS_FILE, destination], { timeout: 120_000 });
+/** Copies append-only files to the backup. `--append` sends only bytes past the copy's end, so a damaged local file can't rewrite it. */
+export const rsyncBackup = (files: string[], destination: string) => () => promisify(execFile)("rsync", ["--append", ...files, destination], { timeout: 120_000 });
 
 /**
  * The recorder behind `pnpm host`. Takes the client rather than importing the host's, so that the login stays
