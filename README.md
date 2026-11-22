@@ -23,9 +23,9 @@ what its lyrics are about.
 
 - A song's playlists are predicted from its artist's other songs, its nearest neighbors by sound and a
   per-playlist classifier trained on sound, lyric meaning and language.
-- Audio analysis runs in Stemma, a separate Python engine: a 30 s preview or the full track goes through an
+- Audio analysis runs in [Stemma](https://github.com/Axl47/Stemma), a separate Python engine: a 30 s preview or the full track goes through an
   ONNX music model, and full tracks are split into stems with Demucs. Stem separation runs nightly on a second
-  machine, and each step resumes where it left off.
+  machine's GPU, and each step resumes where it left off.
 - A small always-on host records every play, refreshes all the data once a day, backs up what can't be
   regenerated, and receives Segue's events.
 
@@ -52,7 +52,7 @@ host; Python with ONNX, Essentia models and Demucs in the audio engine.
 
 ## Setup
 
-Needs Node 20+, pnpm, a Spotify app (Premium for playback control) and, for anything sound-related, the Stemma
+Needs Node 20+, pnpm, a Spotify app (Premium for playback control) and, for anything sound-related, [Stemma](https://github.com/Axl47/Stemma)
 engine.
 
 `.env` (gitignored):
