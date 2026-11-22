@@ -19,14 +19,7 @@ what its lyrics are about.
 
 ## How it works
 
-```
-Spotify: library, play history ─────────┐
-                                        ├──► suggestion model ──► Sort
-Stemma (Python audio engine):           │    sound map (UMAP)  ──► Sound map
-  sound vectors, stems, tempo, key ─────┤    play counts       ──► Library views
-  lyric themes and meaning ─────────────┘
-                                             host ◄──► Segue (transitions, ratings, plays)
-```
+![Song audio goes through Stemma (sound vectors, stems, tempo, key, mood, lyrics); Cento combines it with Spotify history into the suggestion model, sound map, lyric themes and play counts behind each screen; Segue reads the sound data and reports plays back](docs/how-it-works.svg)
 
 - A song's playlists are predicted from its artist's other songs, its nearest neighbors by sound and a
   per-playlist classifier trained on sound, lyric meaning and language.
@@ -94,3 +87,7 @@ The full manual, with every screen, key and script, is in [docs/USAGE.md](docs/U
 - `src/cli/`: the `pnpm` scripts
 - `src/app/`: the React app
 - `src/host/`: the always-on host (play recording, daily refresh, Segue's events)
+
+## License
+
+[MIT](LICENSE)
