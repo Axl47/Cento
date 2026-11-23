@@ -70,6 +70,9 @@ test("a now report needs its fields, and may carry more", () => {
   assert.ok(isSegueNow({ ...segue(true), next: { key: "K", label: "L", kind: "mash", in_ms: -200 }, extra: 1 }));
   assert.ok(!isSegueNow({ ...segue(true), position_ms: "0" }));
   assert.ok(!isSegueNow({ ...segue(true), next: { key: "K" } }));
+  assert.ok(isSegueNow({ ...segue(true), previous: null }));
+  assert.ok(isSegueNow({ ...segue(true), previous: { key: "K", label: "A - B" } }));
+  assert.ok(!isSegueNow({ ...segue(true), previous: { key: "K" } }));
 });
 
 test("context: songs heard in the last day, quiet favorites and skip rates, by ISRC", () => {

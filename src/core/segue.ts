@@ -28,6 +28,8 @@ export type SegueNow = {
   duration_ms: number;
   /** `in_ms` is negative during the overlap. */
   next: { key: string; label: string; kind: PlanInfo["kind"]; in_ms: number | null } | null;
+  /** The song before this one; null for a radio's first song. Builds before it was added leave it out. */
+  previous?: { key: string; label: string } | null;
   vocals: number;
   backing: number;
   mashup: boolean;
@@ -50,6 +52,7 @@ const isStringOrNull = (v: unknown) => v === null || typeof v === "string";
 export function isSegueNow(body: unknown): body is SegueNow {
   const b = body as Partial<SegueNow> | null;
   const next = b?.next as Partial<NonNullable<SegueNow["next"]>> | null | undefined;
+  const previous = b?.previous as Partial<NonNullable<SegueNow["previous"]>> | null | undefined;
   return (
     typeof b?.playing === "boolean" &&
     isStringOrNull(b.key) &&
@@ -57,7 +60,8 @@ export function isSegueNow(body: unknown): body is SegueNow {
     isNumber(b.position_ms) &&
     isNumber(b.duration_ms) &&
     typeof b.markable === "boolean" &&
-    (next === null || (typeof next?.key === "string" && typeof next.label === "string" && typeof next.kind === "string" && (next.in_ms === null || isNumber(next.in_ms))))
+    (next === null || (typeof next?.key === "string" && typeof next.label === "string" && typeof next.kind === "string" && (next.in_ms === null || isNumber(next.in_ms)))) &&
+    (previous == null || (typeof previous.key === "string" && typeof previous.label === "string"))
   );
 }
 

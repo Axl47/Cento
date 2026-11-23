@@ -6,10 +6,11 @@ import type { ServerResponse } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import { neighborsFrom, type AudioIndex } from "../core/audio.ts";
 import type { Library } from "../core/library.ts";
-import { NOTHING_PLAYING, nextPollMs, nowPanels, readPlayback, type ApiPlayback, type NowState, type Playback } from "../core/now.ts";
+import { NOTHING_PLAYING, lastHistoryPlay, latestOther, nextPollMs, nowPanels, readPlayback, songLabel, type ApiPlayback, type NowState, type PastSong, type Playback } from "../core/now.ts";
 import { pickSource, type SegueCommand, type SegueNow } from "../core/segue.ts";
 import { themeIndex, type ThemeData } from "../core/themes.ts";
-import { trackIdsByIsrc } from "./segue.ts";
+import { HISTORY_FILE } from "./history.ts";
+import { byMtime, trackIdsByIsrc } from "./segue.ts";
 import { spotify } from "./spotify.ts";
 
 const KEEP_ALIVE_MS = 25_000;
@@ -43,6 +44,9 @@ export async function libraryData() {
 /** What Spotify reported last, and why the last poll or command failed. */
 let spotifyNow: Playback = NOTHING_PLAYING;
 let spotifyError: string | null = null;
+/** The Spotify song seen before the current one, caught when a poll finds a new song. */
+let spotifyBefore: PastSong | null = null;
+const lastRecorded = byMtime(HISTORY_FILE, (text) => (text ? lastHistoryPlay(text) : null));
 /** What Segue sent last, and when; gone after `SEGUE_STALE_MS` without a word. */
 let segueNow: SegueNow | null = null;
 let segueAt = 0;
@@ -51,7 +55,7 @@ let segueTimer: ReturnType<typeof setTimeout> | undefined;
 const segueStreams = new Set<ServerResponse>();
 
 /** What the screens see, composed from both sources by `compose`. */
-let state: NowState = { ...NOTHING_PLAYING, source: null, segue: null, panels: null, error: null };
+let state: NowState = { ...NOTHING_PLAYING, source: null, segue: null, previous: null, panels: null, error: null };
 let composing = 0;
 const screens = new Set<ServerResponse>();
 let timer: ReturnType<typeof setTimeout> | undefined;
@@ -89,6 +93,15 @@ async function seguePlayback(now: SegueNow): Promise<Playback> {
   };
 }
 
+/**
+ * The song before Spotify's current one: the last song polling saw change away from, or the last recorded play,
+ * whichever is later. The history covers what played while no screen was polling, but lags up to 5 minutes.
+ */
+async function spotifyPrevious() {
+  const song = latestOther(spotifyNow.trackId, [spotifyBefore, await lastRecorded()]);
+  return song && { label: song.label };
+}
+
 /** Rebuilds `state` from the latest of both sources. When two overlap, the one started last wins. */
 async function compose() {
   const run = ++composing;
@@ -96,11 +109,13 @@ async function compose() {
   const source = pickSource(spotifyNow, segue);
   const playback = source === "segue" ? await seguePlayback(segue!) : spotifyNow;
   const panels = await panelsFor(playback.trackId);
+  const previous = source === "segue" ? (segue!.previous ? { label: segue!.previous.label } : null) : source === "spotify" ? await spotifyPrevious() : null;
   if (run !== composing) return;
   state = {
     ...playback,
     source,
     segue: source === "segue" ? { next: segue!.next && { label: segue!.next.label, kind: segue!.next.kind, in_ms: segue!.next.in_ms }, markable: segue!.markable } : null,
+    previous,
     panels,
     error: source === "segue" ? null : spotifyError,
   };
@@ -114,7 +129,9 @@ export async function poll() {
   clearTimeout(timer);
   try {
     if (!spotify.limited("/me/player")) {
+      const was = spotifyNow;
       spotifyNow = readPlayback(await spotify.get<ApiPlayback | undefined>("/me/player"));
+      if (was.trackId && was.current && was.trackId !== spotifyNow.trackId) spotifyBefore = { trackId: was.trackId, label: songLabel(was.current), at: Date.now() };
       spotifyError = null;
     }
   } catch (e) {

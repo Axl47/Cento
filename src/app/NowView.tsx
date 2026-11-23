@@ -34,7 +34,7 @@ export function NowTab({ colors }: { colors: Map<string, string> }) {
   const panels = useMemo(() => (lib && trackId ? nowPanels(lib, audio, neighbors, themes, trackId) : null), [lib, audio, neighbors, themes, trackId]);
   return (
     <NowView
-      state={{ trackId, paused, position, duration, current, updatedAt, error, panels, source: current ? "spotify" : null, segue: null }}
+      state={{ trackId, paused, position, duration, current, updatedAt, error, panels, source: current ? "spotify" : null, segue: null, previous: null }}
       controls={{ toggle, next, previous, seekTo }}
       colors={colors}
       standalone={false}
