@@ -44,7 +44,7 @@ export function Screen() {
 }
 
 function Connected({ playlists, onLost }: { playlists: Playlist[]; onLost: () => void }) {
-  const [state, setState] = useState<NowState & { updatedAt: number }>({ ...NOTHING_PLAYING, source: null, segue: null, panels: null, error: null, updatedAt: 0 });
+  const [state, setState] = useState<NowState & { updatedAt: number }>({ ...NOTHING_PLAYING, source: null, segue: null, previous: null, panels: null, error: null, updatedAt: 0 });
   const [map, setMap] = useState<{ audio: AudioIndex; lib: Library } | null>(null);
   const colors = usePlaylistColors(useMemo(() => playlists, [playlists]));
 

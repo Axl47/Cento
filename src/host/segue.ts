@@ -104,7 +104,7 @@ export function createSegueStore({ file, backup, append = appendFile }: SegueSto
 }
 
 /** A file's parsed content, reread only when it changes; `read` gets null for a missing file. */
-function byMtime<T>(path: string, read: (text: string | null) => T) {
+export function byMtime<T>(path: string, read: (text: string | null) => T) {
   let cached: { mtime: number; value: T } | undefined;
   return async () => {
     const mtime = await stat(path).then((s) => s.mtimeMs, () => 0);

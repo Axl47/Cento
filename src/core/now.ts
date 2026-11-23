@@ -60,8 +60,39 @@ export type NowPanels = {
 /** Segue's part of Now Playing: the song it blends in next (`in_ms` negative during the blend) and whether +/− would grade one. */
 export type SegueInfo = { next: { label: string; kind: PlanInfo["kind"]; in_ms: number | null } | null; markable: boolean };
 
-/** What a screen shows: the playback of `source`, which is Spotify or Segue (see `pickSource` in segue.ts). */
-export type NowState = Playback & { source: "spotify" | "segue" | null; segue: SegueInfo | null; panels: NowPanels | null; error: string | null };
+/** What a screen shows: the playback of `source`, which is Spotify or Segue (see `pickSource` in segue.ts), and the song before it. */
+export type NowState = Playback & {
+  source: "spotify" | "segue" | null;
+  segue: SegueInfo | null;
+  previous: { label: string } | null;
+  panels: NowPanels | null;
+  error: string | null;
+};
+
+/** A song that played, labeled "Artist - Title" like Segue's labels, and when it was last seen playing (epoch ms). */
+export type PastSong = { trackId: string; label: string; at: number };
+
+export const songLabel = ({ name, artists }: { name: string; artists: string[] }) => (artists.length ? `${artists.join(", ")} - ${name}` : name);
+
+/** The latest of `songs` that isn't the one playing now. */
+export const latestOther = (trackId: string | null, songs: (PastSong | null)[]) =>
+  songs.filter((s): s is PastSong => s !== null && s.trackId !== trackId).sort((a, b) => b.at - a.at)[0] ?? null;
+
+type HistoryRow = { played_at?: string; track?: { id?: string; name?: string; artists?: { name: string }[]; linked_from?: { id?: string } } };
+
+/** The last play in the recorded listening history (one Spotify recently-played item per line), or null. */
+export function lastHistoryPlay(text: string): PastSong | null {
+  const line = text.trimEnd().split("\n").at(-1);
+  try {
+    const { played_at, track } = JSON.parse(line ?? "") as HistoryRow;
+    const trackId = track?.linked_from?.id ?? track?.id;
+    const at = Date.parse(played_at ?? "");
+    if (!trackId || !track?.name || Number.isNaN(at)) return null;
+    return { trackId, label: songLabel({ name: track.name, artists: (track.artists ?? []).map((a) => a.name) }), at };
+  } catch {
+    return null;
+  }
+}
 
 const SIMILAR = 5;
 
